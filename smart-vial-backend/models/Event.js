@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const { ALLOWED_EVENTS, ALLOWED_EVENT_TYPES } = require("../utils/eventValidation");
 
 const EventSchema = new mongoose.Schema(
   {
@@ -61,6 +62,34 @@ const EventSchema = new mongoose.Schema(
   },
   { timestamps: { createdAt: 'createdAt', updatedAt: false } },
 ); 
+
+// ============================================
+// Payload validation (#38)
+// ============================================
+// Defense-in-depth: even though the ingestion controller validates with zod
+// before constructing an Event, enforce the allowed event_type + payload shape
+// at the model layer so no code path can persist an unvalidated Mixed payload.
+EventSchema.pre("validate", function () {
+  const eventType =
+    typeof this.event_type === "string" ? this.event_type.toUpperCase() : this.event_type;
+  const schema = ALLOWED_EVENTS[eventType];
+
+  if (!schema) {
+    throw new Error(
+      `Invalid event_type "${this.event_type}". Allowed: ${ALLOWED_EVENT_TYPES.join(", ")}`
+    );
+  }
+
+  const result = schema.safeParse(this.payload == null ? {} : this.payload);
+  if (!result.success) {
+    throw new Error(
+      `Invalid payload for ${eventType}: ${result.error.issues.map((i) => i.message).join("; ")}`
+    );
+  }
+
+  // Persist the parsed payload (strips nothing valid, keeps passthrough fields).
+  this.payload = result.data;
+});
 
 // ============================================
 // Indexes

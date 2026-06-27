@@ -1,13 +1,18 @@
 const Device = require('../models/Device');
 const Event = require('../models/Event');
+const { validateIngestionEvent, validateDeviceId } = require('../utils/eventValidation');
 
 const updateTelemetry = async (req, res) => {
     try {
-        const { device_id, battery, firmware_version } = req.body;
+        const { battery, firmware_version } = req.body;
 
-        if (!device_id) {
-            return res.status(400).json({ error: 'device_id is required' });
+        // Strictly cast device_id to a string before it reaches Mongoose so
+        // operator-injection values like { $ne: null } are rejected (#37).
+        const deviceIdCheck = validateDeviceId(req.body.device_id);
+        if (!deviceIdCheck.ok) {
+            return res.status(400).json({ error: `Bad Request: ${deviceIdCheck.error}` });
         }
+        const device_id = deviceIdCheck.value;
 
         // Device may not exist in the database during boot, so create it if needed
         let device = await Device.findOne({ device_id });
@@ -41,16 +46,17 @@ const updateTelemetry = async (req, res) => {
 // Save event data from devices to the database
 const ingestEvent = async (req, res) => {
     try {
-        const { event, event_id, timestamp, payload, device_id } = req.body;
-
-        // Validate required fields
-        if (!device_id) {
-            return res.status(400).json({ error: 'Bad Request: device_id is required' });
+        // Validate the full ingestion payload against the allowed event-type
+        // schemas (#38). This strictly casts device_id to a string (rejecting
+        // operator-injection values like { $ne: null }, #37), confirms the
+        // event_type is known, and type-checks the payload. Malformed events
+        // are rejected with 400 before anything reaches Mongoose.
+        const validation = validateIngestionEvent(req.body);
+        if (!validation.ok) {
+            return res.status(400).json({ error: `Bad Request: ${validation.error}` });
         }
 
-        if (!event) {
-            return res.status(400).json({ error: 'Bad Request: event is required' });
-        }
+        const { device_id, event, event_id, timestamp, payload } = validation.value;
 
         // Check for duplicate event using idempotency key
         if (event_id) {
