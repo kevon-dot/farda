@@ -37,10 +37,8 @@ module.exports = {
   },
 
   tymeSync: {
-    // NOTE: `toleranceSecons` is a historical misspelling kept for backward
-    // compatibility. `toleranceSeconds` is the correctly-spelled alias used by
-    // the A3 device-auth replay/freshness check; both read the same env var.
-    toleranceSecons: parseInt(process.env.TYME_SYNC_TOLERANCE_SECONDS) || 300, // 5 minutes
+    // `toleranceSeconds` is the max allowed clock skew used by the A3
+    // device-auth replay/freshness check.
     toleranceSeconds: parseInt(process.env.TYME_SYNC_TOLERANCE_SECONDS) || 300, // 5 minutes
   },
 };
