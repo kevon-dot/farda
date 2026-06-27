@@ -27,6 +27,13 @@ export interface EnvConfig {
 	APPLE_CLIENT_SECRET?: string;
 	FACEBOOK_CLIENT_ID?: string;
 	FACEBOOK_CLIENT_SECRET?: string;
+	// Rate limiting (issue #10). All optional; rateLimiters.ts applies safe
+	// defaults when unset. Windows are in milliseconds, maxes are request counts.
+	RATE_LIMIT_DISABLED?: boolean;
+	AUTH_RATE_LIMIT_WINDOW_MS?: number;
+	AUTH_RATE_LIMIT_MAX?: number;
+	OCR_RATE_LIMIT_WINDOW_MS?: number;
+	OCR_RATE_LIMIT_MAX?: number;
 }
 
 // 3. Export individual constants
@@ -54,6 +61,27 @@ const APPLE_CLIENT_SECRET = process.env.APPLE_CLIENT_SECRET;
 const FACEBOOK_CLIENT_ID = process.env.FACEBOOK_CLIENT_ID;
 const FACEBOOK_CLIENT_SECRET = process.env.FACEBOOK_CLIENT_SECRET;
 
+// Rate limiting (issue #10). Parsed leniently: a blank/invalid numeric env var
+// falls back to `undefined` so rateLimiters.ts can apply its own safe default.
+const toOptionalNumber = (value: string | undefined): number | undefined => {
+	if (value === undefined || value.trim() === "") {
+		return undefined;
+	}
+	const parsed = Number(value);
+	return Number.isFinite(parsed) ? parsed : undefined;
+};
+
+// biome-ignore lint/suspicious/noDoubleEquals: <String Boolean>
+const RATE_LIMIT_DISABLED = process.env.RATE_LIMIT_DISABLED == "true";
+const AUTH_RATE_LIMIT_WINDOW_MS = toOptionalNumber(
+	process.env.AUTH_RATE_LIMIT_WINDOW_MS,
+);
+const AUTH_RATE_LIMIT_MAX = toOptionalNumber(process.env.AUTH_RATE_LIMIT_MAX);
+const OCR_RATE_LIMIT_WINDOW_MS = toOptionalNumber(
+	process.env.OCR_RATE_LIMIT_WINDOW_MS,
+);
+const OCR_RATE_LIMIT_MAX = toOptionalNumber(process.env.OCR_RATE_LIMIT_MAX);
+
 // 4. Grouped Export (The "How")
 const env: EnvConfig = {
 	HOST,
@@ -73,6 +101,11 @@ const env: EnvConfig = {
 	APPLE_CLIENT_SECRET,
 	FACEBOOK_CLIENT_ID,
 	FACEBOOK_CLIENT_SECRET,
+	RATE_LIMIT_DISABLED,
+	AUTH_RATE_LIMIT_WINDOW_MS,
+	AUTH_RATE_LIMIT_MAX,
+	OCR_RATE_LIMIT_WINDOW_MS,
+	OCR_RATE_LIMIT_MAX,
 };
 
 export default env;
