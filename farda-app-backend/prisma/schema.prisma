@@ -23,6 +23,7 @@ model User {
   sessions      Session[]
   prescriptions Prescription[]
   doses         Dose[]
+  auditLogs     AuditLog[]
 }
 
 model Prescription {
@@ -110,6 +111,46 @@ model Session {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+}
+
+/// Tamper-evident, append-only audit trail of PHI access (HIPAA §164.312(b)).
+///
+/// APPEND-ONLY: there is intentionally NO `updatedAt`. Application code must
+/// NEVER UPDATE or DELETE rows in this table. Tamper-evidence comes from a
+/// per-row SHA-256 hash chain: `hash = sha256(prevHash + canonical(entry))`,
+/// where `prevHash` is the `hash` of the immediately-preceding row. Any
+/// after-the-fact edit/removal breaks the chain and is detectable.
+///
+/// This row must NEVER contain PHI values: only resource ids/types/actions and
+/// request metadata, so the audit trail does not itself become a PHI leak.
+model AuditLog {
+  id           String   @id @default(cuid())
+  /// The acting session user. Nullable so system/background actions can be
+  /// recorded with no actor.
+  actorUserId  String?
+  /// READ / CREATE / UPDATE / DELETE.
+  action       String
+  /// e.g. "Prescription" / "Dose" / "Medicine" / "User".
+  resourceType String
+  resourceId   String?
+  ip           String?
+  userAgent    String?
+  /// Non-PHI structured context only (counts, route, etc.). NEVER PHI values.
+  metadata     Json?
+  /// `hash` of the previous row, forming the tamper-evident chain. Null for the
+  /// very first row.
+  prevHash     String?
+  /// sha256(prevHash + canonical(entry)) for this row.
+  hash         String
+  createdAt    DateTime @default(now())
+
+  /// FK is nullable + ON DELETE SET NULL: deleting a user must NOT delete or
+  /// cascade-destroy their audit history (the trail outlives the actor).
+  actor User? @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([actorUserId])
+  @@index([resourceType])
+  @@index([createdAt])
 }
 
 model Verification {
