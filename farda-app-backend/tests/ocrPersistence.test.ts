@@ -172,8 +172,10 @@ describe("multi_med_and_dose migration SQL (#12 / #13)", () => {
 			"utf8",
 		);
 
-		expect(sql).toContain('CREATE TABLE "Medicine"');
+		expect(sql).toMatch(/CREATE TABLE (IF NOT EXISTS )?"Medicine"/);
 		expect(sql).toMatch(/CREATE TABLE (IF NOT EXISTS )?"Dose"/);
+		// the backfill must run before the legacy columns are dropped
+		expect(sql).toContain('INSERT INTO "Medicine"');
 		expect(sql).toContain('DROP INDEX IF EXISTS "Prescription_userId_key"');
 		expect(sql).toContain("CREATE INDEX");
 		// FK constraints wired up.
