@@ -241,11 +241,15 @@ const removeClaimedDevice = async (req, res, next) => {
       }
     }
 
-    // Revoke any caregiver consent grants for this device so the
-    // server-authoritative relationship record matches the detached device.
+    // Revoke any live OR pending caregiver consent grants for this device so the
+    // server-authoritative relationship record matches the detached device (no
+    // dangling pending invite survives an unclaim). Revoked by the owner.
     await CaregiverGrant.updateMany(
-      { deviceId: device_id, status: GRANT_STATUS.ACCEPTED },
-      { status: GRANT_STATUS.REVOKED, revokedAt: new Date() }
+      {
+        deviceId: device_id,
+        status: { $in: [GRANT_STATUS.PENDING, GRANT_STATUS.ACCEPTED] },
+      },
+      { status: GRANT_STATUS.REVOKED, revokedAt: new Date(), revokedBy: user_id }
     );
 
     res.json({ status: "success", message: "Device unclaimed successfully" });
@@ -304,11 +308,16 @@ const deleteCaregiverAccessToDevice = async (req, res, next) => {
         }
       }
 
-      // Revoke the server-authoritative consent grant so a later request can no
-      // longer be authorized off a stale relationship record.
+      // Revoke the server-authoritative consent grant (live or pending) so a
+      // later request can no longer be authorized off a stale relationship
+      // record. Revoked by the owner via the owner-only delete route.
       await CaregiverGrant.updateMany(
-        { deviceId: device_id, caregiverUserId: caregiver_id, status: GRANT_STATUS.ACCEPTED },
-        { status: GRANT_STATUS.REVOKED, revokedAt: new Date() }
+        {
+          deviceId: device_id,
+          caregiverUserId: caregiver_id,
+          status: { $in: [GRANT_STATUS.PENDING, GRANT_STATUS.ACCEPTED] },
+        },
+        { status: GRANT_STATUS.REVOKED, revokedAt: new Date(), revokedBy: req.user_id }
       );
     }
 
