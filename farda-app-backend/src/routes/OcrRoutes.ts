@@ -7,6 +7,7 @@ import {
 } from "@src/common/utils/authorization";
 import { RouteError } from "@src/common/utils/route-errors";
 import { prisma } from "@src/lib/prisma";
+import { type AuditAction, recordAccess } from "@src/services/AuditService";
 import {
 	extractPrescriptionFromFiles,
 	extractPrescriptionFromUrls,
@@ -87,6 +88,36 @@ const RecordMoodSchema = z.object({
 const ExtractFromUrlSchema = z.object({
 	image_urls: z.array(z.string().url()),
 });
+
+/**
+ * Lightweight helper so PHI handlers can record an audit entry in one line and
+ * stay readable. Pulls actor (session userId) + request metadata off `req`.
+ *
+ * Records ONLY resourceType/resourceId/action and request metadata -- never PHI
+ * values. `recordAccess` is itself fail-safe (it never throws), but we also do
+ * not `await` it here so audit I/O cannot add latency to the response path;
+ * `void` documents the intentionally-unhandled promise.
+ */
+function audit(
+	req: Request,
+	action: AuditAction,
+	resourceType: string,
+	resourceId?: string | null,
+	metadata?: Record<string, unknown>,
+): void {
+	// Defensive reads: auditing must never throw out of a PHI handler (which
+	// would turn an audit hiccup into a 500 and deny care), so tolerate a
+	// missing `headers`/`ip` on the request object.
+	void recordAccess({
+		actorUserId: req.user?.id ?? null,
+		action,
+		resourceType,
+		resourceId: resourceId ?? null,
+		ip: req.ip ?? null,
+		userAgent: req.headers?.["user-agent"] ?? null,
+		metadata: metadata ?? null,
+	});
+}
 
 const OcrRoutes = {
 	/**
@@ -326,6 +357,12 @@ const OcrRoutes = {
 				});
 			}
 
+			// HIPAA audit: a new prescription (PHI) was created. Log ids/types only.
+			audit(req, "CREATE", "Prescription", prescription.id, {
+				medicineCount: medicinesToCreate.length,
+				doseCount: dosesToInsert.length,
+			});
+
 			return res.status(HttpStatusCodes.OK).json(prescription);
 		} catch (error: unknown) {
 			if (error instanceof RouteError) {
@@ -364,6 +401,11 @@ const OcrRoutes = {
 				include: { medicines: true },
 			});
 
+			// HIPAA audit: the user's prescriptions (PHI) were read. Count only.
+			audit(req, "READ", "Prescription", null, {
+				count: prescriptions.length,
+			});
+
 			return res.status(HttpStatusCodes.OK).json(prescriptions);
 		} catch (error: unknown) {
 			if (error instanceof RouteError) {
@@ -398,6 +440,9 @@ const OcrRoutes = {
 				where: { userId },
 				orderBy: { scheduledFor: "asc" },
 			});
+
+			// HIPAA audit: the user's doses (PHI) were read. Count only.
+			audit(req, "READ", "Dose", null, { count: doses.length });
 
 			return res.status(HttpStatusCodes.OK).json(doses);
 		} catch (error: unknown) {
@@ -451,6 +496,10 @@ const OcrRoutes = {
 					takenAt: takenAt ? new Date(takenAt) : new Date(),
 				},
 			});
+
+			// HIPAA audit: a dose (PHI) was updated. Log id/type/action only --
+			// never the mood/note values themselves.
+			audit(req, "UPDATE", "Dose", dose.id);
 
 			return res.status(HttpStatusCodes.OK).json(dose);
 		} catch (error: unknown) {
