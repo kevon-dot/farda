@@ -4,6 +4,7 @@ import { maybeLimiter, ocrRateLimiter } from "@src/middleware/rateLimiters";
 import { Router } from "express";
 import OcrRoutes from "./OcrRoutes";
 import { createPrescription } from "./PrescriptionRoutes";
+import ReminderRoutes from "./ReminderRoutes";
 
 /******************************************************************************
                                 Setup
@@ -86,6 +87,27 @@ prescriptionRouter.post(
 );
 
 apiRouter.use(prescriptionRouter);
+
+// ----------------------- Add ReminderRouter ----------------------------- //
+// Reminder + notification engine (GTM-537). Deny-by-default: every route is
+// session-gated. The schedule endpoint feeds local-notification (re)scheduling
+// on the device; the events endpoint logs the reminder-response stream that
+// triggers the dose-event analytics pipeline.
+const reminderRouter = Router();
+reminderRouter.use(isAuthenticated);
+
+reminderRouter.get(Paths.Reminders.Schedule, ReminderRoutes.getSchedule);
+reminderRouter.post(Paths.Reminders.Events, ReminderRoutes.logEvent);
+reminderRouter.put(
+	Paths.Reminders.Preferences,
+	ReminderRoutes.updatePreferences,
+);
+reminderRouter.post(
+	Paths.Reminders.PushTokens,
+	ReminderRoutes.registerPushToken,
+);
+
+apiRouter.use(reminderRouter);
 
 /******************************************************************************
                                 Export

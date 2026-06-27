@@ -25,6 +25,19 @@ const Paths = {
 		OcrGetUserDoses: "/prescriptions/ocr/user/:userId/doses",
 		OcrRecordDose: "/prescriptions/ocr/doses/:doseId/record",
 	},
+	// Reminder + notification engine (GTM-537). All routes session-gated (A2).
+	Reminders: {
+		_: "/reminders",
+		// GET the authenticated user's upcoming reminder schedule (derived from
+		// their Dose rows + per-prescription reminder config + delivery prefs).
+		Schedule: "/reminders/schedule",
+		// POST a single reminder-response event (delivered/opened/snoozed/...).
+		Events: "/reminders/events",
+		// PUT the user's delivery preferences (timezone + quiet hours).
+		Preferences: "/reminders/preferences",
+		// POST register an FCM/APNs push token for this device (SCAFFOLD).
+		PushTokens: "/reminders/push-tokens",
+	},
 };
 
 export default Paths;

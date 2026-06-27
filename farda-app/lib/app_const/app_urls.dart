@@ -7,6 +7,19 @@ class AppUrls {
   static String getMode = "mood/";
   static String setMood = "mood/";
   static String setNotes = "dose-notes/";
+
+  // --- Reminder + notification engine (GTM-537) -----------------------------
+  /// GET the user's upcoming reminder schedule + delivery preferences.
+  static const String reminderSchedule = "reminders/schedule";
+
+  /// POST a single reminder-response event (delivered/opened/snoozed/...).
+  static const String reminderEvents = "reminders/events";
+
+  /// PUT the user's delivery preferences (timezone + quiet hours).
+  static const String reminderPreferences = "reminders/preferences";
+
+  /// POST register an FCM/APNs push token for this device (SCAFFOLD).
+  static const String reminderPushTokens = "reminders/push-tokens";
 }
 
 /// Vial API (VIAL_API_URL) endpoint paths — issue #14/#30 (app-calls-both).

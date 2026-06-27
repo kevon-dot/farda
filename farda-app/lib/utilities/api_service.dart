@@ -185,6 +185,41 @@ class ApiService {
     }
   }
 
+  // PUT request returning the decoded body (or null on non-2xx / error).
+  // Reuses the shared bearer + refresh-on-401 path. Added for the reminder
+  // preferences endpoint (GTM-537), which is a PUT on the Main API.
+  static Future<Map<String, dynamic>?> put({
+    required String endpoint,
+    required dynamic body,
+    Map<String, String>? headers,
+    bool auth = false,
+    String? baseUrl,
+  }) async {
+    final uri = buildUri(baseUrl ?? appBaseUrl, endpoint);
+    try {
+      final finalHeaders =
+          await _buildHeaders(customHeaders: headers, auth: auth);
+
+      Log.i("➡️ PUT Request: $uri");
+
+      final response = await _withRefresh(
+        finalHeaders,
+        (h) => http.put(uri, headers: h, body: jsonEncode(body)),
+      );
+
+      _logResponse("PUT", uri.toString(), response);
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return jsonDecode(response.body);
+      } else {
+        return null;
+      }
+    } catch (e, stackTrace) {
+      Log.e("❌ PUT Request Error: $uri", error: e, stackTrace: stackTrace);
+      return null;
+    }
+  }
+
   // GET request
   static Future<Map<String, dynamic>?> get({
     required String endpoint,
