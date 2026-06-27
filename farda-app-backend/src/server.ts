@@ -1,4 +1,3 @@
-import path from "node:path";
 import {
 	createCorsMiddleware,
 	errorHandler,
@@ -7,7 +6,7 @@ import {
 import { authRateLimiter, maybeLimiter } from "@src/middleware/rateLimiters";
 import BaseRouter from "@src/routes/apiRouter";
 import { toNodeHandler } from "better-auth/node";
-import express, { type Request, type Response } from "express";
+import express from "express";
 import helmet from "helmet";
 import morgan from "morgan";
 import { auth } from "./auth";
@@ -60,24 +59,9 @@ if (env.NODE_ENV === "development") {
 app.use(Paths._, BaseRouter);
 
 // **** FrontEnd Content **** //
-
-// Set views directory (html)
-const viewsDir = path.join(__dirname, "views");
-app.set("views", viewsDir);
-
-// Set static directory (js and css).
-const staticDir = path.join(__dirname, "public");
-app.use(express.static(staticDir));
-
-// Nav to users pg by default
-app.get("/", (_: Request, res: Response) => {
-	return res.redirect("/users");
-});
-
-// Redirect to login if not logged in.
-app.get("/users", (_: Request, res: Response) => {
-	return res.sendFile("users.html", { root: viewsDir });
-});
+// The express-generator admin HTML page + its `/` and `/users` HTML routes and
+// the views/static-file wiring were removed (#35): they rendered the dead
+// numeric-id User scaffold. This service is now a JSON API only.
 
 // **** Error handler **** //
 

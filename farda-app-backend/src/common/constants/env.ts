@@ -14,7 +14,6 @@ export interface EnvConfig {
 	PORT: number;
 	NODE_ENV: "development" | "production";
 	DATABASE_URL?: string;
-	FARDA_API_URL?: string;
 	TWILIO_ACCOUNT_SID?: string;
 	TWILIO_AUTH_TOKEN?: string;
 	TWILIO_PHONE_NUMBER?: string;
@@ -58,7 +57,6 @@ const NODE_ENV =
 	process.env.NODE_ENV === "production" ? "production" : "development";
 
 const DATABASE_URL = process.env.DATABASE_URL;
-const FARDA_API_URL = process.env.FARDA_API_URL;
 
 const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID;
 const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN;
@@ -118,7 +116,6 @@ const env: EnvConfig = {
 	PORT,
 	NODE_ENV,
 	DATABASE_URL,
-	FARDA_API_URL,
 	TWILIO_ACCOUNT_SID,
 	TWILIO_AUTH_TOKEN,
 	TWILIO_PHONE_NUMBER,

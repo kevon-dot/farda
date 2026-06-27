@@ -1,37 +1,15 @@
 const Paths = {
 	_: "/api",
-	Users: {
-		_: "/users",
-		Get: "/users/all",
-		Add: "/users/add",
-		Update: "/users/update",
-		Delete: "/users/delete/:id",
-	},
 	// Auth (#7/#8/#9) is owned by better-auth, mounted via `toNodeHandler(auth)`
 	// on `/api/auth/*` in server.ts. There are no hand-rolled auth route paths
 	// here anymore — better-auth's plugins expose the phone/OTP + session
 	// endpoints under this prefix directly.
+	//
+	// NOTE: the `Users` (#35 numeric-id scaffold), `DeviceUser` and `Caregiver`
+	// (#14/#30 dead FARDA_API_URL proxy) path groups were removed alongside their
+	// routers.
 	Auth: {
 		_: "/auth",
-	},
-	DeviceUser: {
-		_: "/user",
-		Claim: "/user/claim",
-		GetDevices: "/user/devices",
-		UnclaimDevice: "/user/devices/:deviceId/unclaim",
-		GetDeviceEvents: "/user/devices/:deviceId/events",
-		DeleteDeviceEvents: "/user/devices/:deviceId/events",
-		SearchDeviceEvents: "/user/devices/:deviceId/events/search",
-		GetAllEvents: "/user/events/all",
-	},
-	Caregiver: {
-		_: "/caregiver",
-		Claim: "/caregiver/claim-device",
-		Remove: "/caregiver/devices/:deviceId/caregiver",
-		GetDevices: "/caregiver/devices",
-		GetDeviceSummary: "/caregiver/devices/:deviceId/summary",
-		SearchDevice: "/caregiver/search/device",
-		FilterEvents: "/caregiver/events/filter/date",
 	},
 	Prescription: {
 		_: "/prescriptions",

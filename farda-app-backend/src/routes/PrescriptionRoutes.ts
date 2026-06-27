@@ -1,11 +1,6 @@
 import HttpStatusCodes from "@src/common/constants/HttpStatusCodes";
 import { prisma } from "@src/lib/prisma";
-import { DeviceTrackingService } from "@src/services/DeviceTrackingService";
 import type { Request as IReq, Response as IRes } from "express";
-
-function extractToken(req: IReq): string | undefined {
-	return req.headers.authorization;
-}
 
 export const createPrescription = async (req: IReq, res: IRes) => {
 	try {
@@ -24,25 +19,10 @@ export const createPrescription = async (req: IReq, res: IRes) => {
 				.json({ error: "Missing medicationName" });
 		}
 
-		// If deviceId is provided, claim it in external API
-		if (deviceId) {
-			const claimResult = await DeviceTrackingService.proxyRequest(
-				"/api/user/claim",
-				"POST",
-				extractToken(req),
-				{ device_id: deviceId },
-			);
-
-			if (
-				claimResult.status >= 400 &&
-				claimResult.status !== 409 // already claimed
-			) {
-				return res.status(claimResult.status).json({
-					error: "Failed to claim device",
-					details: claimResult.data,
-				});
-			}
-		}
+		// NOTE (#14/#30): device claiming previously proxied to FARDA_API_URL via
+		// the now-removed DeviceTrackingService. The app calls the Vial API
+		// directly, so we no longer claim the device here; the deviceId is simply
+		// persisted on the prescription.
 
 		// Create a new prescription (a user may have many) with the supplied
 		// medication as its first Medicine row.
