@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:farda/application/device/repo/device_repo.dart';
 import 'package:farda/application/prescription/model/prescription_list_model.dart';
 import 'package:farda/application/prescription/model/prescription_model.dart';
 import 'package:farda/application/prescription/repo/precription_repo.dart';
@@ -156,6 +157,12 @@ Future<void> getExtractPrescriptionApi(List<File> files) async {
     syncControllersToModel();
     final int? response = await PrecriptionRepo().submitPrescription(prescriptionModel);
     if (response == 201 || response == 200) {
+      // Issue #14/#30: the Main API no longer claims the smart-vial on Rx
+      // create (PR #83). If this prescription was paired to a vial, claim that
+      // device DIRECTLY on the Vial API now. The claim is best-effort and must
+      // not fail the (already-saved) prescription: a 409 simply means the
+      // device is already claimed by this user, which is fine.
+      await _claimPairedDeviceIfAny();
       return true;
     }else{
       return false;
@@ -170,8 +177,24 @@ Future<void> getExtractPrescriptionApi(List<File> files) async {
   }
 }
 
+  /// Claims the paired smart-vial on the Vial API after a prescription is saved
+  /// (issue #14/#30). No-op when no device was paired. Best-effort: any failure
+  /// (including a 409 "already claimed") is swallowed so it never undoes the
+  /// successful prescription save.
+  Future<void> _claimPairedDeviceIfAny() async {
+    final deviceId = prescriptionModel.deviceId?.trim();
+    if (deviceId == null || deviceId.isEmpty) return;
+    try {
+      final response = await DeviceRepo().claimDevice(deviceId);
+      debugPrint(
+          "Device claim on Rx save -> status: ${response?.statusCode}");
+    } catch (e) {
+      debugPrint("Device claim on Rx save error: $e");
+    }
+  }
 
-  //get prescription data 
+
+  //get prescription data
 Future<void> getMyPrescriptionApi() async {
   try {
     // Fetch prescription data from the repository

@@ -7,7 +7,7 @@ import 'package:farda/env.dart';
 import 'package:http/http.dart' as http;
 import 'logger_service.dart';
 
-/// Single HTTP client for the Main API.
+/// Single HTTP client for the Farda backends.
 ///
 /// This is the ONE place that:
 ///   * attaches `Authorization: Bearer <token>` (issue: bearer-token sessions),
@@ -15,8 +15,24 @@ import 'logger_service.dart';
 ///   * on a `401` refreshes the better-auth session once and retries the
 ///     request, and logs out cleanly when the refresh fails (issue #19).
 ///
+/// Both the Main API ([appBaseUrl]) and the Vial API ([vialBaseUrl]) validate
+/// the SAME better-auth session, so every method takes an optional [baseUrl].
+/// Pass [vialBaseUrl] for device/event/caregiver calls (issue #14/#30,
+/// app-calls-both); leave it unset to target the Main API as before. Either way
+/// the bearer + refresh-on-401 behaviour above is reused for free.
+///
 /// Call sites must not reimplement any of the above.
 class ApiService {
+  /// Joins a base URL and an endpoint with exactly one `/`, tolerating a
+  /// trailing slash on [baseUrl] and/or a leading slash on [endpoint]. Extracted
+  /// so URL composition is testable without performing a network call.
+  static Uri buildUri(String baseUrl, String endpoint) {
+    final trimmedBase =
+        baseUrl.endsWith('/') ? baseUrl.substring(0, baseUrl.length - 1) : baseUrl;
+    final trimmedEndpoint =
+        endpoint.startsWith('/') ? endpoint.substring(1) : endpoint;
+    return Uri.parse("$trimmedBase/$trimmedEndpoint");
+  }
   // Get headers with optional Bearer token (read from secure storage).
   static Future<Map<String, String>> _buildHeaders({
     Map<String, String>? customHeaders,
@@ -113,8 +129,9 @@ class ApiService {
     required dynamic body,
     Map<String, String>? headers,
     bool auth = false,
+    String? baseUrl,
   }) async {
-    final uri = Uri.parse("$appBaseUrl/$endpoint");
+    final uri = buildUri(baseUrl ?? appBaseUrl, endpoint);
     try {
       final finalHeaders =
           await _buildHeaders(customHeaders: headers, auth: auth);
@@ -145,8 +162,9 @@ class ApiService {
     required dynamic body,
     Map<String, String>? headers,
     bool auth = false,
+    String? baseUrl,
   }) async {
-    final uri = Uri.parse("$appBaseUrl/$endpoint");
+    final uri = buildUri(baseUrl ?? appBaseUrl, endpoint);
     try {
       final finalHeaders =
           await _buildHeaders(customHeaders: headers, auth: auth);
@@ -173,9 +191,10 @@ class ApiService {
     Map<String, String>? headers,
     Map<String, String>? queryParams,
     bool auth = false,
+    String? baseUrl,
   }) async {
-    final uri =
-        Uri.parse("$appBaseUrl/$endpoint").replace(queryParameters: queryParams);
+    final uri = buildUri(baseUrl ?? appBaseUrl, endpoint)
+        .replace(queryParameters: queryParams);
     try {
       final finalHeaders =
           await _buildHeaders(customHeaders: headers, auth: auth);
@@ -204,11 +223,18 @@ class ApiService {
     required String endpoint,
     Map<String, String>? headers,
     Map<String, String>? queryParams,
+    bool auth = false,
+    String? baseUrl,
   }) async {
-    final uri =
-        Uri.parse("$appBaseUrl/$endpoint").replace(queryParameters: queryParams);
+    final uri = buildUri(baseUrl ?? appBaseUrl, endpoint)
+        .replace(queryParameters: queryParams);
     try {
-      final finalHeaders = headers ?? {"Content-Type": "application/json"};
+      // When [auth] is set we attach the shared bearer via [_buildHeaders] so
+      // Vial-direct callers don't have to read the token themselves. Existing
+      // callers that pass an explicit Authorization header are unaffected.
+      final finalHeaders = auth
+          ? await _buildHeaders(customHeaders: headers, auth: true)
+          : (headers ?? {"Content-Type": "application/json"});
 
       Log.i("➡️ GET Request: $uri");
 
@@ -221,6 +247,38 @@ class ApiService {
       return response;
     } catch (e, stackTrace) {
       Log.e("❌ GET Request Error: $uri", error: e, stackTrace: stackTrace);
+      return null;
+    }
+  }
+
+  /// DELETE request returning the raw response. Used by the Vial-direct
+  /// device/caregiver endpoints (unclaim, delete events, revoke caregiver
+  /// access) which are real HTTP DELETEs on the Vial backend. Reuses the same
+  /// bearer + refresh-on-401 path as the other verbs.
+  static Future<http.Response?> deleteResponse({
+    required String endpoint,
+    Map<String, String>? headers,
+    Map<String, String>? queryParams,
+    bool auth = false,
+    String? baseUrl,
+  }) async {
+    final uri = buildUri(baseUrl ?? appBaseUrl, endpoint)
+        .replace(queryParameters: queryParams);
+    try {
+      final finalHeaders =
+          await _buildHeaders(customHeaders: headers, auth: auth);
+
+      Log.i("➡️ DELETE Request: $uri");
+
+      final response = await _withRefresh(
+        finalHeaders,
+        (h) => http.delete(uri, headers: h),
+      );
+
+      _logResponse("DELETE", uri.toString(), response);
+      return response;
+    } catch (e, stackTrace) {
+      Log.e("❌ DELETE Request Error: $uri", error: e, stackTrace: stackTrace);
       return null;
     }
   }
