@@ -53,5 +53,32 @@
 	<string>farda. uses the camera to capture photos of your prescription so your medication details can be entered automatically.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>farda. accesses your photo library so you can select existing prescription images to add your medication details.</string>
+	<!--
+	  App Transport Security (Issue #20).
+
+	  ATS is intentionally LEFT ENABLED (the default): there is NO
+	  NSAllowsArbitraryLoads = true here, so all production / staging API
+	  traffic is forced over HTTPS with TLS.
+
+	  The only exception below scopes a cleartext allowance to "localhost"
+	  for local development against a server running on the dev machine. This
+	  domain is never reachable from a shipped build, so it cannot weaken
+	  production traffic.
+	-->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<false/>
+		<key>NSExceptionDomains</key>
+		<dict>
+			<key>localhost</key>
+			<dict>
+				<key>NSExceptionAllowsInsecureHTTPLoads</key>
+				<true/>
+				<key>NSIncludesSubdomains</key>
+				<false/>
+			</dict>
+		</dict>
+	</dict>
 </dict>
 </plist>
