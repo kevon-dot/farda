@@ -7,11 +7,12 @@ const Paths = {
 		Update: "/users/update",
 		Delete: "/users/delete/:id",
 	},
+	// Auth (#7/#8/#9) is owned by better-auth, mounted via `toNodeHandler(auth)`
+	// on `/api/auth/*` in server.ts. There are no hand-rolled auth route paths
+	// here anymore — better-auth's plugins expose the phone/OTP + session
+	// endpoints under this prefix directly.
 	Auth: {
 		_: "/auth",
-		SendOTP: "/auth/send-otp",
-		VerifyOTP: "/auth/verify-otp",
-		SocialLogin: "/auth/social-login",
 	},
 	DeviceUser: {
 		_: "/user",
