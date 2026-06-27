@@ -30,7 +30,16 @@ dependencies:
   flutter_secure_storage: ^10.0.0
   http: ^1.6.0
   flutter_blue_plus: 1.31.0
-  
+  # Reminder + notification engine (GTM-537). Local notifications + timezone are
+  # the live delivery path and need no external project/config. Push (FCM/APNs)
+  # is intentionally NOT added here: firebase_messaging would require a Firebase
+  # project + google-services.json / GoogleService-Info.plist / APNs cert, which
+  # would break the build without them. Push is scaffolded behind PushCapability
+  # (lib/application/reminders/service/push_capability.dart) as a flagged
+  # follow-up for the maintainer.
+  flutter_local_notifications: ^18.0.1
+  timezone: ">=0.9.4 <0.11.0"
+
 
 dev_dependencies:
   flutter_test:

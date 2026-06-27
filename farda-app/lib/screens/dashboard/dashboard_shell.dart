@@ -1,4 +1,8 @@
+import 'dart:async';
+
 import 'package:farda/application/authentication/storage/auth_storage.dart';
+import 'package:farda/application/reminders/service/notification_service.dart';
+import 'package:farda/application/reminders/service/push_service.dart';
 import 'package:farda/components/_components.dart';
 import 'package:farda/screens/dashboard/calendar/calender_provider.dart';
 import 'package:farda/screens/dashboard/calendar/screen_calendar.dart';
@@ -42,6 +46,14 @@ class _ScreenDashboardShellState extends State<ScreenDashboardShell> {
 
     context.read<CalenderProvider>().getCallAllApi();
     context.read<PrescriptionProvider>().getMyPrescriptionApi();
+
+    // Reminder + notification engine (GTM-537): now that we're authenticated,
+    // (re)schedule local dose reminders from the backend schedule (survives
+    // reinstall + schedule changes), and register the push token when push is
+    // enabled (NO-OP otherwise; push is a flagged scaffold). Fire-and-forget so
+    // the dashboard renders immediately.
+    unawaited(NotificationService.instance.syncSchedule());
+    unawaited(PushService().registerIfEnabled());
   }
 
   void changeIndex(int index) {

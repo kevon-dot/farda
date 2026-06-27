@@ -1,4 +1,5 @@
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:farda/application/reminders/service/notification_service.dart';
 import 'package:farda/routes/routes.dart';
 import 'package:farda/screens/dashboard/calendar/calender_provider.dart';
 import 'package:farda/screens/dashboard/home/home_provider.dart';
@@ -76,6 +77,17 @@ void main() async {
   // Seed the router's cached auth flag from secure storage before the first
   // frame so the redirect guard makes the right call on deep links / cold start.
   await AppRouter.authState.hydrate();
+
+  // Initialise the local-notification engine (timezone db + plugin + tap
+  // handler) so dose reminders can be scheduled. Scheduling itself is triggered
+  // post-auth (#43) in the dashboard shell; init here is safe + cheap and does
+  // not require a session. Tolerant of failure so a notification-init hiccup
+  // never blocks app start.
+  try {
+    await NotificationService.instance.init();
+  } catch (e) {
+    debugPrint('NotificationService init failed: $e');
+  }
 
   // await injectDependencies();
 

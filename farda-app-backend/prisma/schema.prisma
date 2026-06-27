@@ -19,11 +19,26 @@ model User {
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 
-  accounts      Account[]
-  sessions      Session[]
-  prescriptions Prescription[]
-  doses         Dose[]
-  auditLogs     AuditLog[]
+  // Reminder-delivery preferences (GTM-537). The app schedules + delivers local
+  // notifications and enforces these; the backend only STORES them so a user's
+  // preferences survive reinstall and feed analytics.
+  //
+  // IANA timezone name (e.g. "America/New_York"). Null falls back to device tz.
+  timezone        String?
+  // Quiet hours as minutes-from-local-midnight [0, 1440). When start/end are
+  // both set, deliveries inside the window are suppressed (the app does the
+  // suppression; see ReminderScheduler). A window may wrap past midnight
+  // (start > end), e.g. 22:00 (1320) -> 07:00 (420).
+  quietHoursStart Int?
+  quietHoursEnd   Int?
+
+  accounts               Account[]
+  sessions               Session[]
+  prescriptions          Prescription[]
+  doses                  Dose[]
+  auditLogs              AuditLog[]
+  pushTokens             PushToken[]
+  reminderResponseEvents ReminderResponseEvent[]
 }
 
 model Prescription {
@@ -39,6 +54,15 @@ model Prescription {
   address              String?
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
+
+  // Thin per-prescription reminder configuration (GTM-537). Enabled by default;
+  // `times` lets a user override the schedule's default dose times. The actual
+  // Dose rows remain the source of truth for WHEN; this only governs reminder
+  // delivery on/off + any user-customised times. Optional one-to-one.
+  reminderEnabled Boolean @default(true)
+  // JSON array of "HH:mm" local times the user wants reminders at, e.g.
+  // ["08:00","20:00"]. Null = derive from the dose schedule as before.
+  reminderTimes   Json?
 
   user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   doses     Dose[]
@@ -79,6 +103,8 @@ model Dose {
 
   user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   prescription Prescription @relation(fields: [prescriptionId], references: [id], onDelete: Cascade)
+
+  reminderResponseEvents ReminderResponseEvent[]
 
   @@index([userId])
   @@index([prescriptionId])
@@ -151,6 +177,85 @@ model AuditLog {
   @@index([actorUserId])
   @@index([resourceType])
   @@index([createdAt])
+}
+
+/// Reminder + notification engine response log (GTM-537).
+///
+/// One row per reminder lifecycle EVENT for a dose: the reminder was delivered,
+/// the user opened / snoozed / dismissed it, or the dose was actioned
+/// (taken/skipped) FROM the reminder. This is the trigger of the dose-event data
+/// pipeline (reminder -> open/snooze/dismiss -> action), so field names are kept
+/// stable and aligned with the dose schema (`doseId`, `userId`, `scheduledFor`).
+///
+/// PHI-safety: this table stores NO free-text PHI (no mood/note/medication
+/// names). Only structured event types + timestamps + non-PHI metadata, so the
+/// analytics stream cannot leak PHI.
+model ReminderResponseEvent {
+  id     String @id @default(cuid())
+  /// The session user the reminder belongs to (A2 / better-auth). Keyed so the
+  /// pipeline can attribute every event to a user.
+  userId String
+  /// The dose this reminder is for. Nullable + ON DELETE SET NULL so deleting a
+  /// dose does not destroy the historical response events (they outlive the dose
+  /// for analytics), mirroring the AuditLog/actor pattern.
+  doseId String?
+
+  /// DELIVERED | OPENED | SNOOZED | DISMISSED | ACTIONED. Stored as a string for
+  /// forward-compatibility (new event types need no migration).
+  eventType String
+
+  /// When the reminder was originally scheduled to fire (copied from the dose so
+  /// the event is self-contained even if the dose is later deleted).
+  scheduledFor DateTime?
+  /// When this event actually happened on-device (client clock).
+  occurredAt   DateTime  @default(now())
+
+  /// For SNOOZED: how many minutes the user snoozed by.
+  snoozeMinutes Int?
+  /// Milliseconds from delivery to the user's action (open/snooze/dismiss/
+  /// action) — the "time-to-action" metric for the pipeline. Null for DELIVERED.
+  timeToActionMs Int?
+
+  /// How the reminder was delivered: LOCAL (flutter_local_notifications) or PUSH
+  /// (FCM/APNs). PUSH is scaffolded; LOCAL is the live path.
+  channel String @default("LOCAL")
+
+  /// Non-PHI structured context only (e.g. platform, app version). NEVER PHI.
+  metadata Json?
+
+  createdAt DateTime @default(now())
+
+  user User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dose Dose? @relation(fields: [doseId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([doseId])
+  @@index([eventType])
+  @@index([scheduledFor])
+}
+
+/// A push-notification token for one user device (GTM-537).
+///
+/// SCAFFOLD: stored so the backend CAN target FCM/APNs, but SENDING push is not
+/// implemented here (requires a Firebase project + APNs cert — flagged for the
+/// maintainer). The mobile app registers its token after auth; local
+/// notifications are the live delivery path today.
+model PushToken {
+  id       String @id @default(cuid())
+  userId   String
+  /// The FCM registration token / APNs device token.
+  token    String @unique
+  /// "fcm" | "apns" — which push service the token belongs to.
+  platform String
+  /// Optional stable device identifier so a device can refresh its token.
+  deviceId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model Verification {
