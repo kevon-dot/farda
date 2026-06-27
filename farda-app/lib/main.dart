@@ -32,7 +32,7 @@ class _MyAppState extends State<MyApp> {
         return ToastificationWrapper(
           child: MultiProvider(
             providers: [
-              ChangeNotifierProvider(create: (_) => LoginProvider()),
+              ChangeNotifierProvider(create: (_) => LoginProvider()..loadFromPrefs()),
               ChangeNotifierProvider(create: (_) => EmojiProvider()),
               ChangeNotifierProvider(
                 create: (_) => CalenderProvider()..getCallAllApi(),

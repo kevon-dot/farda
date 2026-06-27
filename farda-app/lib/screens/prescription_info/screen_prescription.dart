@@ -1,5 +1,6 @@
 import 'package:farda/components/_components.dart';
 import 'package:farda/routes/routes.dart';
+import 'package:farda/screens/login/login_provider.dart';
 import 'package:farda/screens/prescription_info/prescription_provider.dart';
 import 'package:farda/screens/prescription_info/prescription_controller.dart';
 import 'package:farda/theme.dart';
@@ -20,6 +21,9 @@ class ScreenPrescription extends StatelessWidget {
     final colors = theme.extension<FardaColors>()!;
     final spacing = theme.extension<Spacing>()!;
     final prescriptionProvider = context.watch<PrescriptionProvider>();
+    final loginProvider = context.watch<LoginProvider>();
+    final patientName =
+        loginProvider.name.isNotEmpty ? loginProvider.name : "Patient";
     return ExtendedScaffold(
       appBar: CustomAppBar(
         titleType: AppBarTitleType.text,
@@ -145,7 +149,7 @@ class ScreenPrescription extends StatelessWidget {
                       address: (prescriptionProvider.prescriptionModel.address == null || prescriptionProvider.prescriptionModel.address == 'none') 
                           ? "Address not found" 
                           : prescriptionProvider.prescriptionModel.address!,
-                      patientName: "Tom Cruse",
+                      patientName: patientName,
                       rxNumber: (prescriptionProvider.prescriptionModel.rxNumber == null || prescriptionProvider.prescriptionModel.rxNumber == 'none') 
                           ? "N/A" 
                           : prescriptionProvider.prescriptionModel.rxNumber!,

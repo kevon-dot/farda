@@ -18,11 +18,17 @@ class AuthStorage {
   }
 
   // Shared Preferences (for non-sensitive data, user info, access etc)
-  static Future<void> saveSession({required String access, required String refresh, required String id}) async {
+  static Future<void> saveSession({
+    required String access,
+    required String refresh,
+    required String id,
+    String name = '',
+  }) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('access', access);
     await prefs.setString('refresh', refresh);
     await prefs.setString('id', id);
+    await prefs.setString('name', name);
   }
 
   static Future<Map<String, String?>> getSession() async {
@@ -31,6 +37,7 @@ class AuthStorage {
       'access': prefs.getString('access'),
       'refresh': prefs.getString('refresh'),
       'id': prefs.getString('id'),
+      'name': prefs.getString('name'),
     };
   }
 

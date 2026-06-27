@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:farda/application/prescription/model/prescription_model.dart';
 import 'package:farda/application/calender/model/mood_model.dart';
+import 'package:farda/screens/login/login_provider.dart';
 
 void main() {
   group('PrescriptionModel', () {
@@ -63,6 +64,43 @@ void main() {
       expect(copy.address, '1 Main St');
       expect(copy.medicinesNames!.first.medicineName, 'Med B');
       expect(copy.medicinesNames!.first.instructions, '2/day');
+    });
+  });
+
+  group('LoginProvider.displayNameFromResponse', () {
+    test('returns the user name from a verify-otp response', () {
+      final name = LoginProvider.displayNameFromResponse({
+        'status': true,
+        'token': 'abc',
+        'user': {'id': 'u-1', 'name': 'Jane Doe'},
+      });
+      expect(name, 'Jane Doe');
+    });
+
+    test('trims surrounding whitespace', () {
+      final name = LoginProvider.displayNameFromResponse({
+        'user': {'name': '  Jane Doe  '},
+      });
+      expect(name, 'Jane Doe');
+    });
+
+    test('returns empty string when name is missing', () {
+      expect(
+        LoginProvider.displayNameFromResponse({'user': {'id': 'u-1'}}),
+        '',
+      );
+    });
+
+    test('returns empty string when name is blank', () {
+      expect(
+        LoginProvider.displayNameFromResponse({'user': {'name': '   '}}),
+        '',
+      );
+    });
+
+    test('returns empty string when user is absent or response is null', () {
+      expect(LoginProvider.displayNameFromResponse({'status': true}), '');
+      expect(LoginProvider.displayNameFromResponse(null), '');
     });
   });
 
