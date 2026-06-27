@@ -8,6 +8,21 @@ class LoginProvider extends ChangeNotifier {
   String access = "";
   String refresh = "";
   String id = "";
+  String name = "";
+
+  /// Extracts the authenticated user's display name from a verify-otp
+  /// response. Returns an empty string when no usable name is present.
+  /// Kept as a pure function so it can be unit-tested without plugins.
+  static String displayNameFromResponse(Map<String, dynamic>? response) {
+    final user = response?["user"];
+    if (user is Map) {
+      final name = user["name"];
+      if (name != null && name.toString().trim().isNotEmpty) {
+        return name.toString().trim();
+      }
+    }
+    return "";
+  }
 
   String countryCode = "+880";
   String phoneNumber = "";
@@ -73,10 +88,13 @@ class LoginProvider extends ChangeNotifier {
           id = response["user"]["id"].toString();
         }
 
+        name = displayNameFromResponse(response);
+
         await AuthStorage.saveSession(
           access: access,
           refresh: '', // No refresh token in this response
           id: id,
+          name: name,
         );
 
         return true;
@@ -95,6 +113,7 @@ class LoginProvider extends ChangeNotifier {
     access = session['access'] ?? '';
     refresh = session['refresh'] ?? '';
     id = session['id'] ?? '';
+    name = session['name'] ?? '';
     notifyListeners();
   }
 
@@ -105,6 +124,7 @@ class LoginProvider extends ChangeNotifier {
     access = "";
     refresh = "";
     id = "";
+    name = "";
     notifyListeners();
   }
 

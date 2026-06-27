@@ -2,6 +2,7 @@
 import 'package:farda/components/_components.dart';
 import 'package:farda/screens/dashboard/calendar/calender_provider.dart';
 import 'package:farda/screens/dashboard/home/home_provider.dart';
+import 'package:farda/screens/login/login_provider.dart';
 import 'package:farda/theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
@@ -24,6 +25,9 @@ class _ScreenHomeState extends State<ScreenHome> {
     final colors = theme.extension<FardaColors>()!;
     final spacing = theme.extension<Spacing>()!;
     final provider = context.watch<CalenderProvider>();
+    final loginProvider = context.watch<LoginProvider>();
+    final patientName =
+        loginProvider.name.isNotEmpty ? loginProvider.name : "Patient";
     return Scaffold(
       body: SafeArea(
         child: SingleChildScrollView(
@@ -44,7 +48,7 @@ class _ScreenHomeState extends State<ScreenHome> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text("Terry Roberts", style: textTheme.titleMedium),
+                  Text(patientName, style: textTheme.titleMedium),
                   Text(
                     "Sunday",
                     style: textTheme.bodyMedium?.copyWith(

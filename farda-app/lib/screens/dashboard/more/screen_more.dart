@@ -1,4 +1,5 @@
 import 'package:farda/components/_components.dart';
+import 'package:farda/screens/login/login_provider.dart';
 import 'package:farda/screens/prescription_info/prescription_provider.dart';
 import 'package:farda/theme.dart';
 import 'package:farda/routes/routes.dart';
@@ -17,6 +18,9 @@ class ScreenMore extends StatelessWidget {
     final colors = theme.extension<FardaColors>()!;
     final spacing = theme.extension<Spacing>()!;
     final prescriptionProvider = context.watch<PrescriptionProvider>();
+    final loginProvider = context.watch<LoginProvider>();
+    final patientName =
+        loginProvider.name.isNotEmpty ? loginProvider.name : "Patient";
     return Scaffold(
       // appBar: CustomAppBar(titleType: AppBarTitleType.text, titleText: ""),
       body: SafeArea(
@@ -32,7 +36,7 @@ class ScreenMore extends StatelessWidget {
               ),
               20.verticalSpace,
               Text(
-                "Terry Roberts",
+                patientName,
                 style: theme.textTheme.titleLarge?.merge(
                   TextStyle(fontWeight: FontWeight.w500),
                 ),
@@ -94,7 +98,7 @@ class ScreenMore extends StatelessWidget {
                             context.push(CustomRoutePaths.screenConnectOnBoard),
                     drName: "Doctor Name",
                     address: "Address not found",
-                    patientName: "Tom Cruse",
+                    patientName: patientName,
                     rxNumber: "N/A",
                     storeNumber: "N/A",
                     title: "Medicine Name",
@@ -122,7 +126,7 @@ class ScreenMore extends StatelessWidget {
                             .first
                             .address ??
                         "Address not found",
-                    patientName: "Tom Cruse",
+                    patientName: patientName,
                     rxNumber:
                         prescriptionProvider
                             .prescriptionModelList
