@@ -297,6 +297,69 @@ class ScreenMore extends StatelessWidget {
                   ),
                 ),
               ),
+              Divider(color: colors.slate.shade100, height: 40.h),
+              Text(
+                "Care",
+                style: theme.textTheme.titleMedium?.merge(
+                  TextStyle(fontWeight: FontWeight.w500),
+                ),
+              ),
+              4.verticalSpace,
+              TextMedium(
+                text: "Manage caregivers and the patients you look after",
+                style: TextStyle(color: colors.slate.shade600),
+              ),
+              12.verticalSpace,
+              // GTM-517 — entry point for the caregiver/patient hub.
+              InkWell(
+                onTap: () => context.push(CustomRoutePaths.caregiver),
+                borderRadius: BorderRadius.circular(16.r),
+                child: Container(
+                  padding: spacing.allM,
+                  decoration: BoxDecoration(
+                    color: colors.baseWhite,
+                    borderRadius: BorderRadius.circular(16.r),
+                    boxShadow: [
+                      BoxShadow(
+                        color: colors.baseBlack.withValues(alpha: 0.06),
+                        offset: const Offset(0, 2),
+                        blurRadius: 16,
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        height: 48.h,
+                        width: 48.w,
+                        decoration: BoxDecoration(
+                          color: colors.slate.shade100,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          Icons.people_alt_outlined,
+                          color: theme.primaryColor,
+                          size: 24.h,
+                        ),
+                      ),
+                      16.horizontalSpace,
+                      Expanded(
+                        child: TextMedium(
+                          text: "Caregivers & patients",
+                          style: TextStyle(
+                            color: colors.baseBlack,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                      Icon(
+                        Icons.chevron_right,
+                        color: colors.slate.shade400,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
               20.verticalSpace,
             ],
           ),

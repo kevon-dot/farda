@@ -1,6 +1,7 @@
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:farda/application/reminders/service/notification_service.dart';
 import 'package:farda/routes/routes.dart';
+import 'package:farda/screens/caregiver/caregiver_provider.dart';
 import 'package:farda/screens/dashboard/calendar/calender_provider.dart';
 import 'package:farda/screens/dashboard/home/home_provider.dart';
 import 'package:farda/screens/emoji/emoji_provider.dart';
@@ -45,6 +46,11 @@ class _MyAppState extends State<MyApp> {
               ),
               // Add your providers here
               ChangeNotifierProvider(create: (_) => HomeProvider()),
+              // GTM-517 — caregiver/patient experience. Like the calendar /
+              // prescription providers it does NOT fetch on construction: its
+              // Vial endpoints are authenticated, so the screen triggers
+              // loadGrants()/loadAuthorizedSummaries() post-auth in initState.
+              ChangeNotifierProvider(create: (_) => CaregiverProvider()),
             ],
             child: MaterialApp.router(
               theme: AppTheme.theme,

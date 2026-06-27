@@ -109,6 +109,20 @@ function withStubbedController(seed, run) {
       return null;
     },
     findById: async (id) => grants.get(String(id)) || null,
+    // find() returns a sort()-able chain that resolves to the matching grants,
+    // mirroring the Mongoose query the listCaregiverGrants handler uses.
+    find: (q = {}) => {
+      const matches = [...grants.values()].filter(
+        (g) =>
+          (q.deviceId === undefined || g.deviceId === q.deviceId) &&
+          (q.caregiverUserId === undefined ||
+            g.caregiverUserId === q.caregiverUserId) &&
+          (q.patientUserId === undefined ||
+            g.patientUserId === q.patientUserId) &&
+          (q.status === undefined || g.status === q.status)
+      );
+      return { sort: async () => matches };
+    },
     updateMany: async () => ({}),
   });
 
@@ -453,6 +467,105 @@ test("state machine: revoking an already-revoked grant is rejected (409)", async
       assert.strictEqual(res.statusCode, 409);
     }
   );
+});
+
+// ============================================
+// GTM-517 — list-grants endpoint (server-authoritative, PHI-free)
+// ============================================
+
+const LIST_SEED = {
+  grants: [
+    // me (u_me) as caregiver: one pending invite, one accepted relationship.
+    { _id: "lg1", deviceId: "D1", patientUserId: "owner_1", caregiverUserId: "u_me", status: "pending" },
+    { _id: "lg2", deviceId: "D2", patientUserId: "owner_2", caregiverUserId: "u_me", status: "accepted" },
+    // me (u_me) as owner/patient: a caregiver I invited (accepted).
+    { _id: "lg3", deviceId: "D3", patientUserId: "u_me", caregiverUserId: "cg_x", status: "accepted" },
+    // unrelated grant that must NEVER appear for u_me.
+    { _id: "lg4", deviceId: "D9", patientUserId: "owner_9", caregiverUserId: "cg_other", status: "pending" },
+  ],
+};
+
+test("list grants: returns both buckets keyed off the SESSION user id only", async () => {
+  await withStubbedController(LIST_SEED, async ({ controller }) => {
+    const res = makeRes();
+    await controller.listCaregiverGrants({ user_id: "u_me", query: {} }, res);
+    assert.strictEqual(res.statusCode, 200);
+
+    const cgIds = res.body.as_caregiver.map((g) => g.id).sort();
+    const ownerIds = res.body.as_owner.map((g) => g.id).sort();
+    assert.deepStrictEqual(cgIds, ["lg1", "lg2"]);
+    assert.deepStrictEqual(ownerIds, ["lg3"]);
+    // The unrelated grant lg4 appears in neither bucket.
+    assert.ok(![...cgIds, ...ownerIds].includes("lg4"));
+  });
+});
+
+test("list grants: a client-supplied userId in the query is ignored (session id wins)", async () => {
+  await withStubbedController(LIST_SEED, async ({ controller }) => {
+    const res = makeRes();
+    // Attacker tries to read cg_other's grants by spoofing the query — must fail.
+    await controller.listCaregiverGrants(
+      { user_id: "u_me", query: { userId: "cg_other", caregiverUserId: "cg_other" } },
+      res
+    );
+    assert.strictEqual(res.statusCode, 200);
+    const all = [...res.body.as_caregiver, ...res.body.as_owner].map((g) => g.id);
+    assert.ok(!all.includes("lg4"));
+  });
+});
+
+test("list grants: ?status=pending returns only pending grants (e.g. the invites inbox)", async () => {
+  await withStubbedController(LIST_SEED, async ({ controller }) => {
+    const res = makeRes();
+    await controller.listCaregiverGrants(
+      { user_id: "u_me", query: { status: "pending" } },
+      res
+    );
+    assert.strictEqual(res.statusCode, 200);
+    assert.deepStrictEqual(res.body.as_caregiver.map((g) => g.id), ["lg1"]);
+    assert.strictEqual(res.body.as_owner.length, 0);
+  });
+});
+
+test("list grants: ?role=caregiver returns only the caregiver bucket", async () => {
+  await withStubbedController(LIST_SEED, async ({ controller }) => {
+    const res = makeRes();
+    await controller.listCaregiverGrants(
+      { user_id: "u_me", query: { role: "caregiver" } },
+      res
+    );
+    assert.strictEqual(res.statusCode, 200);
+    assert.strictEqual(res.body.as_caregiver.length, 2);
+    assert.strictEqual(res.body.as_owner.length, 0);
+  });
+});
+
+test("list grants: PHI-free shape — only ids/status/timestamps, no device telemetry", async () => {
+  await withStubbedController(LIST_SEED, async ({ controller }) => {
+    const res = makeRes();
+    await controller.listCaregiverGrants({ user_id: "u_me", query: {} }, res);
+    const sample = res.body.as_caregiver[0];
+    // Allowed keys only — no recent_events / battery / patient name etc.
+    const allowed = new Set([
+      "id", "device_id", "patient_user_id", "caregiver_user_id", "status",
+      "invited_at", "invited_by", "accepted_at", "accepted_by",
+      "revoked_at", "revoked_by",
+    ]);
+    for (const k of Object.keys(sample)) {
+      assert.ok(allowed.has(k), `unexpected PHI-bearing key in grant: ${k}`);
+    }
+  });
+});
+
+test("list grants: an invalid ?status filter is rejected (400)", async () => {
+  await withStubbedController(LIST_SEED, async ({ controller }) => {
+    const res = makeRes();
+    await controller.listCaregiverGrants(
+      { user_id: "u_me", query: { status: "bogus" } },
+      res
+    );
+    assert.strictEqual(res.statusCode, 400);
+  });
 });
 
 test("claim endpoint: cannot assign yourself as caregiver", async () => {
