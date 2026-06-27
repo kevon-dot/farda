@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:farda/components/_components.dart';
 import 'package:farda/theme.dart';
+import 'package:farda/utilities/ble_permissions.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
@@ -31,12 +32,16 @@ class _ScreenConnectOnboardState extends State<ScreenConnectOnboard> {
 
   Future<void> _startBleScan() async {
     try {
+      // On Android 12+ / iOS, flutter_blue_plus prompts the user for the
+      // BLUETOOTH_SCAN / BLUETOOTH_CONNECT (and pre-Android-12 location)
+      // runtime permissions here, the first time a scan is started. The
+      // matching declarations live in AndroidManifest.xml and Info.plist.
       await FlutterBluePlus.startScan(
         withNames: ["Medical Vial App"],
         timeout: const Duration(seconds: 4),
       );
     } catch (e) {
-      debugPrint("Scan error: \$e");
+      debugPrint("Scan error: $e");
     }
   }
 
@@ -142,7 +147,8 @@ class _ScreenConnectOnboardState extends State<ScreenConnectOnboard> {
     }
 
     // Check if Bluetooth is supported
-    if (await FlutterBluePlus.isSupported == false) {
+    final readiness = await BlePermissions.check();
+    if (readiness == BleReadiness.unsupported) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text("Bluetooth is not supported on this device.")),
@@ -155,7 +161,7 @@ class _ScreenConnectOnboardState extends State<ScreenConnectOnboard> {
     }
 
     // Check if Bluetooth is turned on
-    if (FlutterBluePlus.adapterStateNow != BluetoothAdapterState.on) {
+    if (readiness == BleReadiness.bluetoothOff) {
       try {
         if (Platform.isAndroid) {
           await FlutterBluePlus.turnOn();
