@@ -45,5 +45,13 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>farda. uses Bluetooth to connect to your smart medical vial so it can pair the device and sync your medication adherence data.</string>
+	<key>NSBluetoothPeripheralUsageDescription</key>
+	<string>farda. uses Bluetooth to connect to your smart medical vial so it can pair the device and sync your medication adherence data.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>farda. uses the camera to capture photos of your prescription so your medication details can be entered automatically.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>farda. accesses your photo library so you can select existing prescription images to add your medication details.</string>
 </dict>
 </plist>

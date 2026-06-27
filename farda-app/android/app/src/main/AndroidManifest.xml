@@ -1,8 +1,27 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 <uses-permission android:name="android.permission.CAMERA"/>
-<uses-permission android:name="android.permission.INTERNET"/> 
+<uses-permission android:name="android.permission.INTERNET"/>
 <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
 <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
+
+    <!-- Bluetooth Low Energy (BLE) permissions for connecting to the farda. medical vial. -->
+    <!-- Android 12 (API 31) and above: runtime BLUETOOTH_SCAN / BLUETOOTH_CONNECT. -->
+    <!-- The vial is not used to derive the user's physical location, so we declare
+         neverForLocation, which also exempts the app from needing fine location on Android 12+. -->
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN"
+        android:usesPermissionFlags="neverForLocation" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+
+    <!-- Android 11 (API 30) and below: legacy Bluetooth permissions. -->
+    <uses-permission android:name="android.permission.BLUETOOTH"
+        android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN"
+        android:maxSdkVersion="30" />
+
+    <!-- Fine location is required to perform a BLE scan on Android 11 and below only.
+         On Android 12+ it is not needed because BLUETOOTH_SCAN declares neverForLocation. -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"
+        android:maxSdkVersion="30" />
     <application
         android:label="farda."
         android:name="${applicationName}"
