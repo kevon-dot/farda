@@ -1,7 +1,7 @@
 
 import 'package:farda/components/_components.dart';
 import 'package:farda/screens/dashboard/calendar/calender_provider.dart';
-import 'package:farda/screens/dashboard/home/home_provider.dart';
+import 'package:farda/screens/dashboard/home/home_data.dart';
 import 'package:farda/screens/login/login_provider.dart';
 import 'package:farda/theme.dart';
 import 'package:flutter/material.dart';
@@ -28,6 +28,12 @@ class _ScreenHomeState extends State<ScreenHome> {
     final loginProvider = context.watch<LoginProvider>();
     final patientName =
         loginProvider.name.isNotEmpty ? loginProvider.name : "Patient";
+
+    // Real provider data -> Home view models (pure mapping in home_data.dart).
+    final doses = dosesFromCalender(provider.doseTimeModel);
+    final pillCounts = pillCountsFromCalender(provider.doseTimeModel);
+    final adherenceSeries =
+        adherenceSeriesFromCalender(provider.doseTimeModel);
     return Scaffold(
       body: SafeArea(
         child: SingleChildScrollView(
@@ -59,35 +65,17 @@ class _ScreenHomeState extends State<ScreenHome> {
               ),
               40.verticalSpace,
               PillProgressSection(
-                remainingValue: "480",
-                consumedValue: 740,
-                consumedMax: 1000,
-                targetValue: "1220",
+                remainingValue: pillCounts.remaining.toString(),
+                consumedValue: pillCounts.consumed.toDouble(),
+                // Avoid a zero max (division-by-zero in the progress arc) while
+                // there is no real target yet.
+                consumedMax: pillCounts.target > 0
+                    ? pillCounts.target.toDouble()
+                    : 1,
+                targetValue: pillCounts.target.toString(),
               ),
               40.verticalSpace,
-              Row(
-                children: [
-                  Expanded(
-                    child: _doseCard(
-                      context,
-                      cardName: "Now",
-                      emoji: "😕",
-                      label: "First dose",
-                      time: "8:00 AM",
-                    ),
-                  ),
-                  12.horizontalSpace,
-                  Expanded(
-                    child: _doseCard(
-                      context,
-                      cardName: "Upcoming",
-                      emoji: "🥞",
-                      label: "Second dose",
-                      time: "2:00 PM",
-                    ),
-                  ),
-                ],
-              ),
+              _doseRow(context, doses),
               40.verticalSpace,
               CustomTabSelector(
                 tabs: ["Consumed", "Remaining"],
@@ -108,9 +96,9 @@ class _ScreenHomeState extends State<ScreenHome> {
                     child: _analyticCard(
                       context,
                       title: "Pill Left Trend",
-                      time: "19 Aug - Now",
                       isRtl: false,
                       color: colors.success[500]!,
+                      series: adherenceSeries,
                     ),
                   ),
                   12.horizontalSpace,
@@ -118,9 +106,9 @@ class _ScreenHomeState extends State<ScreenHome> {
                     child: _analyticCard(
                       context,
                       title: "Pill Taking Trend",
-                      time: "19 Aug - Now",
                       isRtl: true,
                       color: colors.error[500]!,
+                      series: adherenceSeries,
                     ),
                   ),
                 ],
@@ -135,13 +123,14 @@ class _ScreenHomeState extends State<ScreenHome> {
   Widget _analyticCard(
     BuildContext context, {
     required String title,
-    required String time,
     required Color color,
     required bool isRtl,
+    required List<double> series,
   }) {
     final theme = Theme.of(context);
     final textTheme = theme.textTheme;
     final colors = theme.extension<FardaColors>()!;
+    final hasSeries = series.length >= 2;
     return Container(
       height: 150.h,
       clipBehavior: Clip.hardEdge,
@@ -168,18 +157,70 @@ class _ScreenHomeState extends State<ScreenHome> {
               style: textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600),
             ),
           ),
-          Padding(
-            padding: EdgeInsets.symmetric(horizontal: 16).r,
-            child: Text(
-              time,
-              style: textTheme.bodyMedium?.copyWith(
-                color: colors.slate.shade600,
+          // Only show a date range when there is a real series to range over.
+          if (hasSeries)
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16).r,
+              child: Text(
+                "Recent",
+                style: textTheme.bodyMedium?.copyWith(
+                  color: colors.slate.shade600,
+                ),
               ),
             ),
-          ),
           12.verticalSpace,
-          Expanded(child: AnimatedChart(primaryColor: color, isRtl: isRtl)),
+          Expanded(
+            child: AnimatedChart(
+              primaryColor: color,
+              isRtl: isRtl,
+              data: hasSeries ? series : null,
+            ),
+          ),
         ],
+      ),
+    );
+  }
+
+  /// Renders the row of upcoming-dose cards from real provider data. Shows the
+  /// first two configured dose windows; if none are configured yet (providers
+  /// still loading / empty), shows an explicit empty-state card instead of the
+  /// old fabricated "First dose 8:00 AM / Second dose 2:00 PM" cards.
+  Widget _doseRow(BuildContext context, List<HomeDose> doses) {
+    if (doses.isEmpty) {
+      return _emptyDoseCard(context);
+    }
+
+    final cards = <Widget>[];
+    final count = doses.length < 2 ? doses.length : 2;
+    for (var i = 0; i < count; i++) {
+      if (i > 0) cards.add(12.horizontalSpace);
+      cards.add(
+        Expanded(
+          child: _doseCard(
+            context,
+            cardName: i == 0 ? "Next" : "Upcoming",
+            dose: doses[i],
+          ),
+        ),
+      );
+    }
+    return Row(children: cards);
+  }
+
+  Widget _emptyDoseCard(BuildContext context) {
+    final theme = Theme.of(context);
+    final textTheme = theme.textTheme;
+    final colors = theme.extension<FardaColors>()!;
+    return Container(
+      padding: EdgeInsets.all(16).r,
+      decoration: BoxDecoration(
+        color: colors.baseWhite,
+        borderRadius: BorderRadius.circular(8.r),
+        border: Border.all(color: colors.slate.shade200),
+      ),
+      child: Text(
+        "No dose times yet",
+        style: textTheme.bodyMedium?.copyWith(color: colors.slate.shade600),
       ),
     );
   }
@@ -187,9 +228,7 @@ class _ScreenHomeState extends State<ScreenHome> {
   Widget _doseCard(
     BuildContext context, {
     required String cardName,
-    required String label,
-    required String emoji,
-    required String time,
+    required HomeDose dose,
   }) {
     final theme = Theme.of(context);
     final textTheme = theme.textTheme;
@@ -211,33 +250,28 @@ class _ScreenHomeState extends State<ScreenHome> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                cardName,
-                style: textTheme.bodyLarge?.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              Text(emoji, style: textTheme.bodyLarge),
-            ],
+          Text(
+            cardName,
+            style: textTheme.bodyLarge?.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
           ),
           8.verticalSpace,
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              Text(
-                "$label:",
-                style: textTheme.bodyMedium?.copyWith(
-                  color: colors.slate.shade700,
-                  fontSize: 13.sp,
+              Expanded(
+                child: Text(
+                  "${dose.name}:",
+                  style: textTheme.bodyMedium?.copyWith(
+                    color: colors.slate.shade700,
+                    fontSize: 13.sp,
+                  ),
                 ),
               ),
               Text(
-                time,
+                dose.time.isNotEmpty ? dose.time : "--",
                 style: textTheme.bodyMedium?.copyWith(
                   color: colors.slate.shade400,
                   fontSize: 12.sp,
