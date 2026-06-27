@@ -34,10 +34,14 @@ class _MyAppState extends State<MyApp> {
             providers: [
               ChangeNotifierProvider(create: (_) => LoginProvider()..loadFromPrefs()),
               ChangeNotifierProvider(create: (_) => EmojiProvider()),
+              // Calendar / Prescription providers intentionally do NOT fetch on
+              // construction: their endpoints are authenticated and the bearer
+              // token is empty before login. Their fetches are triggered after
+              // authentication, gated by AuthGate (see ScreenDashboardShell).
+              ChangeNotifierProvider(create: (_) => CalenderProvider()),
               ChangeNotifierProvider(
-                create: (_) => CalenderProvider()..getCallAllApi(),
+                create: (_) => PrescriptionProvider(),
               ),
-              ChangeNotifierProvider(create: (_) => PrescriptionProvider()..getMyPrescriptionApi()),
               // Add your providers here
               ChangeNotifierProvider(create: (_) => HomeProvider()),
             ],
