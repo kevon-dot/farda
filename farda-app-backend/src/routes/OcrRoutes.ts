@@ -250,6 +250,21 @@ const OcrRoutes = {
 				});
 			}
 
+			// TRUNCATION FLAG (#33): The Prisma `Prescription` model is one-per-user
+			// with single-medication fields (medicationName / dosageInstructions).
+			// The OCR result can legitimately contain MULTIPLE medications, but
+			// only the first is persisted here — medications [1..n] are dropped.
+			// Supporting multiple meds requires a data-model change (one-to-many
+			// Medication relation) owned by a separate task and intentionally NOT
+			// done here. We log the drop so it is observable instead of silent.
+			if (data.medicines_names.length > 1) {
+				console.warn(
+					`savePrescription: received ${data.medicines_names.length} medications but the current one-per-user data model only persists the first; dropping ${
+						data.medicines_names.length - 1
+					} medication(s). See issue #33.`,
+				);
+			}
+
 			// Upsert prescription - one per user (replace if exists, create if not)
 			const prescription = await prisma.prescription.upsert({
 				where: { userId },
