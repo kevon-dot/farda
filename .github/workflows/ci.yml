@@ -59,6 +59,14 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+      - name: Materialize env asset files
+        # pubspec.yaml declares .env.* as bundled assets. Real env files are
+        # gitignored (they may hold secrets), so generate non-secret copies
+        # from the committed example before building the asset bundle.
+        run: |
+          cp .env.example .env.development
+          cp .env.example .env.staging
+          cp .env.example .env.production
       - name: Install dependencies
         run: flutter pub get
       - name: Run unit tests
