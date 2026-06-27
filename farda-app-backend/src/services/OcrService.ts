@@ -1,26 +1,11 @@
 import * as fs from "node:fs";
 import env from "@src/common/constants/env";
 import OpenAI from "openai";
+import { type OcrResult, validateOcrResult } from "./ocrSchema";
 
-interface Medicine {
-	medicine_name: string;
-	generic_name: string;
-	instructions: string;
-	qty: string;
-	refills_info: string;
-	side_effects: string;
-}
-
-export interface ExtractedPrescriptionData {
-	pharmacy_or_doctor_name: string;
-	contact_details: string;
-	date_filled: string;
-	date_expired: string;
-	address: string;
-	rx_number: string;
-	store_number: string;
-	medicines_names: Medicine[];
-}
+// The extracted, VALIDATED prescription data is exactly the schema-derived
+// type. Persisting/returning anything that hasn't passed the schema is a bug.
+export type ExtractedPrescriptionData = OcrResult;
 
 // Lazy load OpenAI to avoid initialization errors when API key is missing
 let openaiInstance: OpenAI | null = null;
@@ -47,6 +32,70 @@ const SYSTEM_PROMPT = {
 	content:
 		"You are a medical assistant that extracts structured data from prescription images. Respond only with valid JSON based on the user's instructions.",
 };
+
+/**
+ * Log offending model output server-side without leaking full PHI to stdout
+ * in production. The raw extraction is potential PHI; in prod we log only the
+ * validation error and a redacted summary, never the full payload.
+ */
+function logInvalidOcrOutput(error: unknown, rawSnippet: string): void {
+	const isProd = env.NODE_ENV === "production";
+	if (isProd) {
+		// PHI-aware: do NOT emit the raw model output. Length + error only.
+		console.error(
+			"OCR output failed schema validation (raw output withheld in production).",
+			{
+				rawLength: rawSnippet.length,
+				validationError: error instanceof Error ? error.message : String(error),
+			},
+		);
+	} else {
+		// In non-prod, include a bounded snippet to aid debugging.
+		console.error("OCR output failed schema validation.", {
+			validationError: error,
+			rawSnippet: rawSnippet.slice(0, 1000),
+		});
+	}
+}
+
+/**
+ * Strip markdown fencing, JSON.parse, then validate against the STRICT OCR
+ * schema. Untrusted model output is never returned to callers unless it
+ * passes validation. On failure we log (PHI-aware) and return a clear error
+ * rather than silently persisting garbage (#33).
+ */
+function parseAndValidateOcrResponse(
+	responseText: string,
+): ExtractedPrescriptionData | { error: string } {
+	let cleanedContent = responseText.trim();
+	if (cleanedContent.startsWith("```json")) {
+		cleanedContent = cleanedContent.replace(/```json|```/g, "").trim();
+	} else if (cleanedContent.startsWith("```")) {
+		cleanedContent = cleanedContent.replace(/```/g, "").trim();
+	}
+
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(cleanedContent);
+	} catch (err) {
+		logInvalidOcrOutput(err, cleanedContent);
+		return {
+			error:
+				"OCR result was not valid JSON and was rejected. Please retry with a clearer image.",
+		};
+	}
+
+	const result = validateOcrResult(parsed);
+	if (!result.ok) {
+		logInvalidOcrOutput(result.error, cleanedContent);
+		return {
+			error:
+				"OCR result did not match the expected prescription schema and was rejected.",
+		};
+	}
+
+	return result.data;
+}
 
 const USER_INSTRUCTION_TEXT = `
 You are shown a prescription image. Extract detailed and structured medical information and return ONLY a well-formatted JSON object using the exact schema below:
@@ -114,6 +163,7 @@ export async function extractPrescriptionFromFiles(
 		const response = await openai.chat.completions.create({
 			model: MODEL,
 			temperature: TEMPERATURE,
+			response_format: { type: "json_object" },
 			messages: [
 				{
 					role: "system",
@@ -129,34 +179,9 @@ export async function extractPrescriptionFromFiles(
 
 		const responseText = response.choices[0]?.message?.content?.trim() || "";
 
-		// Clean markdown formatting if present
-		let cleanedContent = responseText;
-		if (cleanedContent.startsWith("```json")) {
-			cleanedContent = cleanedContent.replace(/```json|```/g, "").trim();
-		} else if (cleanedContent.startsWith("```")) {
-			cleanedContent = cleanedContent.replace(/```/g, "").trim();
-		}
-
-		const parsedData = JSON.parse(cleanedContent);
-
-		return {
-			pharmacy_or_doctor_name: parsedData.pharmacy_or_doctor_name || "none",
-			contact_details: parsedData.contact_details || "none",
-			date_filled: parsedData.date_filled || "none",
-			date_expired: parsedData.date_expired || "none",
-			address: parsedData.address || "none",
-			rx_number: parsedData.rx_number || "none",
-			store_number: parsedData.store_number || "none",
-			medicines_names: parsedData.medicines_names || [],
-		};
+		return parseAndValidateOcrResponse(responseText);
 	} catch (error: any) {
 		console.error("OCR Extraction Error:", error);
-
-		if (error instanceof SyntaxError) {
-			return {
-				error: `Failed to parse OCR response: ${error.message}`,
-			};
-		}
 
 		return {
 			error: `OCR processing failed: ${error.message || "Unknown error"}`,
@@ -195,6 +220,7 @@ export async function extractPrescriptionFromUrls(
 		const response = await openai.chat.completions.create({
 			model: MODEL,
 			temperature: TEMPERATURE,
+			response_format: { type: "json_object" },
 			messages: [
 				{
 					role: "system",
@@ -210,34 +236,9 @@ export async function extractPrescriptionFromUrls(
 
 		const responseText = response.choices[0]?.message?.content?.trim() || "";
 
-		// Clean markdown formatting if present
-		let cleanedContent = responseText;
-		if (cleanedContent.startsWith("```json")) {
-			cleanedContent = cleanedContent.replace(/```json|```/g, "").trim();
-		} else if (cleanedContent.startsWith("```")) {
-			cleanedContent = cleanedContent.replace(/```/g, "").trim();
-		}
-
-		const parsedData = JSON.parse(cleanedContent);
-
-		return {
-			pharmacy_or_doctor_name: parsedData.pharmacy_or_doctor_name || "none",
-			contact_details: parsedData.contact_details || "none",
-			date_filled: parsedData.date_filled || "none",
-			date_expired: parsedData.date_expired || "none",
-			address: parsedData.address || "none",
-			rx_number: parsedData.rx_number || "none",
-			store_number: parsedData.store_number || "none",
-			medicines_names: parsedData.medicines_names || [],
-		};
+		return parseAndValidateOcrResponse(responseText);
 	} catch (error: any) {
 		console.error("OCR Extraction Error:", error);
-
-		if (error instanceof SyntaxError) {
-			return {
-				error: `Failed to parse OCR response: ${error.message}`,
-			};
-		}
 
 		return {
 			error: `OCR processing failed: ${error.message || "Unknown error"}`,
