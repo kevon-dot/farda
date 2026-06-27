@@ -1,5 +1,10 @@
 import Paths from "@src/common/constants/Paths";
 import { isAuthenticated } from "@src/middleware/isAuthenticated";
+import {
+	authRateLimiter,
+	maybeLimiter,
+	ocrRateLimiter,
+} from "@src/middleware/rateLimiters";
 import { requireAdmin } from "@src/middleware/requireAdmin";
 import { Router } from "express";
 import CaregiverRoutes from "./CaregiverRoutes";
@@ -24,9 +29,18 @@ const apiRouter = Router();
 
 const authRouter = Router();
 
-authRouter.post(Paths.Auth.SendOTP, PhoneAuthRoutes.sendOTP);
-authRouter.post(Paths.Auth.VerifyOTP, PhoneAuthRoutes.verifyOTP);
-authRouter.post(Paths.Auth.SocialLogin, PhoneAuthRoutes.socialLogin);
+// Rate limiting (issue #10): OTP request / verify / social login are
+// unauthenticated and SMS-cost / brute-force sensitive, so apply a strict
+// limiter (keyed by IP + phone number) at the mount point of each route.
+const authLimiter = maybeLimiter(authRateLimiter);
+
+authRouter.post(Paths.Auth.SendOTP, authLimiter, PhoneAuthRoutes.sendOTP);
+authRouter.post(Paths.Auth.VerifyOTP, authLimiter, PhoneAuthRoutes.verifyOTP);
+authRouter.post(
+	Paths.Auth.SocialLogin,
+	authLimiter,
+	PhoneAuthRoutes.socialLogin,
+);
 
 apiRouter.use(authRouter);
 
@@ -119,13 +133,21 @@ prescriptionRouter.post(Paths.Prescription.Create, createPrescription);
 // prescriptionRouter.delete(Paths.Prescription.Delete, PrescriptionRoutes.delete);
 
 // ----------------------- Add OCR Routes --------------------------------- //
+// Rate limiting (issue #10): the OCR extraction endpoints drive GPT-4o calls
+// (real cost + abuse surface), so apply a tight limiter (keyed by IP + user
+// id) at the mount point. The limiter runs BEFORE multer so abusive callers
+// never even upload. Read/save endpoints are not OCR-cost-bearing and are
+// already session-gated, so they are left unthrottled here.
+const ocrLimiter = maybeLimiter(ocrRateLimiter);
 
 prescriptionRouter.post(
 	Paths.Prescription.OcrExtract,
+	ocrLimiter,
 	...OcrRoutes.extractFromImages,
 );
 prescriptionRouter.post(
 	Paths.Prescription.OcrExtractFromUrls,
+	ocrLimiter,
 	OcrRoutes.extractFromUrls,
 );
 prescriptionRouter.post(Paths.Prescription.OcrSave, OcrRoutes.savePrescription);
