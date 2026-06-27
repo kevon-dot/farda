@@ -6,6 +6,7 @@
       "ES2020"
     ],
     "strict": true,
+    "ignoreDeprecations": "6.0",
     "baseUrl": "./",
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -31,7 +32,6 @@
     "src/**/*.ts",
     "tests/**/*.ts",
     "scripts",
-    "eslint.config.ts",
     "vitest.config.mts",
     "src/types/express.d.ts"
   ],
