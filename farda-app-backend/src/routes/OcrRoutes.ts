@@ -1,6 +1,11 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import HttpStatusCodes from "@src/common/constants/HttpStatusCodes";
+import {
+	assertResourceOwner,
+	assertSameUser,
+} from "@src/common/utils/authorization";
+import { RouteError } from "@src/common/utils/route-errors";
 import { prisma } from "@src/lib/prisma";
 import {
 	extractPrescriptionFromFiles,
@@ -47,7 +52,9 @@ const MedicineSchema = z.object({
 });
 
 const CreatePrescriptionSchema = z.object({
-	userId: z.string(),
+	// NOTE: any client-supplied userId is intentionally ignored. The acting user
+	// is always derived from the authenticated session (see savePrescription).
+	userId: z.string().optional(),
 	rx_number: z.string().optional().default(""),
 	store_number: z.string().optional().default(""),
 	pharmacy_or_doctor_name: z.string().optional().default(""),
@@ -187,6 +194,10 @@ const OcrRoutes = {
 
 			const data = parsed.data;
 
+			// IDOR fix: ignore any client-supplied userId and always act as the
+			// authenticated session user.
+			const userId = assertSameUser(req.user?.id, undefined);
+
 			// Parse date_filled if provided
 			let dateFilledObj = null;
 			if (data.date_filled) {
@@ -230,18 +241,18 @@ const OcrRoutes = {
 
 			// Check if the user actually exists before trying to save
 			const userExists = await prisma.user.findUnique({
-				where: { id: data.userId },
+				where: { id: userId },
 			});
 
 			if (!userExists) {
 				return res.status(HttpStatusCodes.BAD_REQUEST).json({
-					error: `User with ID ${data.userId} not found. Cannot save prescription.`,
+					error: `User with ID ${userId} not found. Cannot save prescription.`,
 				});
 			}
 
 			// Upsert prescription - one per user (replace if exists, create if not)
 			const prescription = await prisma.prescription.upsert({
-				where: { userId: data.userId },
+				where: { userId },
 				update: {
 					medicationName: data.medicines_names[0]?.medicine_name || "",
 					dosageInstructions: data.medicines_names[0]?.instructions || "",
@@ -255,7 +266,7 @@ const OcrRoutes = {
 					deviceId: data.deviceId || null,
 				},
 				create: {
-					userId: data.userId,
+					userId,
 					medicationName: data.medicines_names[0]?.medicine_name || "",
 					dosageInstructions: data.medicines_names[0]?.instructions || "",
 					rxNumber: data.rx_number || null,
@@ -303,7 +314,7 @@ const OcrRoutes = {
 
 					// Only create doses from today onwards ideally, or just create all for history
 					dosesToInsert.push({
-						userId: data.userId,
+						userId,
 						prescriptionId: prescription.id,
 						scheduledFor: scheduledFor,
 					});
@@ -318,6 +329,9 @@ const OcrRoutes = {
 
 			return res.status(HttpStatusCodes.OK).json(prescription);
 		} catch (error: unknown) {
+			if (error instanceof RouteError) {
+				return res.status(error.status).json({ error: error.message });
+			}
 			console.error("Error in savePrescription:", error);
 			const message =
 				error instanceof Error ? error.message : "Failed to save prescription";
@@ -333,16 +347,19 @@ const OcrRoutes = {
 	 */
 	getUserPrescriptions: async (req: Request, res: Response) => {
 		try {
-			const { userId } = req.params;
+			const { userId: paramUserId } = req.params;
 
-			if (!userId) {
+			if (!paramUserId) {
 				return res
 					.status(HttpStatusCodes.BAD_REQUEST)
 					.json({ error: "userId is required" });
 			}
 
+			// IDOR fix: reject if the requested userId is not the session user.
+			const userId = assertSameUser(req.user?.id, paramUserId as string);
+
 			const prescription = await prisma.prescription.findUnique({
-				where: { userId: userId as string },
+				where: { userId },
 			});
 
 			if (!prescription) {
@@ -353,6 +370,9 @@ const OcrRoutes = {
 
 			return res.status(HttpStatusCodes.OK).json(prescription);
 		} catch (error: unknown) {
+			if (error instanceof RouteError) {
+				return res.status(error.status).json({ error: error.message });
+			}
 			console.error("Error in getUserPrescriptions:", error);
 			const message =
 				error instanceof Error ? error.message : "Failed to fetch prescription";
@@ -368,20 +388,26 @@ const OcrRoutes = {
 	 */
 	getUserDoses: async (req: Request, res: Response) => {
 		try {
-			const { userId } = req.params;
-			if (!userId) {
+			const { userId: paramUserId } = req.params;
+			if (!paramUserId) {
 				return res
 					.status(HttpStatusCodes.BAD_REQUEST)
 					.json({ error: "userId is required" });
 			}
 
+			// IDOR fix: reject if the requested userId is not the session user.
+			const userId = assertSameUser(req.user?.id, paramUserId as string);
+
 			const doses = await prisma.dose.findMany({
-				where: { userId: userId as string },
+				where: { userId },
 				orderBy: { scheduledFor: "asc" },
 			});
 
 			return res.status(HttpStatusCodes.OK).json(doses);
 		} catch (error: unknown) {
+			if (error instanceof RouteError) {
+				return res.status(error.status).json({ error: error.message });
+			}
 			console.error("Error in getUserDoses:", error);
 			const message =
 				error instanceof Error ? error.message : "Failed to fetch doses";
@@ -413,6 +439,14 @@ const OcrRoutes = {
 
 			const { mood, note, takenAt } = parsed.data;
 
+			// Ownership check (IDOR fix): load the dose first and confirm it
+			// belongs to the authenticated session user before mutating it.
+			const existing = await prisma.dose.findUnique({
+				where: { id: doseId as string },
+				select: { userId: true },
+			});
+			assertResourceOwner(req.user?.id, existing?.userId);
+
 			const dose = await prisma.dose.update({
 				where: { id: doseId as string },
 				data: {
@@ -424,6 +458,9 @@ const OcrRoutes = {
 
 			return res.status(HttpStatusCodes.OK).json(dose);
 		} catch (error: unknown) {
+			if (error instanceof RouteError) {
+				return res.status(error.status).json({ error: error.message });
+			}
 			console.error("Error in recordDoseMood:", error);
 			const message =
 				error instanceof Error ? error.message : "Failed to record mood";
