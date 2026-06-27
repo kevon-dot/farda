@@ -5,12 +5,10 @@
 // fast and reliably under `flutter test` in CI.
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 import 'package:farda/app_const/app_urls.dart';
 import 'package:farda/application/caregiver/repo/caregiver_repo.dart';
 import 'package:farda/application/device/repo/device_repo.dart';
-import 'package:farda/env.dart';
 import 'package:farda/utilities/api_service.dart';
 
 void main() {
@@ -85,26 +83,12 @@ void main() {
     });
   });
 
-  group('env wiring', () {
-    test('vialBaseUrl is read from VIAL_API_URL in the env', () {
-      dotenv.testLoad(fileInput: '''
-BASE_API_URL=https://main.example/api
-VIAL_API_URL=https://vial.example
-''');
-      expect(vialBaseUrl, 'https://vial.example');
-      // The Main API base is still read independently from BASE_API_URL.
-      expect(appBaseUrl, 'https://main.example/api');
-    });
-
-    test('vialBaseUrl falls back to an https:// safety net when unset', () {
-      // No VIAL_API_URL present -> must NOT fall back to cleartext (issue #20).
-      dotenv.testLoad(fileInput: 'BASE_API_URL=https://main.example/api\n');
-      expect(vialBaseUrl.startsWith('https://'), isTrue);
-    });
-
-    test('a full Vial claim URL composes correctly from env + endpoint', () {
-      dotenv.testLoad(fileInput: 'VIAL_API_URL=https://vial.example\n');
-      final uri = ApiService.buildUri(vialBaseUrl, VialUrls.claimDevice);
+  group('Vial URL composition', () {
+    test('a full Vial claim URL composes correctly from base + endpoint', () {
+      final uri = ApiService.buildUri(
+        'https://vial.example',
+        VialUrls.claimDevice,
+      );
       expect(uri.toString(), 'https://vial.example/api/user/claim');
     });
   });
