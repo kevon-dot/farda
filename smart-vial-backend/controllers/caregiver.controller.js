@@ -1,7 +1,7 @@
 //can only read if have access to the device id in their caregiving_device_ids array
-const User = require('../models/User');
 const Event = require('../models/Event');
 const Device = require('../models/Device');
+const { findOrCreateUser } = require('../utils/userProvisioning');
 
 
 
@@ -27,21 +27,8 @@ const claimDeviceForCaregiver = async (req, res) => {
             return res.status(403).json({ error: 'Access denied: Only device owner can assign caregivers' });
         }
 
-        // Verify the caregiver exists or create them
-        let caregiver = await User.findOne({ user_id: caregiver_id });
-        
-        if (!caregiver) {
-            // Create caregiver user if doesn't exist
-            caregiver = new User({
-                user_id: caregiver_id,
-                user_roles: ['caregiver'],
-                claim_device_ids: [],
-                caregiving_device_ids: []
-            });
-        } else if (!caregiver.user_roles.includes('caregiver')) {
-            // Add caregiver role if user exists but doesn't have the role
-            caregiver.user_roles.push('caregiver');
-        }
+        // Find or create the caregiver user, ensuring the 'caregiver' role.
+        const caregiver = await findOrCreateUser(caregiver_id, 'caregiver');
 
         // Assign caregiver to device
         device.caregiver_id = caregiver_id;
@@ -76,16 +63,7 @@ const getCaregiver_A_device_summery = async (req, res) => {
         const user_role = req.user_role;
 
         // Find or create user
-        let user = await User.findOne({ user_id: caregiver_id });
-        if (!user) {
-            user = new User({
-                user_id: caregiver_id,
-                user_roles: [user_role],
-                claim_device_ids: [],
-                caregiving_device_ids: []
-            });
-            await user.save();
-        }
+        const user = await findOrCreateUser(caregiver_id, user_role);
 
         // Check if user is a caregiver
         if (!user.hasRole('caregiver')) {
@@ -135,16 +113,7 @@ const getAllCaregiverDevices = async (req, res) => {
         const user_role = req.user_role;
 
         // Find or create user
-        let user = await User.findOne({ user_id: caregiver_id });
-        if (!user) {
-            user = new User({
-                user_id: caregiver_id,
-                user_roles: [user_role],
-                claim_device_ids: [],
-                caregiving_device_ids: []
-            });
-            await user.save();
-        }
+        const user = await findOrCreateUser(caregiver_id, user_role);
 
         // Check if user is a caregiver
         if (!user.hasRole('caregiver')) {
@@ -162,12 +131,36 @@ const getAllCaregiverDevices = async (req, res) => {
             });
         }
 
-        // Get recent events for all devices
-        const devicesWithEvents = await Promise.all(devices.map(async (device) => {
-            const recentEvents = await Event.find({ device_id: device.device_id })
-                .sort({ server_timestamp: -1 })
-                .limit(10);
+        const deviceIds = devices.map((device) => device.device_id);
 
+        // Batched aggregation: fetch recent events + per-device totals for ALL
+        // devices in a single round-trip instead of a find + countDocuments per
+        // device (the previous N+1 inside Promise.all). $slice keeps only the 10
+        // most recent events per device after sorting newest-first.
+        const aggregated = await Event.aggregate([
+            { $match: { device_id: { $in: deviceIds } } },
+            { $sort: { server_timestamp: -1 } },
+            {
+                $group: {
+                    _id: '$device_id',
+                    recent_events: { $push: '$$ROOT' },
+                    total_events: { $sum: 1 }
+                }
+            },
+            {
+                $project: {
+                    recent_events: { $slice: ['$recent_events', 10] },
+                    total_events: 1
+                }
+            }
+        ]);
+
+        const eventsByDevice = new Map(
+            aggregated.map((entry) => [entry._id, entry])
+        );
+
+        const devicesWithEvents = devices.map((device) => {
+            const entry = eventsByDevice.get(device.device_id);
             return {
                 device_id: device.device_id,
                 device_name: device.device_name,
@@ -175,10 +168,10 @@ const getAllCaregiverDevices = async (req, res) => {
                 firmware_version: device.firmware_version,
                 is_online: device.isOnline(),
                 last_seen: device.last_seen,
-                recent_events: recentEvents,
-                total_events: await Event.countDocuments({ device_id: device.device_id })
+                recent_events: entry ? entry.recent_events : [],
+                total_events: entry ? entry.total_events : 0
             };
-        }));
+        });
 
         res.status(200).json({
             devices: devicesWithEvents,
@@ -198,16 +191,7 @@ const searchDeviceById = async (req, res) => {
         const user_role = req.user_role;
 
         // Find or create user
-        let user = await User.findOne({ user_id: caregiver_id });
-        if (!user) {
-            user = new User({
-                user_id: caregiver_id,
-                user_roles: [user_role],
-                claim_device_ids: [],
-                caregiving_device_ids: []
-            });
-            await user.save();
-        }
+        const user = await findOrCreateUser(caregiver_id, user_role);
 
         // Check if user is a caregiver
         if (!user.hasRole('caregiver')) {
@@ -256,16 +240,7 @@ const filterEventsByDateRange = async (req, res) => {
         const user_role = req.user_role;
 
         // Find or create user
-        let user = await User.findOne({ user_id: caregiver_id });
-        if (!user) {
-            user = new User({
-                user_id: caregiver_id,
-                user_roles: [user_role],
-                claim_device_ids: [],
-                caregiving_device_ids: []
-            });
-            await user.save();
-        }
+        const user = await findOrCreateUser(caregiver_id, user_role);
 
         // Check if user is a caregiver
         if (!user.hasRole('caregiver')) {

@@ -1,7 +1,7 @@
 {
   "name": "smart-vial-backend",
   "version": "1.0.0",
-  "main": "index.js",
+  "main": "Server.js",
   "scripts": {
     "test": "node --test",
     "dev": "node Server.js"

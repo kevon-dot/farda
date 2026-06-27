@@ -1,6 +1,7 @@
 const Device = require("../models/Device");
 const Event = require("../models/Event");
 const User = require("../models/User");
+const { computeUnclaimDeviceState, removeDeviceId } = require("../utils/deviceClaim");
 
 //save user to database
 const saveUser = async (req, res, next) => {
@@ -200,22 +201,41 @@ const removeClaimedDevice = async (req, res, next) => {
     const user_id = req.user_id;
 
     const device = await Device.findOne({ device_id, user_id });
-    
+
     if (!device) {
       return res.status(404).json({ error: "Device not found" });
     }
 
-    device.user_id = null;
-    device.claimed = false;
+    // Fully detach the device: clear the owner AND any caregiver assignment so
+    // it can be cleanly re-claimed and re-assigned. Capture the previous
+    // caregiver before clearing so we can also clean up their link below.
+    const { user_id: nextUserId, claimed, caregiver_id, previousCaregiverId } =
+      computeUnclaimDeviceState(device);
+    device.user_id = nextUserId;
+    device.claimed = claimed;
+    device.caregiver_id = caregiver_id;
     await device.save();
 
-    // Remove device_id from user's claim_device_ids array
+    // Remove device_id from owner's claim_device_ids array
     const user = await User.findOne({ user_id });
     if (user) {
-      const index = user.claim_device_ids.indexOf(device_id);
-      if (index > -1) {
-        user.claim_device_ids.splice(index, 1);
+      const next = removeDeviceId(user.claim_device_ids, device_id);
+      if (next.length !== user.claim_device_ids.length) {
+        user.claim_device_ids = next;
         await user.save();
+      }
+    }
+
+    // Remove device_id from the previous caregiver's caregiving_device_ids so
+    // no stale caregiver link is left behind after unclaim.
+    if (previousCaregiverId) {
+      const caregiver = await User.findOne({ user_id: previousCaregiverId });
+      if (caregiver) {
+        const next = removeDeviceId(caregiver.caregiving_device_ids, device_id);
+        if (next.length !== caregiver.caregiving_device_ids.length) {
+          caregiver.caregiving_device_ids = next;
+          await caregiver.save();
+        }
       }
     }
 

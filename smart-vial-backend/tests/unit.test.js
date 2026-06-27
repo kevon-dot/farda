@@ -8,7 +8,7 @@ const config = require("../config/config");
 test("config exposes expected structure and defaults", () => {
   assert.ok(config.jwt && typeof config.jwt.secret === "string");
   assert.strictEqual(config.jwt.expiresIn, "30d");
-  assert.strictEqual(config.tymeSync.toleranceSecons, 300);
+  assert.strictEqual(config.tymeSync.toleranceSeconds, 300);
   assert.ok(Array.isArray(config.cors.origins));
   assert.strictEqual(typeof config.rateLimit.windowMs, "number");
   assert.strictEqual(typeof config.rateLimit.maxRequests, "number");

@@ -39,8 +39,18 @@ const verifyToken = async (req, res, next)  => {
 
     next();
   } catch (error) {
-    console.error("Session verification failed", error);
-    return res.status(500).json({ error: "Internal Server Error during auth checks" });
+    // A thrown error here is almost always the session lookup rejecting a
+    // missing/invalid/expired token — that is a client auth failure (401), not
+    // a server fault (500). better-auth surfaces a numeric `status` on its
+    // APIError; honour any 4xx it provides, otherwise default to 401.
+    console.error("Session verification failed:", error && error.message);
+
+    const status =
+      error && Number.isInteger(error.status) && error.status >= 400 && error.status < 500
+        ? error.status
+        : 401;
+
+    return res.status(status).json({ error: "Access Denied: Invalid or missing authentication" });
   }
 };
 
