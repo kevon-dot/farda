@@ -73,6 +73,10 @@ void main() async {
   const String environment = String.fromEnvironment('ENV', defaultValue: 'development');
   await dotenv.load(fileName: ".env.$environment");
 
+  // Seed the router's cached auth flag from secure storage before the first
+  // frame so the redirect guard makes the right call on deep links / cold start.
+  await AppRouter.authState.hydrate();
+
   // await injectDependencies();
 
   runApp(const MyApp());

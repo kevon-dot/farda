@@ -1,33 +1,34 @@
 import 'package:farda/screens/connect_onboard/screen_setup_vial.dart';
-import 'package:farda/screens/dashboard/calendar/screen_calendar.dart';
 import 'package:farda/screens/dashboard/calibration/screen_calibration.dart';
 import 'package:farda/screens/dashboard/dashboard_shell.dart';
-import 'package:farda/screens/dashboard/home/screen_home.dart';
 import 'package:farda/screens/dashboard/mood_check/screen_mood_checkin.dart';
-import 'package:farda/screens/dashboard/more/screen_more.dart';
-import 'package:farda/screens/dashboard/plan/screen_plan.dart';
 import 'package:farda/screens/emoji/screen_emoji.dart';
 import 'package:farda/screens/login/screen_login.dart';
 import 'package:farda/screens/onboard/screen_onboard.dart';
 import 'package:farda/screens/otp_verify/screen_otp_verify.dart';
 import 'package:farda/screens/prescription_info/screen_prescription.dart';
 import 'package:farda/screens/subscription/screen_subscription.dart';
+import 'package:farda/utilities/auth_state.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 final GlobalKey<NavigatorState> _rootNavigatorKey = GlobalKey<NavigatorState>();
 
 class AppRouter {
- 
+  /// Cached auth flag the redirect reads synchronously. Hydrated once at
+  /// startup (see `main.dart`) and updated on login / logout. The router
+  /// re-evaluates redirects whenever this notifies (via [refreshListenable]).
+  static final AuthState authState = AuthState();
 
   static final GoRouter router = GoRouter(
     navigatorKey: _rootNavigatorKey,
     debugLogDiagnostics: true,
     initialLocation: CustomRoutePaths.onboard,
+    refreshListenable: authState,
     routes: [
       GoRoute(
         path: CustomRoutePaths.dashboard,
-        builder: (context, state) => ScreenDashboardShell(),
+        builder: (context, state) => const ScreenDashboardShell(),
       ),
       GoRoute(
         path: CustomRoutePaths.login,
@@ -43,7 +44,7 @@ class AppRouter {
       ),
       GoRoute(
         path: CustomRoutePaths.screenConnectOnBoard,
-        builder: (context, state) => ScreenConnectOnboard(),
+        builder: (context, state) => const ScreenConnectOnboard(),
       ),
       GoRoute(
         path: CustomRoutePaths.subscription,
@@ -53,10 +54,10 @@ class AppRouter {
         path: CustomRoutePaths.prescription,
         builder: (context, state) => const ScreenPrescription(),
       ),
-      // GoRoute(
-      //   path: CustomRoutePaths.emoji,
-      //   builder: (context, state) => const ScreenEmoji(),
-      // ),
+      GoRoute(
+        path: CustomRoutePaths.emoji,
+        builder: (context, state) => const ScreenEmoji(),
+      ),
       GoRoute(
         path: CustomRoutePaths.mood,
         builder: (context, state) => const ScreenMoodCheckIn(),
@@ -65,58 +66,18 @@ class AppRouter {
         path: CustomRoutePaths.calibration,
         builder: (context, state) => const ScreenCalibration(),
       ),
-      // Dashboard Shell Route
-      ShellRoute(
-        builder: (context, state, child) {
-          return ScreenDashboardShell(
-            child: state.fullPath == CustomRoutePaths.dashboard ? null : child,
-          );
-        },
-        routes: [
-          GoRoute(
-            path: CustomRoutePaths.home,
-            builder: (context, state) => const ScreenHome(),
-          ),
-          GoRoute(
-            path: CustomRoutePaths.plan,
-            builder: (context, state) => const ScreenPlanHope(),
-          ),
-          GoRoute(
-            path: '/calendar',
-            builder: (context, state) => const ScreenCalendar(),
-            routes: [
-              GoRoute(
-                path: 'emoji',
-                builder: (context, state) => const ScreenEmoji(),
-              ),
-            ],
-          ),
-          GoRoute(
-            path: CustomRoutePaths.more,
-            builder: (context, state) => const ScreenMore(),
-          ),
-        ],
-      ),
     ],
-    // redirect: (context, state) async {
-    //   final initialRoute = await _getInitialRoute();
-
-    //   // Redirect logic for other routes
-    //   if (initialRoute == CustomRoutePaths.login) {
-    //     return CustomRoutePaths
-    //         .onboard; // Force redirect to login if accessing restricted routes
-    //   } else if ((state.path == CustomRoutePaths.dashboard)) {
-    //     return CustomRoutePaths.dashboard;
-    //   }
-
-    //   // Prevent redirecting to login if already on the login screen
-    //   if (state.path == CustomRoutePaths.login &&
-    //       initialRoute == CustomRoutePaths.login) {
-    //     return null; // No redirect needed if already on the login screen
-    //   }
-
-    //   return initialRoute; // Default redirection (either dashboard or login)
-    // },
+    // Auth guard. Deep links to protected routes require a valid session
+    // (a non-empty bearer token in secure storage, cached in [authState]).
+    // Unauthenticated -> /login; authenticated hitting /login or the OTP step
+    // -> /dashboard. Kept synchronous by reading the cached flag rather than
+    // touching secure storage on every navigation.
+    redirect: (context, state) {
+      return redirectTarget(
+        isAuthed: authState.isAuthed,
+        location: state.matchedLocation,
+      );
+    },
   );
 }
 
@@ -129,15 +90,9 @@ class CustomRoutePaths {
   static const String otpVerify = '/otp-verify';
   static const String subscription = '/subscription';
   static const String prescription = '/prescription';
-  static const String emoji =
-      '/calendar/emoji'; // Remove the '/' for relative path
+  // Emoji is a standalone (pushed) route so it can be popped back to the
+  // calendar it was opened from.
+  static const String emoji = '/emoji';
   static const String mood = '/mood';
   static const String calibration = '/calibration';
-  static const String dashboardto = '/dashboard/calendar';
-
-  // Tabs under dashboard
-  static const String home = 'home';
-  static const String plan = 'plan';
-  static const String calendar = 'calendar';
-  static const String more = 'more';
 }

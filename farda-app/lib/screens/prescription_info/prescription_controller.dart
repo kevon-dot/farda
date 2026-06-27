@@ -1,9 +1,10 @@
 import 'package:farda/app_const/app_text.dart';
 import 'package:farda/components/custom_snackbar.dart';
-import 'package:farda/screens/dashboard/dashboard_shell.dart';
+import 'package:farda/routes/routes.dart';
 import 'package:farda/screens/prescription_info/prescription_provider.dart';
 import 'package:farda/theme.dart';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 class PrescriptionController {
   final PrescriptionProvider provider;
@@ -65,12 +66,7 @@ class PrescriptionController {
           context,
           message: submitPrescription,
         );
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => const ScreenDashboardShell(),
-          ),
-        );
+        context.go(CustomRoutePaths.dashboard);
       } else {
         CustomSnackbar.show(
           context,

@@ -1,12 +1,9 @@
-import 'package:farda/application/authentication/repo/authentication_repo.dart';
 import 'package:farda/components/_components.dart';
-import 'package:farda/components/custom_snackbar.dart';
 import 'package:farda/screens/login/login_controller.dart';
 import 'package:farda/screens/login/login_provider.dart';
 import 'package:farda/theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
-import 'package:flutter_svg/svg.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
@@ -62,20 +59,10 @@ class ScreenLogin extends StatelessWidget {
                         ? null
                         : () => LoginController.onContinueClicked(context),
               ),
-              16.verticalSpace,
-              DividerTextHorizontal(text: "or"),
-              16.verticalSpace,
-              ButtonSecondary(
-                prefixIcon: SvgPicture.asset("assets/icons/apple.svg"),
-                text: "Continue With Apple",
-                onClick: () {},
-              ),
-              12.verticalSpace,
-              ButtonSecondary(
-                prefixIcon: SvgPicture.asset("assets/icons/google.svg"),
-                text: "Continue With Google",
-                onClick: () {},
-              ),
+              // Social login (Continue with Google / Apple) was removed: the
+              // buttons were no-ops and the app authenticates via phone + OTP.
+              // Re-add via better-auth's Google/Apple providers when DTC is
+              // prioritized.
             ],
           ),
         ),

@@ -1,7 +1,6 @@
 
 import 'package:farda/components/_components.dart';
 import 'package:farda/routes/routes.dart';
-import 'package:farda/screens/login/screen_login.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:go_router/go_router.dart';
@@ -70,9 +69,7 @@ class _ScreenOnboardState extends State<ScreenOnboard> {
                     ButtonPrimary(
                       text: "Get Started",
                       onClick: () {
-                        // context.go("/login");
-                        // context.(RouteLogin());
-                        Navigator.push(context, MaterialPageRoute(builder: (_)=> ScreenLogin()));
+                        context.push(CustomRoutePaths.login);
                       },
                     ),
                     12.verticalSpace,

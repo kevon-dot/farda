@@ -79,6 +79,9 @@ class AuthSessionManager {
     await AuthStorage.clearSession();
     await StorageService.clearPrefs();
     await StorageService.deleteSecureStorage();
+    // Clear the cached auth flag so the router guard now treats the user as
+    // unauthenticated (and /login is no longer redirected back to /dashboard).
+    AppRouter.authState.setAuthed(false);
     Log.w("⚠️ Session ended - routing to login");
     AppRouter.router.go(CustomRoutePaths.login);
   }
