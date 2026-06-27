@@ -2,9 +2,12 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:farda/application/device/sync/dose_log_parser.dart';
+import 'package:farda/application/device/sync/vial_sync_service.dart';
 import 'package:farda/components/_components.dart';
 import 'package:farda/theme.dart';
 import 'package:farda/utilities/ble_permissions.dart';
+import 'package:farda/utilities/logger_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
@@ -24,8 +27,16 @@ class _ScreenConnectOnboardState extends State<ScreenConnectOnboard> {
   BluetoothDevice? connectedDevice;
   bool _showManualEntry = false;
 
+  /// App-side dose-log sync → parse → upload → buffer/retry pipeline (GTM-514).
+  final VialSyncService _syncService = VialSyncService();
+
+  /// Accumulates BLE notify chunks until a full `SYNC_DATA[...]` frame arrives.
+  String _incomingDataBuffer = "";
+  StreamSubscription<List<int>>? _syncSub;
+
   @override
   void dispose() {
+    _syncSub?.cancel();
     _vialIdController.dispose();
     super.dispose();
   }
@@ -61,6 +72,14 @@ class _ScreenConnectOnboardState extends State<ScreenConnectOnboard> {
 
       connectedDevice = device;
       await _discoverPillBottleServices(device);
+
+      // GTM-514: kick off the dose-log sync now that we're connected and the
+      // read/write characteristics are discovered. Fire-and-forget so it never
+      // blocks the connect UX; results (parse → upload) are buffered/retried by
+      // [VialSyncService]. authKey is the device session key the firmware
+      // expects on the REQUEST_SYNC opcode — HARDWARE-dependent; see
+      // [_authKeyForDevice]. Failures here are non-fatal to pairing.
+      unawaited(_runLogSync(device));
 
       setState(() {
         _vialIdController.text = device.remoteId.str;
@@ -103,26 +122,52 @@ class _ScreenConnectOnboardState extends State<ScreenConnectOnboard> {
     }
   }
 
+  /// Drives the on-connect dose-log sync for [device] (GTM-514).
+  ///
+  /// HARDWARE FLAG: every BLE byte here (REQUEST_SYNC write, the `SYNC_DATA`
+  /// notify stream, the ACK write) needs a real vial + firmware (GTM-513) to
+  /// validate end-to-end. The parse → upload → buffer/retry it feeds is pure
+  /// app-side plumbing and is unit-tested.
+  Future<void> _runLogSync(BluetoothDevice device) async {
+    try {
+      await triggerLogSync(_authKeyForDevice(device));
+    } catch (e) {
+      Log.e("VialSync: log sync failed for ${device.remoteId.str}", error: e);
+    }
+  }
+
+  /// The 32-byte device session/auth key the firmware expects appended to the
+  /// REQUEST_SYNC / ACK opcodes.
+  ///
+  /// HARDWARE/SECURITY FLAG: the real key is provisioned with the device (A3,
+  /// docs/DEVICE_AUTH.md) and is NOT yet wired into the app's secure storage —
+  /// that handshake is part of the on-device BLE task (GTM-513). Until then we
+  /// pass a deterministic placeholder so the plumbing compiles and can be
+  /// exercised; a real handshake must replace this before shipping.
+  List<int> _authKeyForDevice(BluetoothDevice device) {
+    final seed = utf8.encode(device.remoteId.str);
+    return List<int>.generate(32, (i) => seed.isEmpty ? 0 : seed[i % seed.length]);
+  }
+
   Future<void> triggerLogSync(List<int> authKey32Bytes) async {
     if (writeChar == null || readChar == null) return;
 
+    final String deviceId = connectedDevice?.remoteId.str ?? "";
+
     await readChar!.setNotifyValue(true);
-    String incomingDataBuffer = "";
+    _incomingDataBuffer = "";
 
-    readChar!.lastValueStream.listen((value) {
-      String chunk = utf8.decode(value);
-      incomingDataBuffer += chunk;
+    await _syncSub?.cancel();
+    _syncSub = readChar!.lastValueStream.listen((value) {
+      // Firmware streams the framed `SYNC_DATA[...]` payload in MTU-sized
+      // chunks; accumulate until the frame is complete (parse logic is pure +
+      // unit-tested in [DoseLogParser]).
+      _incomingDataBuffer += utf8.decode(value);
 
-      if (incomingDataBuffer.startsWith("SYNC_DATA") &&
-          incomingDataBuffer.endsWith("]")) {
-        String jsonStr = incomingDataBuffer.replaceFirst("SYNC_DATA", "");
-        try {
-          List<dynamic> logs = jsonDecode(jsonStr);
-          debugPrint("Parsed ${logs.length} sync log entries from device.");
-          sendAckCommand(authKey32Bytes);
-        } catch (e) {
-          debugPrint("Sync log JSON parse error.");
-        }
+      if (DoseLogParser.isComplete(_incomingDataBuffer)) {
+        final buffer = _incomingDataBuffer;
+        _incomingDataBuffer = "";
+        unawaited(_onSyncFrameComplete(buffer, deviceId, authKey32Bytes));
       }
     });
 
@@ -131,12 +176,37 @@ class _ScreenConnectOnboardState extends State<ScreenConnectOnboard> {
     await writeChar!.write(syncPayload, withoutResponse: false);
   }
 
+  /// Parse → upload → buffer/retry the completed sync frame, and only ACK
+  /// (clear the on-device log) when every event is durably relayed.
+  Future<void> _onSyncFrameComplete(
+    String buffer,
+    String deviceId,
+    List<int> authKey32Bytes,
+  ) async {
+    try {
+      final result = await _syncService.handleSyncBuffer(buffer, deviceId);
+      if (result.fullyFlushed) {
+        // Safe to delete the device-side log: nothing is left pending upload.
+        await sendAckCommand(authKey32Bytes);
+      } else {
+        // Some events are still buffered (offline / 5xx). Keep the device log
+        // intact and let the next sync retry the queue before ACKing.
+        Log.w(
+          "VialSync: ${result.retryable} event(s) still pending; "
+          "skipping ACK so device log is preserved.",
+        );
+      }
+    } catch (e) {
+      Log.e("VialSync: handling sync frame failed", error: e);
+    }
+  }
+
   Future<void> sendAckCommand(List<int> authKey32Bytes) async {
     if (writeChar == null) return;
     List<int> ackPayload = [0x31]; // ACK_SYNC Opcode
     ackPayload.addAll(authKey32Bytes);
     await writeChar!.write(ackPayload, withoutResponse: false);
-    debugPrint("ACK sent, log should be deleted on device.");
+    Log.i("VialSync: ACK sent, device log cleared.");
   }
 
   Future<void> _handlePairAndSetup() async {

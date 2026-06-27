@@ -117,6 +117,33 @@ class DeviceRepo {
     }
   }
 
+  /// Relays ONE dose-log event the app read off a vial over BLE to the Vial
+  /// ingestion path (GTM-514).
+  ///
+  /// [body] is [DoseLogEvent.toIngestBody] — `{ device_id, event, event_id,
+  /// timestamp, payload }`. We pass `auth: true` so the shared better-auth
+  /// bearer (PR #82/#19, refresh-on-401) is attached; the backend dedupes on
+  /// `event_id` (idempotency) and verifies the user claims [deviceId]. Returns
+  /// the raw response so the caller can drive the retry/dedupe queue
+  /// ([DoseSyncQueue.shouldRetry] / [DoseSyncQueue.isDelivered]); `null` means a
+  /// transport failure (treated as "offline, retry later").
+  Future<http.Response?> ingestEvent(
+    String deviceId,
+    Map<String, dynamic> body,
+  ) async {
+    try {
+      return await ApiService.postResponse(
+        baseUrl: vialBaseUrl,
+        endpoint: VialUrls.ingestDeviceEvent(deviceId),
+        body: body,
+        auth: true,
+      );
+    } catch (e) {
+      Log.e("DeviceRepo.ingestEvent error", error: e);
+      return null;
+    }
+  }
+
   /// Deletes all events for a device the current user owns.
   Future<http.Response?> deleteDeviceEvents(String deviceId) async {
     try {
