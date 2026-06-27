@@ -1,15 +1,14 @@
 import path from 'path';
 import { defineConfig } from 'vitest/config';
 
+// Self-contained unit-test config: no DB/server bootstrap. Pure-function tests
+// only, so the suite runs in CI without Postgres or live credentials.
 const config = defineConfig({
   test: {
     globals: true,
     environment: 'node',
-    setupFiles: ['dotenv/config', './tests/support/agent.ts'],
     isolate: true,
-    env: {
-      DOTENV_CONFIG_PATH: 'config/.env.test',
-    },
+    include: ['tests/**/*.test.ts'],
   },
   resolve: {
     alias: {
