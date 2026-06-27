@@ -10,8 +10,8 @@ class LoginProvider extends ChangeNotifier {
   String id = "";
   String name = "";
 
-  /// Extracts the authenticated user's display name from a verify-otp
-  /// response. Returns an empty string when no usable name is present.
+  /// Extracts the authenticated user's display name from a better-auth verify
+  /// response body. Returns an empty string when no usable name is present.
   /// Kept as a pure function so it can be unit-tested without plugins.
   static String displayNameFromResponse(Map<String, dynamic>? response) {
     final user = response?["user"];
@@ -20,6 +20,17 @@ class LoginProvider extends ChangeNotifier {
       if (name != null && name.toString().trim().isNotEmpty) {
         return name.toString().trim();
       }
+    }
+    return "";
+  }
+
+  /// Extracts the authenticated user's id from a better-auth verify response
+  /// body. better-auth nests the user under `user`. Returns an empty string
+  /// when absent. Pure so it can be unit-tested without plugins.
+  static String userIdFromResponse(Map<String, dynamic>? response) {
+    final user = response?["user"];
+    if (user is Map && user["id"] != null) {
+      return user["id"].toString();
     }
     return "";
   }
@@ -69,30 +80,32 @@ class LoginProvider extends ChangeNotifier {
     }
   }
 
-  // Verify OTP and store tokens
+  // Verify OTP and store tokens.
+  //
+  // better-auth (bearer mode) returns the session/user in the response body and
+  // the bearer token in the `set-auth-token` response header, captured by the
+  // repo into [VerifyResult.token]. We persist that token as the access token
+  // AND as the rotatable session token (`refresh`): in better-auth bearer mode
+  // the same session token is what `get-session` rotates (issue #19), so there
+  // is no separate refresh credential to store.
   Future<bool> verifyOtpApi(String otp) async {
     _setLoading(true);
 
     final fullPhoneNumber = "$countryCode$phoneNumber";
 
     try {
-      final response = await _authRepo.verifyOtp(fullPhoneNumber, otp);
+      final result = await _authRepo.verifyOtp(fullPhoneNumber, otp);
 
-      if (response != null && response["status"] == true) {
-        if (response["token"] != null) {
-          access = response["token"].toString();
-          await AuthStorage.saveToken(access);
-        }
-        
-        if (response["user"] != null && response["user"]["id"] != null) {
-          id = response["user"]["id"].toString();
-        }
-
-        name = displayNameFromResponse(response);
+      final token = result?.token;
+      if (token != null && token.isNotEmpty) {
+        access = token;
+        refresh = token;
+        id = userIdFromResponse(result?.body);
+        name = displayNameFromResponse(result?.body);
 
         await AuthStorage.saveSession(
           access: access,
-          refresh: '', // No refresh token in this response
+          refresh: refresh,
           id: id,
           name: name,
         );

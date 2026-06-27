@@ -1,21 +1,39 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:farda/application/authentication/auth_session_manager.dart';
+import 'package:farda/application/authentication/auth_token_helpers.dart';
 import 'package:farda/application/authentication/storage/auth_storage.dart';
 import 'package:farda/env.dart';
-import 'package:farda/routes/routes.dart';
-import 'package:farda/utilities/storage_service.dart';
 import 'package:http/http.dart' as http;
 import 'logger_service.dart';
 
+/// Single HTTP client for the Main API.
+///
+/// This is the ONE place that:
+///   * attaches `Authorization: Bearer <token>` (issue: bearer-token sessions),
+///   * captures a rotated token from the `set-auth-token` response header,
+///   * on a `401` refreshes the better-auth session once and retries the
+///     request, and logs out cleanly when the refresh fails (issue #19).
+///
+/// Call sites must not reimplement any of the above.
 class ApiService {
   // Get headers with optional Bearer token (read from secure storage).
-  static Future<Map<String, String>> _buildHeaders({Map<String, String>? customHeaders, bool auth = false}) async {
+  static Future<Map<String, String>> _buildHeaders({
+    Map<String, String>? customHeaders,
+    bool auth = false,
+  }) async {
     final headers = <String, String>{
       "Content-Type": "application/json",
       ...?customHeaders,
     };
 
-    if (auth) {
+    // Attach the bearer token unless a caller already supplied an explicit
+    // Authorization header. We attach for authenticated calls; the
+    // refresh-on-401 path always re-reads the (possibly rotated) token.
+    final hasAuthHeader = headers.keys.any(
+      (k) => k.toLowerCase() == 'authorization',
+    );
+    if (auth && !hasAuthHeader) {
       final token = await AuthStorage.getToken();
       if (token != null && token.isNotEmpty) {
         headers["Authorization"] = "Bearer $token";
@@ -23,6 +41,70 @@ class ApiService {
     }
 
     return headers;
+  }
+
+  /// Re-applies a freshly rotated bearer token onto a header map that
+  /// previously carried an `Authorization` entry, so the retried request uses
+  /// the new token.
+  static Future<Map<String, String>> _reapplyToken(
+    Map<String, String> headers,
+  ) async {
+    final updated = Map<String, String>.from(headers);
+    final token = await AuthStorage.getToken();
+    final authKey = updated.keys.firstWhere(
+      (k) => k.toLowerCase() == 'authorization',
+      orElse: () => 'Authorization',
+    );
+    if (token != null && token.isNotEmpty) {
+      updated[authKey] = "Bearer $token";
+    }
+    return updated;
+  }
+
+  /// Whether the headers carry an Authorization bearer (i.e. an authenticated
+  /// request worth refreshing on 401).
+  static bool _isAuthed(Map<String, String> headers) {
+    return headers.keys.any((k) => k.toLowerCase() == 'authorization');
+  }
+
+  /// Runs [send] (an HTTP call) and, on a `401` for an authenticated request,
+  /// refreshes the better-auth session once and retries with the rotated
+  /// token. Logs out cleanly when the refresh fails. Also persists any rotated
+  /// token handed back in the `set-auth-token` response header.
+  static Future<http.Response> _withRefresh(
+    Map<String, String> headers,
+    Future<http.Response> Function(Map<String, String> headers) send,
+  ) async {
+    http.Response response = await send(headers);
+    _captureRotatedToken(response);
+
+    if (AuthTokenHelpers.shouldRefreshOnStatus(response.statusCode) &&
+        _isAuthed(headers)) {
+      final refreshed = await AuthSessionManager.refreshSession();
+      if (refreshed) {
+        final retryHeaders = await _reapplyToken(headers);
+        response = await send(retryHeaders);
+        _captureRotatedToken(response);
+        if (response.statusCode == 401) {
+          // Still unauthorized after a successful refresh -> session is dead.
+          await AuthSessionManager.logout();
+        }
+      } else {
+        await AuthSessionManager.logout();
+      }
+    }
+
+    return response;
+  }
+
+  /// Persists a rotated bearer token if better-auth sent one back.
+  static void _captureRotatedToken(http.Response response) {
+    final rotated = AuthTokenHelpers.extractToken(response.headers);
+    if (rotated != null) {
+      // Fire-and-forget: persisting the rotated token must not block the
+      // response. Secure-storage writes are quick and idempotent.
+      AuthStorage.saveToken(rotated);
+    }
   }
 
   // POST request
@@ -34,14 +116,14 @@ class ApiService {
   }) async {
     final uri = Uri.parse("$appBaseUrl/$endpoint");
     try {
-      final finalHeaders = await _buildHeaders(customHeaders: headers, auth: auth);
-      
+      final finalHeaders =
+          await _buildHeaders(customHeaders: headers, auth: auth);
+
       Log.i("➡️ POST Request: $uri");
 
-      final response = await http.post(
-        uri,
-        headers: finalHeaders,
-        body: jsonEncode(body),
+      final response = await _withRefresh(
+        finalHeaders,
+        (h) => http.post(uri, headers: h, body: jsonEncode(body)),
       );
 
       _logResponse("POST", uri.toString(), response);
@@ -57,7 +139,7 @@ class ApiService {
     }
   }
 
-  // POST with get response
+  // POST with raw response
   static Future<http.Response?> postResponse({
     required String endpoint,
     required dynamic body,
@@ -66,14 +148,14 @@ class ApiService {
   }) async {
     final uri = Uri.parse("$appBaseUrl/$endpoint");
     try {
-      final finalHeaders = await _buildHeaders(customHeaders: headers, auth: auth);
-      
+      final finalHeaders =
+          await _buildHeaders(customHeaders: headers, auth: auth);
+
       Log.i("➡️ POST Request: $uri");
 
-      final response = await http.post(
-        uri,
-        headers: finalHeaders,
-        body: jsonEncode(body),
+      final response = await _withRefresh(
+        finalHeaders,
+        (h) => http.post(uri, headers: h, body: jsonEncode(body)),
       );
 
       _logResponse("POST", uri.toString(), response);
@@ -92,15 +174,17 @@ class ApiService {
     Map<String, String>? queryParams,
     bool auth = false,
   }) async {
-    final uri = Uri.parse("$appBaseUrl/$endpoint").replace(queryParameters: queryParams);
+    final uri =
+        Uri.parse("$appBaseUrl/$endpoint").replace(queryParameters: queryParams);
     try {
-      final finalHeaders = await _buildHeaders(customHeaders: headers, auth: auth);
-      
+      final finalHeaders =
+          await _buildHeaders(customHeaders: headers, auth: auth);
+
       Log.i("➡️ GET Request: $uri");
 
-      final response = await http.get(
-        uri,
-        headers: finalHeaders,
+      final response = await _withRefresh(
+        finalHeaders,
+        (h) => http.get(uri, headers: h),
       );
 
       _logResponse("GET", uri.toString(), response);
@@ -121,13 +205,16 @@ class ApiService {
     Map<String, String>? headers,
     Map<String, String>? queryParams,
   }) async {
-    final uri = Uri.parse("$appBaseUrl/$endpoint").replace(queryParameters: queryParams);
+    final uri =
+        Uri.parse("$appBaseUrl/$endpoint").replace(queryParameters: queryParams);
     try {
+      final finalHeaders = headers ?? {"Content-Type": "application/json"};
+
       Log.i("➡️ GET Request: $uri");
 
-      final response = await http.get(
-        uri,
-        headers: headers ?? {"Content-Type": "application/json"},
+      final response = await _withRefresh(
+        finalHeaders,
+        (h) => http.get(uri, headers: h),
       );
 
       _logResponse("GET", uri.toString(), response);
@@ -154,7 +241,7 @@ class ApiService {
       for (int i = 0; i < files.length; i++) {
         request.files.add(await http.MultipartFile.fromPath(
           fileFieldName,
-          files[i].path
+          files[i].path,
         ));
       }
 
@@ -162,11 +249,13 @@ class ApiService {
         request.fields.addAll(fields);
       }
 
-      Log.i("➡️ Multipart POST Request: $uri | Files count: ${files.length}");
+      Log.i(
+          "➡️ Multipart POST Request: $uri | Files count: ${files.length}");
 
       final streamedResponse = await request.send();
       final response = await http.Response.fromStream(streamedResponse);
 
+      _captureRotatedToken(response);
       _logResponse("Multipart POST", uri.toString(), response);
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
@@ -175,21 +264,25 @@ class ApiService {
         return null;
       }
     } catch (e, stackTrace) {
-      Log.e("❌ Multipart POST request error: $uri", error: e, stackTrace: stackTrace);
+      Log.e("❌ Multipart POST request error: $uri",
+          error: e, stackTrace: stackTrace);
       return null;
     }
   }
 
-  static void _logResponse(String method, String url, http.Response response) {
+  static void _logResponse(
+      String method, String url, http.Response response) {
     if (response.statusCode == 401) {
-      Log.w("⚠️ 401 Unauthorized - Redirecting to login [$url]");
-      StorageService.clearPrefs();
-      StorageService.deleteSecureStorage();
-      AppRouter.router.go(CustomRoutePaths.login);
+      // The refresh + logout policy lives in [_withRefresh] /
+      // [AuthSessionManager]; here we only log. (A 401 reaching this point has
+      // already been through a refresh attempt.)
+      Log.w("⚠️ 401 Unauthorized [$url]");
     } else if (response.statusCode >= 200 && response.statusCode < 300) {
-      Log.d("✅ $method Response [$url] | Status: ${response.statusCode} | Bytes: ${response.bodyBytes.length}");
+      Log.d(
+          "✅ $method Response [$url] | Status: ${response.statusCode} | Bytes: ${response.bodyBytes.length}");
     } else {
-      Log.w("⚠️ $method Response Error [$url] | Status: ${response.statusCode} | Bytes: ${response.bodyBytes.length}");
+      Log.w(
+          "⚠️ $method Response Error [$url] | Status: ${response.statusCode} | Bytes: ${response.bodyBytes.length}");
     }
   }
 }
