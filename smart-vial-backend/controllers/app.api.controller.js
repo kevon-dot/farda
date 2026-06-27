@@ -1,7 +1,9 @@
 const Device = require("../models/Device");
 const Event = require("../models/Event");
 const User = require("../models/User");
+const CaregiverGrant = require("../models/CaregiverGrant");
 const { computeUnclaimDeviceState, removeDeviceId } = require("../utils/deviceClaim");
+const { GRANT_STATUS } = require("../utils/caregiverAuthorization");
 
 //save user to database
 const saveUser = async (req, res, next) => {
@@ -239,6 +241,13 @@ const removeClaimedDevice = async (req, res, next) => {
       }
     }
 
+    // Revoke any caregiver consent grants for this device so the
+    // server-authoritative relationship record matches the detached device.
+    await CaregiverGrant.updateMany(
+      { deviceId: device_id, status: GRANT_STATUS.ACCEPTED },
+      { status: GRANT_STATUS.REVOKED, revokedAt: new Date() }
+    );
+
     res.json({ status: "success", message: "Device unclaimed successfully" });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -294,6 +303,13 @@ const deleteCaregiverAccessToDevice = async (req, res, next) => {
           await caregiver.save();
         }
       }
+
+      // Revoke the server-authoritative consent grant so a later request can no
+      // longer be authorized off a stale relationship record.
+      await CaregiverGrant.updateMany(
+        { deviceId: device_id, caregiverUserId: caregiver_id, status: GRANT_STATUS.ACCEPTED },
+        { status: GRANT_STATUS.REVOKED, revokedAt: new Date() }
+      );
     }
 
     res.json({ status: "success", message: "Caregiver access removed successfully" });

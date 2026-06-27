@@ -1,9 +1,40 @@
-//can only read if have access to the device id in their caregiving_device_ids array
+// Caregiver-scoped reads. Authorization is SERVER-AUTHORITATIVE (GTM-507):
+// a caregiver may only access a device the device OWNER explicitly granted them
+// (recorded on device.caregiver_id and in CaregiverGrant). The caller's asserted
+// role (req.user_role / any body field) is NEVER used to authorize access.
 const Event = require('../models/Event');
 const Device = require('../models/Device');
-const { findOrCreateUser } = require('../utils/userProvisioning');
+const User = require('../models/User');
+const CaregiverGrant = require('../models/CaregiverGrant');
+const {
+    isCaregiverAuthorizedForDevice,
+    isDeviceOwner,
+    GRANT_STATUS,
+} = require('../utils/caregiverAuthorization');
 
+// Load a device and confirm the authenticated caller has a server-side caregiver
+// grant for it. Returns { device } on success, or { error: { status, body } }.
+// This is the single choke point every caregiver read goes through, so the
+// authorization rule (owner-granted relationship only) lives in exactly one place.
+const authorizeCaregiverDevice = async (device_id, caregiver_id) => {
+    const device = await Device.findOne({ device_id });
+    if (!device) {
+        return { error: { status: 404, body: { error: 'Device not found' } } };
+    }
 
+    if (!isCaregiverAuthorizedForDevice({ caregiverUserId: caregiver_id, device })) {
+        // 403 (not 404) once the device exists but the caller has no grant: the
+        // caller is authenticated, just not authorized for this patient's data.
+        return {
+            error: {
+                status: 403,
+                body: { error: 'Access denied: no caregiver grant for this device' },
+            },
+        };
+    }
+
+    return { device };
+};
 
 // Claim a device for caregiver - device owner assigns a caregiver
 const claimDeviceForCaregiver = async (req, res) => {
@@ -16,32 +47,67 @@ const claimDeviceForCaregiver = async (req, res) => {
             return res.status(400).json({ error: 'device_id and caregiver_id are required' });
         }
 
+        if (typeof device_id !== 'string' || typeof caregiver_id !== 'string') {
+            return res.status(400).json({ error: 'device_id and caregiver_id must be strings' });
+        }
+
+        // A user cannot make themselves the caregiver of their own device.
+        if (caregiver_id === user_id) {
+            return res.status(400).json({ error: 'Cannot assign yourself as caregiver' });
+        }
+
         // Find the device
         const device = await Device.findOne({ device_id });
         if (!device) {
             return res.status(404).json({ error: 'Device not found' });
         }
 
-        // Check if user is the owner of the device
-        if (device.user_id !== user_id) {
+        // SERVER-AUTHORITATIVE: only the trusted owner of the device may grant a
+        // caregiver. The caller cannot grant access to a device they don't own.
+        if (!isDeviceOwner({ ownerUserId: user_id, device })) {
             return res.status(403).json({ error: 'Access denied: Only device owner can assign caregivers' });
         }
 
-        // Find or create the caregiver user, ensuring the 'caregiver' role.
-        const caregiver = await findOrCreateUser(caregiver_id, 'caregiver');
+        // Ensure the caregiver user record exists (without trusting any
+        // client-supplied role: we set the role here, server-side, as part of an
+        // owner-authorized grant — not because the caregiver asked for it).
+        let caregiver = await User.findOne({ user_id: caregiver_id });
+        if (!caregiver) {
+            caregiver = new User({
+                user_id: caregiver_id,
+                user_roles: ['caregiver'],
+                claim_device_ids: [],
+                caregiving_device_ids: [],
+            });
+        } else if (!caregiver.user_roles.includes('caregiver')) {
+            caregiver.user_roles.push('caregiver');
+        }
 
-        // Assign caregiver to device
+        // Assign caregiver to device (the owner-granted relationship).
         device.caregiver_id = caregiver_id;
         await device.save();
 
-        // Add device_id to caregiver's caregiving_device_ids array if not already present
         if (!caregiver.caregiving_device_ids.includes(device_id)) {
             caregiver.caregiving_device_ids.push(device_id);
         }
         caregiver.lastLogin = new Date();
         await caregiver.save();
 
-        res.status(200).json({ 
+        // Record/refresh the auditable consent grant (server-authoritative).
+        await CaregiverGrant.findOneAndUpdate(
+            { deviceId: device_id, caregiverUserId: caregiver_id },
+            {
+                deviceId: device_id,
+                caregiverUserId: caregiver_id,
+                patientUserId: user_id,
+                status: GRANT_STATUS.ACCEPTED,
+                grantedAt: new Date(),
+                revokedAt: null,
+            },
+            { upsert: true, new: true, setDefaultsOnInsert: true }
+        );
+
+        res.status(200).json({
             status: 'Caregiver assigned successfully',
             device: {
                 device_id: device.device_id,
@@ -60,25 +126,10 @@ const getCaregiver_A_device_summery = async (req, res) => {
     try {
         const { device_id } = req.params;
         const caregiver_id = req.user_id;
-        const user_role = req.user_role;
 
-        // Find or create user
-        const user = await findOrCreateUser(caregiver_id, user_role);
-
-        // Check if user is a caregiver
-        if (!user.hasRole('caregiver')) {
-            return res.status(403).json({ error: 'Access denied: Caregiver role required' });
-        }
-
-        // Find the device
-        const device = await Device.findOne({ device_id });
-        if (!device) {
-            return res.status(404).json({ error: 'Device not found' });
-        }
-
-        // Check if caregiver has access to this device
-        if (device.caregiver_id !== caregiver_id) {
-            return res.status(403).json({ error: 'Access denied: You do not have access to this device' });
+        const { device, error } = await authorizeCaregiverDevice(device_id, caregiver_id);
+        if (error) {
+            return res.status(error.status).json(error.body);
         }
 
         // Get device summary with recent events
@@ -110,28 +161,27 @@ const getCaregiver_A_device_summery = async (req, res) => {
 const getAllCaregiverDevices = async (req, res) => {
     try {
         const caregiver_id = req.user_id;
-        const user_role = req.user_role;
 
-        // Find or create user
-        const user = await findOrCreateUser(caregiver_id, user_role);
-
-        // Check if user is a caregiver
-        if (!user.hasRole('caregiver')) {
-            return res.status(403).json({ error: 'Access denied: Caregiver role required' });
-        }
-
-        // Find all devices assigned to this caregiver
+        // SERVER-AUTHORITATIVE: list devices whose owner granted THIS caller, by
+        // querying the grant on the device record. No role is consulted; a caller
+        // with no grants simply sees an empty list.
         const devices = await Device.find({ caregiver_id, isActive: true });
 
-        if (!devices || devices.length === 0) {
-            return res.status(200).json({ 
+        // Defence-in-depth: re-check each device through the same pure helper used
+        // by the single-device path, so the list path can't drift from the rule.
+        const authorized = devices.filter((device) =>
+            isCaregiverAuthorizedForDevice({ caregiverUserId: caregiver_id, device })
+        );
+
+        if (!authorized || authorized.length === 0) {
+            return res.status(200).json({
                 message: 'No devices found',
                 devices: [],
                 total_devices: 0
             });
         }
 
-        const deviceIds = devices.map((device) => device.device_id);
+        const deviceIds = authorized.map((device) => device.device_id);
 
         // Batched aggregation: fetch recent events + per-device totals for ALL
         // devices in a single round-trip instead of a find + countDocuments per
@@ -159,7 +209,7 @@ const getAllCaregiverDevices = async (req, res) => {
             aggregated.map((entry) => [entry._id, entry])
         );
 
-        const devicesWithEvents = devices.map((device) => {
+        const devicesWithEvents = authorized.map((device) => {
             const entry = eventsByDevice.get(device.device_id);
             return {
                 device_id: device.device_id,
@@ -175,7 +225,7 @@ const getAllCaregiverDevices = async (req, res) => {
 
         res.status(200).json({
             devices: devicesWithEvents,
-            total_devices: devices.length
+            total_devices: authorized.length
         });
     } catch (err) {
         console.error('Error fetching caregiver devices:', err.message);
@@ -188,25 +238,18 @@ const searchDeviceById = async (req, res) => {
     try {
         const { device_id } = req.query;
         const caregiver_id = req.user_id;
-        const user_role = req.user_role;
-
-        // Find or create user
-        const user = await findOrCreateUser(caregiver_id, user_role);
-
-        // Check if user is a caregiver
-        if (!user.hasRole('caregiver')) {
-            return res.status(403).json({ error: 'Access denied: Caregiver role required' });
-        }
 
         // Validate device_id
         if (!device_id) {
             return res.status(400).json({ error: 'device_id is required' });
         }
+        if (typeof device_id !== 'string') {
+            return res.status(400).json({ error: 'device_id must be a string' });
+        }
 
-        // Find the device and check access
-        const device = await Device.findOne({ device_id, caregiver_id });
-        if (!device) {
-            return res.status(404).json({ error: 'Device not found or access denied' });
+        const { device, error } = await authorizeCaregiverDevice(device_id, caregiver_id);
+        if (error) {
+            return res.status(error.status).json(error.body);
         }
 
         // Get all events for this device
@@ -237,25 +280,18 @@ const filterEventsByDateRange = async (req, res) => {
     try {
         const { device_id, start_date, end_date } = req.query;
         const caregiver_id = req.user_id;
-        const user_role = req.user_role;
-
-        // Find or create user
-        const user = await findOrCreateUser(caregiver_id, user_role);
-
-        // Check if user is a caregiver
-        if (!user.hasRole('caregiver')) {
-            return res.status(403).json({ error: 'Access denied: Caregiver role required' });
-        }
 
         // Validate required fields
         if (!device_id || !start_date || !end_date) {
             return res.status(400).json({ error: 'device_id, start_date, and end_date are required' });
         }
+        if (typeof device_id !== 'string') {
+            return res.status(400).json({ error: 'device_id must be a string' });
+        }
 
-        // Check if caregiver has access to this device
-        const device = await Device.findOne({ device_id, caregiver_id });
-        if (!device) {
-            return res.status(404).json({ error: 'Device not found or access denied' });
+        const { device, error } = await authorizeCaregiverDevice(device_id, caregiver_id);
+        if (error) {
+            return res.status(error.status).json(error.body);
         }
 
         // Parse dates
@@ -293,6 +329,7 @@ const filterEventsByDateRange = async (req, res) => {
 };
 
 module.exports = {
+    authorizeCaregiverDevice,
     claimDeviceForCaregiver,
     getCaregiver_A_device_summery,
     getAllCaregiverDevices,
