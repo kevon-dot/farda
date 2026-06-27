@@ -1,9 +1,12 @@
 
 import 'package:farda/components/_components.dart';
+import 'package:farda/components/note_dialog.dart';
+import 'package:farda/screens/dashboard/calendar/calender_provider.dart';
 import 'package:farda/theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:flutter_svg/svg.dart';
+import 'package:provider/provider.dart';
 
 class ScreenMoodCheckIn extends StatelessWidget {
   const ScreenMoodCheckIn({super.key});
@@ -18,7 +21,7 @@ class ScreenMoodCheckIn extends StatelessWidget {
     final spacing = theme.extension<Spacing>()!;
 
     void onCheckInPressed() {
-      showDialog(context: context, builder: (_) => const ThoughtDialog());
+      showThoughtsDialog(context, context.read<CalenderProvider>());
     }
 
     return Scaffold(

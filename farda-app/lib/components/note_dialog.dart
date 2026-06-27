@@ -1,7 +1,6 @@
 import 'package:farda/components/custom_snackbar.dart';
 import 'package:farda/screens/dashboard/calendar/calender_provider.dart';
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 
 void showThoughtsDialog(BuildContext context, CalenderProvider data) {
   TextEditingController notesController =
@@ -90,21 +89,17 @@ void showThoughtsDialog(BuildContext context, CalenderProvider data) {
                       padding: EdgeInsets.symmetric(vertical: 14),
                     ),
                     onPressed: () async {
-                      // Logic for saving the notes can be placed here
-                      String notes =
-                          notesController.text; // Get the entered notes
-                      print(
-                        'Saved Notes: ${data.selectedDoseModel.id.toString()},',
-                      );
+                      // Get the entered notes from the controller.
+                      String notes = notesController.text;
 
                       String status = await data.setNotesApi(
                         data.selectedDoseModel.id.toString(),
                         notes,
                       );
 
+                      if (!context.mounted) return;
                       Navigator.of(context).pop();
                       CustomSnackbar.show(context, message: status);
-                      context.pop();
                     },
                     child: Text("Save", style: TextStyle(color: Colors.white)),
                   ),

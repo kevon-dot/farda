@@ -66,6 +66,12 @@ class CalenderRepo {
     }
   }
 
+  /// Builds the request body for submitting a note. Extracted so the payload
+  /// shape can be unit-tested without touching platform channels.
+  static Map<String, String> buildNotePayload(String id, String note) {
+    return {"dose_time_id": id, "note": note};
+  }
+
   Future<int> submitNote(String id, String note) async {
     SharedPreferences preferences = await SharedPreferences.getInstance();
     final token = preferences.getString("access") ?? "";
@@ -73,7 +79,7 @@ class CalenderRepo {
       final data = await ApiService.postResponse(
         endpoint: AppUrls.setNotes,
         headers: {"Authorization": "Bearer $token"},
-        body: {"dose_time_id": id, "note": "dsfasd"},
+        body: buildNotePayload(id, note),
       );
       if (data != null) {
       return data.statusCode;
