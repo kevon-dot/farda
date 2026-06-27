@@ -41,4 +41,34 @@ module.exports = {
     // device-auth replay/freshness check.
     toleranceSeconds: parseInt(process.env.TYME_SYNC_TOLERANCE_SECONDS) || 300, // 5 minutes
   },
+
+  // ============================================
+  // GTM-539 — Admin / fleet management
+  // ============================================
+  admin: {
+    // SERVER-AUTHORITATIVE admin allowlist. Admin-only fleet/registry/OTA
+    // endpoints authorize against THIS list of better-auth user ids, never
+    // against a client-asserted role/header. Comma-separated env var.
+    // Empty in dev → no admin access (fail closed) unless explicitly configured.
+    userIds: process.env.ADMIN_USER_IDS
+      ? process.env.ADMIN_USER_IDS.split(",").map((s) => s.trim()).filter(Boolean)
+      : [],
+  },
+
+  // ============================================
+  // GTM-539 — Fleet-health thresholds
+  // ============================================
+  // Derived health (offline / stale-sync / low-battery) is computed from a
+  // device's last_seen / last_sync_at / battery_percent against these knobs.
+  fleet: {
+    // A device not seen within this window is considered OFFLINE.
+    offlineAfterSeconds:
+      parseInt(process.env.FLEET_OFFLINE_AFTER_SECONDS) || 15 * 60, // 15 minutes
+    // A device that has not completed a successful sync within this window is
+    // STALE (it may still be "online" by last_seen but isn't reporting data).
+    staleSyncAfterSeconds:
+      parseInt(process.env.FLEET_STALE_SYNC_AFTER_SECONDS) || 24 * 60 * 60, // 24 hours
+    // Battery at/below this percent is LOW.
+    lowBatteryPercent: parseInt(process.env.FLEET_LOW_BATTERY_PERCENT) || 20,
+  },
 };
