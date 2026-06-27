@@ -37,7 +37,17 @@ app.use(
 // ============================================
 // Body parsing with size limit (#36)
 // ============================================
-app.use(express.json({ limit: process.env.JSON_BODY_LIMIT || '100kb' }));
+// The `verify` hook captures the EXACT raw request bytes before JSON parsing.
+// Per-device HMAC auth (A3) signs over these raw bytes, NOT the parsed /
+// sanitized body, so the device and backend hash byte-identical input.
+app.use(
+  express.json({
+    limit: process.env.JSON_BODY_LIMIT || '100kb',
+    verify(req, _res, buf) {
+      req.rawBody = buf && buf.length ? buf.toString('utf8') : '';
+    },
+  })
+);
 
 // ============================================
 // NoSQL operator-injection protection (#37)
