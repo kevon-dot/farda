@@ -2,6 +2,7 @@ import 'package:farda/components/custom_snackbar.dart';
 import 'package:farda/screens/login/login_provider.dart';
 import 'package:farda/screens/otp_verify/screen_otp_verify.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 class LoginController {
   // Validate and Send OTP Controller logic
