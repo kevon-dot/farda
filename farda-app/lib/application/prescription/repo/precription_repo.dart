@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:farda/app_const/app_urls.dart';
+import 'package:farda/application/authentication/storage/auth_storage.dart';
 import 'package:farda/application/prescription/model/prescription_model.dart';
 import 'package:farda/utilities/api_service.dart';
 import 'package:flutter/material.dart';
@@ -8,8 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class PrecriptionRepo {
   Future<PrescriptionModel?> getExtractPrescription(List<File> file) async {
-    final preferences = await SharedPreferences.getInstance();
-    final token = preferences.getString("access") ?? "";
+    final token = await AuthStorage.getToken() ?? "";
 
     final response = await ApiService.postMultipart(
       files: file,
@@ -19,21 +19,17 @@ class PrecriptionRepo {
 
       headers: {"Authorization": "Bearer $token"},
     );
-    debugPrint(response.toString());
     if (response != null) {
       return PrescriptionModel.fromJson(response);
     } else {
-      debugPrint("");
       return null;
     }
   }
 
   Future<int?> submitPrescription(PrescriptionModel prescription) async {
     final preferences = await SharedPreferences.getInstance();
-    final token = preferences.getString("access") ?? "";
+    final token = await AuthStorage.getToken() ?? "";
     final userId = preferences.getString("id") ?? "";
-
-    print(prescription.toSubmit(userId));
 
     final response = await ApiService.postResponse(
       endpoint: AppUrls.submitPrescription,
@@ -41,23 +37,19 @@ class PrecriptionRepo {
       headers: {"Authorization": "Bearer $token"},
     );
 
-    debugPrint(response.toString());
-
     if (response != null) {
       return response.statusCode;
     } else {
-      debugPrint(response.toString());
       return null;
     }
   }
 
   Future<dynamic> getPrescription() async {
-    SharedPreferences preferences = await SharedPreferences.getInstance();
-
     try {
+      final token = await AuthStorage.getToken() ?? "";
       final response = await ApiService.getList(
         headers: {
-          "Authorization": "Bearer ${preferences.getString("access") ?? ""}",
+          "Authorization": "Bearer $token",
         },
         endpoint: AppUrls.getPrescription,
       );
@@ -65,11 +57,11 @@ class PrecriptionRepo {
       if (response != null) {
         return response;
       } else {
-        debugPrint("Failed to fetch dose time.");
+        debugPrint("Failed to fetch prescription.");
         return null;
       }
     } catch (e) {
-      debugPrint("getDoseTime error: $e");
+      debugPrint("getPrescription error: $e");
       return null;
     }
   }

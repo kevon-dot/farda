@@ -1,14 +1,14 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:farda/application/authentication/storage/auth_storage.dart';
 import 'package:farda/env.dart';
 import 'package:farda/routes/routes.dart';
 import 'package:farda/utilities/storage_service.dart';
 import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
 import 'logger_service.dart';
 
 class ApiService {
-  // Get headers with optional Bearer token
+  // Get headers with optional Bearer token (read from secure storage).
   static Future<Map<String, String>> _buildHeaders({Map<String, String>? customHeaders, bool auth = false}) async {
     final headers = <String, String>{
       "Content-Type": "application/json",
@@ -16,8 +16,7 @@ class ApiService {
     };
 
     if (auth) {
-      final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('access');
+      final token = await AuthStorage.getToken();
       if (token != null && token.isNotEmpty) {
         headers["Authorization"] = "Bearer $token";
       }
@@ -37,7 +36,7 @@ class ApiService {
     try {
       final finalHeaders = await _buildHeaders(customHeaders: headers, auth: auth);
       
-      Log.i("➡️ POST Request: $uri\nHeaders: $finalHeaders\nBody: ${jsonEncode(body)}");
+      Log.i("➡️ POST Request: $uri");
 
       final response = await http.post(
         uri,
@@ -69,7 +68,7 @@ class ApiService {
     try {
       final finalHeaders = await _buildHeaders(customHeaders: headers, auth: auth);
       
-      Log.i("➡️ POST Request: $uri\nHeaders: $finalHeaders\nBody: ${jsonEncode(body)}");
+      Log.i("➡️ POST Request: $uri");
 
       final response = await http.post(
         uri,
@@ -97,7 +96,7 @@ class ApiService {
     try {
       final finalHeaders = await _buildHeaders(customHeaders: headers, auth: auth);
       
-      Log.i("➡️ GET Request: $uri\nHeaders: $finalHeaders");
+      Log.i("➡️ GET Request: $uri");
 
       final response = await http.get(
         uri,
@@ -124,7 +123,7 @@ class ApiService {
   }) async {
     final uri = Uri.parse("$appBaseUrl/$endpoint").replace(queryParameters: queryParams);
     try {
-      Log.i("➡️ GET Request: $uri\nHeaders: ${headers ?? {"Content-Type": "application/json"}}");
+      Log.i("➡️ GET Request: $uri");
 
       final response = await http.get(
         uri,
@@ -163,7 +162,7 @@ class ApiService {
         request.fields.addAll(fields);
       }
 
-      Log.i("➡️ Multipart POST Request: $uri\nHeaders: ${request.headers}\nFields: $fields\nFiles count: ${files.length}");
+      Log.i("➡️ Multipart POST Request: $uri | Files count: ${files.length}");
 
       final streamedResponse = await request.send();
       final response = await http.Response.fromStream(streamedResponse);
@@ -188,9 +187,9 @@ class ApiService {
       StorageService.deleteSecureStorage();
       AppRouter.router.go(CustomRoutePaths.login);
     } else if (response.statusCode >= 200 && response.statusCode < 300) {
-      Log.d("✅ $method Response [$url] | Status: ${response.statusCode}\nBody: ${response.body}");
+      Log.d("✅ $method Response [$url] | Status: ${response.statusCode} | Bytes: ${response.bodyBytes.length}");
     } else {
-      Log.w("⚠️ $method Response Error [$url] | Status: ${response.statusCode}\nBody: ${response.body}");
+      Log.w("⚠️ $method Response Error [$url] | Status: ${response.statusCode} | Bytes: ${response.bodyBytes.length}");
     }
   }
 }

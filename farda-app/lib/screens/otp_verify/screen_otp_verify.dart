@@ -34,7 +34,7 @@ class _ScreenOtpVerifyState extends State<ScreenOtpVerify> {
       setState(() {
         _otp = text;
       });
-      debugPrint("OTP Pasted: $text");
+      debugPrint("OTP pasted from clipboard.");
     } else {
       debugPrint("Clipboard content is not a valid 6-digit OTP");
     }

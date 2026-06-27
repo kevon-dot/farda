@@ -17,14 +17,11 @@ class StorageService {
     await _secureStorage.deleteAll();
   }
 
-  // Shared Preferences (for non-sensitive cached data)
-  static Future<void> saveTokensToPrefs({required String access, required String refresh, required String id}) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('access', access);
-    await prefs.setString('refresh', refresh);
-    await prefs.setString('id', id);
-  }
-
+  // Shared Preferences (for non-sensitive cached data).
+  //
+  // NOTE: the access token is intentionally NOT stored here. It lives only in
+  // secure storage (see [AuthStorage]). A previous `saveTokensToPrefs` helper
+  // that wrote the token to plaintext SharedPreferences has been removed.
   static Future<void> clearPrefs() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.clear();

@@ -1106,7 +1106,6 @@ class CalendarController {
   }
 
   void onSwipePage(int index) {
-    print(_swipingByUser);
     if (!_swipingByUser) {
       return;
     }
