@@ -1,0 +1,36 @@
+# ---- Secrets (NEVER commit real env files) ----
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# ---- Node / TypeScript backends ----
+node_modules/
+dist/
+build/
+*.log
+*.tsbuildinfo
+coverage/
+# Prisma generated client (run `prisma generate`)
+farda-app-backend/generated/
+farda-app-backend/temp_uploads/
+
+# ---- Flutter / Dart mobile app ----
+farda-app/.dart_tool/
+farda-app/.flutter-plugins
+farda-app/.flutter-plugins-dependencies
+farda-app/build/
+farda-app/.fvm/
+**/ios/Pods/
+**/ios/.symlinks/
+**/android/.gradle/
+**/android/app/debug/
+**/android/app/profile/
+**/android/app/release/
+
+# ---- OS / editor ----
+.DS_Store
+Thumbs.db
+.idea/
+*.iml
