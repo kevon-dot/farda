@@ -6,6 +6,7 @@ class PrescriptionModel {
   String? address;
   String? rxNumber;
   String? storeNumber;
+  String? dob;
   String? deviceId;
   List<MedicinesNames>? medicinesNames;
 
@@ -17,6 +18,7 @@ class PrescriptionModel {
       this.address,
       this.rxNumber,
       this.storeNumber,
+      this.dob,
       this.deviceId,
       this.medicinesNames});
 
@@ -28,6 +30,7 @@ class PrescriptionModel {
     address = json['address'];
     rxNumber = json['rx_number'];
     storeNumber = json['store_number'];
+    dob = json['dob'];
     deviceId = json['deviceId'];
     
     // Check both 'medicines' and 'medicines_names' keys for compatibility
@@ -49,6 +52,7 @@ class PrescriptionModel {
     data['address'] = address;
     data['rx_number'] = rxNumber;
     data['store_number'] = storeNumber;
+    data['dob'] = dob;
     data['deviceId'] = deviceId;
     if (medicinesNames != null) {
       data['medicines'] =
@@ -66,6 +70,7 @@ class PrescriptionModel {
       "address": address,
       "rx_number": rxNumber,
       "store_number": storeNumber,
+      "dob": dob,
       "deviceId": deviceId,
       "medicines_names": medicinesNames?.map((m) => m.toMedicineName()).toList() ?? [],
     };

@@ -67,6 +67,7 @@ class ScreenPrescription extends StatelessWidget {
                   ),
                   12.verticalSpace,
                   TextField(
+                    controller: prescriptionProvider.dobController,
                     decoration: InputDecoration(
                       hintText: "Date of Birth",
                       suffixIcon: Icon(

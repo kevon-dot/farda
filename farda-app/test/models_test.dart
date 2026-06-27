@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:farda/application/prescription/model/prescription_model.dart';
 import 'package:farda/application/calender/model/mood_model.dart';
 import 'package:farda/screens/login/login_provider.dart';
+import 'package:farda/screens/prescription_info/prescription_provider.dart';
 
 void main() {
   group('PrescriptionModel', () {
@@ -56,14 +57,73 @@ void main() {
       final original = PrescriptionModel(
         rxNumber: 'RX-9',
         address: '1 Main St',
+        dob: '1990-01-01',
         medicinesNames: [MedicinesNames(medicineName: 'Med B', instructions: '2/day')],
       );
       final copy = PrescriptionModel.fromJson(original.toJson());
 
       expect(copy.rxNumber, 'RX-9');
       expect(copy.address, '1 Main St');
+      expect(copy.dob, '1990-01-01');
       expect(copy.medicinesNames!.first.medicineName, 'Med B');
       expect(copy.medicinesNames!.first.instructions, '2/day');
+    });
+
+    test('toSubmit includes dob', () {
+      final model = PrescriptionModel(rxNumber: 'RX-1', dob: '1985-12-31');
+      final submit = model.toSubmit('user-42');
+
+      expect(submit['dob'], '1985-12-31');
+    });
+  });
+
+  group('PrescriptionProvider.syncControllersToModel', () {
+    test(
+        'merges manually edited Rx#/store#/pill-qty/DOB into the submit payload',
+        () {
+      final provider = PrescriptionProvider();
+
+      // Simulate OCR having pre-filled the model with some values.
+      provider.prescriptionModel = PrescriptionModel(
+        rxNumber: 'OCR-RX',
+        storeNumber: 'OCR-STORE',
+        medicinesNames: [MedicinesNames(medicineName: 'Med A', qty: '5')],
+      );
+
+      // The user then manually edits every field on the form.
+      provider.prescriptionNumberController.text = '1234567';
+      provider.storeNumberController.text = '4321';
+      provider.pillQtyController.text = '30';
+      provider.dobController.text = '1990-06-15';
+
+      provider.syncControllersToModel();
+      final submit = provider.prescriptionModel.toSubmit('user-7');
+
+      // Manual edits override the OCR-extracted values in the payload.
+      expect(submit['rx_number'], '1234567');
+      expect(submit['store_number'], '4321');
+      expect(submit['dob'], '1990-06-15');
+      expect(
+        (submit['medicines_names'] as List).first['qty'],
+        '30',
+      );
+    });
+
+    test('blank fields fall back to existing OCR values', () {
+      final provider = PrescriptionProvider();
+      provider.prescriptionModel = PrescriptionModel(
+        rxNumber: 'OCR-RX',
+        storeNumber: 'OCR-STORE',
+        dob: '2000-01-01',
+      );
+
+      // Leave all controllers empty.
+      provider.syncControllersToModel();
+      final submit = provider.prescriptionModel.toSubmit('user-7');
+
+      expect(submit['rx_number'], 'OCR-RX');
+      expect(submit['store_number'], 'OCR-STORE');
+      expect(submit['dob'], '2000-01-01');
     });
   });
 
