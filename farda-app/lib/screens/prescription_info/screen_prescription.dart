@@ -102,7 +102,7 @@ class ScreenPrescription extends StatelessWidget {
                           Container(
                             padding: EdgeInsets.all(16.r),
                             decoration: BoxDecoration(
-                              color: theme.primaryColor.withOpacity(0.1),
+                              color: theme.primaryColor.withValues(alpha: 0.1),
                               shape: BoxShape.circle,
                             ),
                             child: Icon(
@@ -252,7 +252,7 @@ class ScreenPrescription extends StatelessWidget {
             // Submitting Overlay
             if (prescriptionProvider.isSaving)
               Container(
-                color: Colors.white.withOpacity(0.5),
+                color: colors.baseWhite.withValues(alpha: 0.5),
                 child: const Center(
                   child: CircularProgressIndicator(),
                 ),
@@ -260,7 +260,7 @@ class ScreenPrescription extends StatelessWidget {
             // Loading Overlay (Scanning)
             if (prescriptionProvider.isLoading)
               Container(
-                color: Colors.white.withOpacity(0.9),
+                color: colors.baseWhite.withValues(alpha: 0.9),
                 child: Center(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -268,7 +268,7 @@ class ScreenPrescription extends StatelessWidget {
                       Container(
                         padding: EdgeInsets.all(24.r),
                         decoration: BoxDecoration(
-                          color: theme.primaryColor.withOpacity(0.1),
+                          color: theme.primaryColor.withValues(alpha: 0.1),
                           shape: BoxShape.circle,
                         ),
                         child: Stack(

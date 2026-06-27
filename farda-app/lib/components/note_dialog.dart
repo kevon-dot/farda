@@ -1,8 +1,10 @@
 import 'package:farda/components/custom_snackbar.dart';
 import 'package:farda/screens/dashboard/calendar/calender_provider.dart';
+import 'package:farda/theme.dart';
 import 'package:flutter/material.dart';
 
 void showThoughtsDialog(BuildContext context, CalenderProvider data) {
+  final colors = Theme.of(context).extension<FardaColors>()!;
   TextEditingController notesController =
       TextEditingController(); // Controller for Notes TextField
 
@@ -82,7 +84,7 @@ void showThoughtsDialog(BuildContext context, CalenderProvider data) {
                   width: double.infinity,
                   child: ElevatedButton(
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.black,
+                      backgroundColor: colors.baseBlack,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(20),
                       ),
@@ -101,7 +103,7 @@ void showThoughtsDialog(BuildContext context, CalenderProvider data) {
                       Navigator.of(context).pop();
                       CustomSnackbar.show(context, message: status);
                     },
-                    child: Text("Save", style: TextStyle(color: Colors.white)),
+                    child: Text("Save", style: TextStyle(color: colors.baseWhite)),
                   ),
                 ),
               ],

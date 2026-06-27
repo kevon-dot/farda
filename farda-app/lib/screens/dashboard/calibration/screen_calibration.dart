@@ -12,7 +12,7 @@ class ScreenCalibration extends StatelessWidget {
     final colors = Theme.of(context).extension<FardaColors>()!;
     final txtStyle = TextStyle(
       fontSize: 18.sp,
-      color: Colors.black,
+      color: colors.baseBlack,
       fontWeight: FontWeight.bold,
     );
     showDialog(
@@ -71,7 +71,7 @@ class ScreenCalibration extends StatelessWidget {
                     color: colors.baseWhite,
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.05),
+                        color: colors.baseBlack.withValues(alpha: 0.05),
                         offset: Offset(0, -10),
                         blurRadius: 8,
                       ),
@@ -129,7 +129,7 @@ class ScreenCalibration extends StatelessWidget {
                               customStep: CircleAvatar(
                                 radius: 22,
                                 backgroundColor: Colors.transparent,
-                                foregroundColor: Colors.black,
+                                foregroundColor: colors.baseBlack,
                                 child: Text('2', style: txtStyle),
                               ),
                             ),
@@ -138,7 +138,7 @@ class ScreenCalibration extends StatelessWidget {
                               customStep: CircleAvatar(
                                 radius: 22,
                                 backgroundColor: Colors.transparent,
-                                foregroundColor: Colors.black,
+                                foregroundColor: colors.baseBlack,
                                 child: Text('3', style: txtStyle),
                               ),
                             ),
@@ -147,7 +147,7 @@ class ScreenCalibration extends StatelessWidget {
                               customStep: CircleAvatar(
                                 radius: 22,
                                 backgroundColor: Colors.transparent,
-                                foregroundColor: Colors.black,
+                                foregroundColor: colors.baseBlack,
                                 child: Text('4', style: txtStyle),
                               ),
                             ),
@@ -198,7 +198,7 @@ class ScreenCalibration extends StatelessWidget {
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.1),
+                    color: colors.baseBlack.withValues(alpha: 0.1),
                     offset: Offset(0, 10),
                     blurRadius: 24,
                   ),
@@ -230,7 +230,7 @@ class ScreenCalibration extends StatelessWidget {
                   color: colors.baseWhite,
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.1),
+                      color: colors.baseBlack.withValues(alpha: 0.1),
                       offset: Offset(0, 2),
                       blurRadius: 30,
                     ),
@@ -241,7 +241,7 @@ class ScreenCalibration extends StatelessWidget {
                   children: [
                     Container(
                       height: 60.h,
-                      width: 60.h,
+                      width: 60.w,
                       decoration: BoxDecoration(
                         color: colors.slate.shade100,
                         shape: BoxShape.circle,
@@ -250,7 +250,7 @@ class ScreenCalibration extends StatelessWidget {
                         child: Image.asset(
                           "assets/images/dna.png",
                           height: 50.h,
-                          width: 50.h,
+                          width: 50.w,
                         ),
                       ),
                     ),

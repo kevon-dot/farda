@@ -1,3 +1,4 @@
+import 'package:farda/theme.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -18,11 +19,12 @@ class DoseCard extends StatelessWidget {
     // Convert the duration into a height (based on 1440 minutes in a full day or a 24-hour scale)
     final height = (duration / 1440.0) * 100.0; // height as a percentage of total available space (100%)
 
+    final colors = Theme.of(context).extension<FardaColors>()!;
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.blue.shade100,
+        color: colors.doseCardBlue,
         borderRadius: BorderRadius.circular(12),
       ),
       height: height, // Dynamic height based on the time difference
@@ -36,7 +38,8 @@ class DoseCard extends StatelessWidget {
           const SizedBox(height: 4),
           Text(
             '${dose['start_time']} - ${dose['end_time']}',
-            style: const TextStyle(color: Colors.black54),
+            // Matches Material's Colors.black54 (alpha 0x8A).
+            style: TextStyle(color: colors.baseBlack.withValues(alpha: 0x8A / 0xFF)),
           ),
         ],
       ),

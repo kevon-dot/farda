@@ -140,7 +140,7 @@ class _ScreenHomeState extends State<ScreenHome> {
         border: Border.all(color: colors.slate.shade200),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.06),
+            color: colors.baseBlack.withValues(alpha: 0.06),
             offset: Offset(0, 2),
             blurRadius: 24.r,
           ),
@@ -241,7 +241,7 @@ class _ScreenHomeState extends State<ScreenHome> {
         border: Border.all(color: colors.slate.shade200),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.06),
+            color: colors.baseBlack.withValues(alpha: 0.06),
             offset: Offset(0, 2),
             blurRadius: 24.r,
           ),

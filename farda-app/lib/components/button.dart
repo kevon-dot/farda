@@ -18,7 +18,7 @@ class ButtonPrimary extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final mergeStyle = TextStyle(
-      fontFamily: 'Outfit',
+      fontFamily: theme.textTheme.titleSmall?.fontFamily,
       fontWeight: FontWeight.w600,
       fontSize: 16.sp,
       color: theme.colorScheme.onPrimary,
@@ -55,7 +55,7 @@ class ButtonSecondary extends StatelessWidget {
     final theme = Theme.of(context);
     final colors = theme.extension<FardaColors>()!;
     final mergeStyle = TextStyle(
-      fontFamily: 'Outfit',
+      fontFamily: theme.textTheme.titleSmall?.fontFamily,
       fontWeight: FontWeight.w500,
       fontSize: 16.sp,
       color: theme.colorScheme.onSecondary,
@@ -101,7 +101,7 @@ class ButtonTertiary extends StatelessWidget {
     final theme = Theme.of(context);
     final colors = theme.extension<FardaColors>()!;
     final mergeStyle = TextStyle(
-      fontFamily: 'Outfit',
+      fontFamily: theme.textTheme.titleSmall?.fontFamily,
       fontWeight: FontWeight.w500,
       fontSize: 16.sp,
       color: colors.baseBlack,
@@ -157,10 +157,10 @@ class FeelingChip extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               Container(
-                width: 32.h,
-                height: 32.h,
-                decoration: const BoxDecoration(
-                  color: Colors.white,
+                width: 32.w,
+                height: 32.w,
+                decoration: BoxDecoration(
+                  color: colors.baseWhite,
                   shape: BoxShape.circle,
                 ),
                 alignment: Alignment.center,
@@ -168,7 +168,7 @@ class FeelingChip extends StatelessWidget {
                   text: count,
                   style: TextStyle(
                     fontWeight: FontWeight.w600,
-                    color: Colors.black,
+                    color: colors.baseBlack,
                   ),
                 ),
               ),
