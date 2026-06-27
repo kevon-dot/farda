@@ -15,7 +15,14 @@ module.exports = {
   },
 
   device: {
+    // Legacy shared key retained only so unrelated config consumers/tests don't
+    // break; it is NO LONGER used for ingestion auth (A3 replaced it with
+    // per-device HMAC). Do not reintroduce it on the ingestion path.
     apiKey: process.env.DEVICE_API_KEY || "our-device-api-key-change-this-in-production",
+    // Master key used to encrypt per-device secrets at rest (AES-256-GCM).
+    // Provide a 64-char hex string (32 bytes) in production. Never store this
+    // in the database. See utils/deviceCredentials.js.
+    secretEncKey: process.env.DEVICE_SECRET_ENC_KEY || "",
   },
 
   cors: {
@@ -30,6 +37,10 @@ module.exports = {
   },
 
   tymeSync: {
+    // NOTE: `toleranceSecons` is a historical misspelling kept for backward
+    // compatibility. `toleranceSeconds` is the correctly-spelled alias used by
+    // the A3 device-auth replay/freshness check; both read the same env var.
     toleranceSecons: parseInt(process.env.TYME_SYNC_TOLERANCE_SECONDS) || 300, // 5 minutes
+    toleranceSeconds: parseInt(process.env.TYME_SYNC_TOLERANCE_SECONDS) || 300, // 5 minutes
   },
 };
