@@ -36,8 +36,11 @@ class OtpVerifyController {
     if (!context.mounted) return;
 
     if (response) {
+      // Session token is now persisted; flip the cached auth flag so the
+      // router guard treats the user as authenticated.
+      AppRouter.authState.setAuthed(true);
       CustomSnackbar.show(
-        context, 
+        context,
         message: "OTP verified successfully."
       );
       context.go(CustomRoutePaths.dashboard);

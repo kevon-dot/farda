@@ -2,7 +2,6 @@ import 'package:farda/application/calender/model/dose_time_model.dart';
 import 'package:farda/components/note_dialog.dart';
 import 'package:farda/routes/routes.dart';
 import 'package:farda/screens/dashboard/calendar/calender_provider.dart';
-import 'package:farda/screens/emoji/screen_emoji.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
@@ -232,15 +231,12 @@ class _ScreenCalendarState extends State<ScreenCalendar> {
               ) : doseList.isNotEmpty && index != -1 // Check if the list is not empty and index is valid
                   ? InkWell(
                     onTap: (){
-                      //  showThoughtsDialog(context);
-                     
+                      // Mark which dose this emoji entry is for, then push the
+                      // emoji screen so it can be popped back to this calendar
+                      // (the shared CalenderProvider carries the selected dose).
                       data.selectDoes(doseList[index]);
-                 
 
-                      context.go(CustomRoutePaths.emoji);
-                     
-                    //  Navigator.push(context, MaterialPageRoute(builder: (_)=> ScreenEmoji())); 
-
+                      context.push(CustomRoutePaths.emoji);
                     },
                     child: buildDoseCard(doseList[index], time.format(context))) // Display DoseCard
                   :    buildEmptyDoseCard(), // Fallback for empty dose

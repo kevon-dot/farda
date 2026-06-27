@@ -1,7 +1,8 @@
 import 'package:farda/components/custom_snackbar.dart';
+import 'package:farda/routes/routes.dart';
 import 'package:farda/screens/login/login_provider.dart';
-import 'package:farda/screens/otp_verify/screen_otp_verify.dart';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 class LoginController {
@@ -29,10 +30,7 @@ class LoginController {
         context,
         message: "Your OTP has been sent to your phone.",
       );
-      Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => const ScreenOtpVerify()),
-      );
+      context.push(CustomRoutePaths.otpVerify);
     } else {
       CustomSnackbar.show(
         context,
