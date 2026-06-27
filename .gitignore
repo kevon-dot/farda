@@ -34,3 +34,6 @@ farda-app/.fvm/
 Thumbs.db
 .idea/
 *.iml
+
+# ---- Claude Code (local worktrees / session state) ----
+.claude/
