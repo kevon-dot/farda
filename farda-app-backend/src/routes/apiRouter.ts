@@ -1,16 +1,11 @@
 import Paths from "@src/common/constants/Paths";
 import { isAuthenticated } from "@src/middleware/isAuthenticated";
-import {
-	authRateLimiter,
-	maybeLimiter,
-	ocrRateLimiter,
-} from "@src/middleware/rateLimiters";
+import { maybeLimiter, ocrRateLimiter } from "@src/middleware/rateLimiters";
 import { requireAdmin } from "@src/middleware/requireAdmin";
 import { Router } from "express";
 import CaregiverRoutes from "./CaregiverRoutes";
 import DeviceUserRoutes from "./DeviceUserRoutes";
 import OcrRoutes from "./OcrRoutes";
-import PhoneAuthRoutes from "./PhoneAuthRoutes";
 import { createPrescription } from "./PrescriptionRoutes";
 import UserRoutes from "./UserRoutes";
 
@@ -20,29 +15,18 @@ import UserRoutes from "./UserRoutes";
 
 const apiRouter = Router();
 
-// ----------------------- Add AuthRouter --------------------------------- //
-// PUBLIC routes (OTP / social login). These are intentionally mounted WITHOUT
-// the authentication guard since they are used to obtain a session in the
-// first place. Everything else below is deny-by-default: each router applies
-// `isAuthenticated` at the top so no route is reachable without a valid
-// session.
-
-const authRouter = Router();
-
-// Rate limiting (issue #10): OTP request / verify / social login are
-// unauthenticated and SMS-cost / brute-force sensitive, so apply a strict
-// limiter (keyed by IP + phone number) at the mount point of each route.
-const authLimiter = maybeLimiter(authRateLimiter);
-
-authRouter.post(Paths.Auth.SendOTP, authLimiter, PhoneAuthRoutes.sendOTP);
-authRouter.post(Paths.Auth.VerifyOTP, authLimiter, PhoneAuthRoutes.verifyOTP);
-authRouter.post(
-	Paths.Auth.SocialLogin,
-	authLimiter,
-	PhoneAuthRoutes.socialLogin,
-);
-
-apiRouter.use(authRouter);
+// ----------------------- Auth routes (better-auth) ---------------------- //
+// PUBLIC auth routes (phone/OTP + session management) are now owned entirely by
+// better-auth, mounted as `toNodeHandler(auth)` on `/api/auth/*` in server.ts
+// (#7/#8/#9). better-auth is the single session/identity system, so the former
+// custom `/api/auth/send-otp|verify-otp|social-login` wrapper routes — a
+// parallel layer that re-implemented what better-auth already exposes — have
+// been removed to avoid two competing auth surfaces. The phone/OTP flow runs
+// through better-auth's native phoneNumber plugin endpoints.
+//
+// Everything below is deny-by-default: each router applies `isAuthenticated`
+// (which validates the session via `auth.api.getSession`) so no route is
+// reachable without a valid better-auth session.
 
 // ----------------------- Add UserRouter --------------------------------- //
 

@@ -3,10 +3,16 @@ import { parseCorsOrigins } from "@src/common/utils/http-security";
 import { prisma } from "@src/lib/prisma";
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
-import { phoneNumber } from "better-auth/plugins";
+import { bearer, phoneNumber } from "better-auth/plugins";
 import { sendSmsOTP, verifyTwilioOTP } from "./services/twilioService";
 
 export const auth = betterAuth({
+	// Secret used to sign/encrypt sessions and bearer tokens. Sourced from env
+	// only (#8) — never hardcoded. better-auth will throw at startup if this is
+	// missing in production, which is the desired fail-closed behavior.
+	secret: env.BETTER_AUTH_SECRET,
+	// Public base URL better-auth uses to build callback/issuer URLs (#9).
+	baseURL: env.BETTER_AUTH_URL,
 	// Align trusted origins with the CORS allowlist (#31) so better-auth accepts
 	// requests from the same set of explicitly allowed origins.
 	trustedOrigins: parseCorsOrigins(env.CORS_ORIGINS),
@@ -28,6 +34,10 @@ export const auth = betterAuth({
 		},
 	},
 	plugins: [
+		// Bearer-token sessions for the native/mobile client (#9). The mobile app
+		// authenticates with `Authorization: Bearer <token>` instead of cookies;
+		// this plugin makes better-auth issue and accept that token.
+		bearer(),
 		phoneNumber({
 			sendOTP: async ({ phoneNumber, code }, _) => {
 				// Send OTP via Twilio Verify

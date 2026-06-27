@@ -8,14 +8,16 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  * suite stays deterministic and CI-friendly (no Postgres / credentials).
  */
 
-// Mock prisma before importing the middleware under test. `vi.hoisted` lets us
-// reference the mock fn inside the hoisted `vi.mock` factory.
-const { sessionFindUnique } = vi.hoisted(() => ({
-	sessionFindUnique: vi.fn(),
+// Mock the better-auth instance before importing the middleware under test.
+// Sessions are now resolved via `auth.api.getSession` (not a raw prisma
+// lookup), so we mock that. `vi.hoisted` lets us reference the mock fn inside
+// the hoisted `vi.mock` factory.
+const { getSession } = vi.hoisted(() => ({
+	getSession: vi.fn(),
 }));
-vi.mock("@src/lib/prisma", () => ({
-	prisma: {
-		session: { findUnique: sessionFindUnique },
+vi.mock("@src/auth", () => ({
+	auth: {
+		api: { getSession },
 	},
 }));
 
@@ -44,10 +46,11 @@ function makeRes() {
 
 describe("isAuthenticated middleware", () => {
 	beforeEach(() => {
-		sessionFindUnique.mockReset();
+		getSession.mockReset();
 	});
 
-	it("returns 401 and does not call next() when no Authorization header", async () => {
+	it("returns 401 and does not call next() when better-auth yields no session", async () => {
+		getSession.mockResolvedValue(null);
 		const req = { headers: {} } as unknown as Request;
 		const res = makeRes();
 		const next = vi.fn() as unknown as NextFunction;
@@ -56,11 +59,10 @@ describe("isAuthenticated middleware", () => {
 
 		expect(res.statusCode).toBe(401);
 		expect(next).not.toHaveBeenCalled();
-		expect(sessionFindUnique).not.toHaveBeenCalled();
 	});
 
-	it("returns 401 and does not call next() when the bearer token has no session", async () => {
-		sessionFindUnique.mockResolvedValue(null);
+	it("returns 401 when the session has no user id", async () => {
+		getSession.mockResolvedValue({ session: {}, user: undefined });
 		const req = {
 			headers: { authorization: "Bearer bad-token" },
 		} as unknown as Request;
@@ -71,29 +73,28 @@ describe("isAuthenticated middleware", () => {
 
 		expect(res.statusCode).toBe(401);
 		expect(next).not.toHaveBeenCalled();
-		expect(sessionFindUnique).toHaveBeenCalledOnce();
+		expect(getSession).toHaveBeenCalledOnce();
 	});
 
-	it("returns 401 when the session is expired", async () => {
-		sessionFindUnique.mockResolvedValue({
-			expiresAt: new Date(Date.now() - 1000),
-			user: { id: "user-1" },
-		});
+	it("passes the request headers through to auth.api.getSession", async () => {
+		getSession.mockResolvedValue({ user: { id: "user-1" } });
 		const req = {
-			headers: { authorization: "Bearer expired" },
+			headers: { authorization: "Bearer good-token" },
 		} as unknown as Request;
 		const res = makeRes();
 		const next = vi.fn() as unknown as NextFunction;
 
 		await isAuthenticated(req, res, next);
 
-		expect(res.statusCode).toBe(401);
-		expect(next).not.toHaveBeenCalled();
+		expect(getSession).toHaveBeenCalledOnce();
+		const arg = getSession.mock.calls[0][0] as { headers: Headers };
+		// fromNodeHeaders converts the node header map into a Web Headers object.
+		expect(arg.headers.get("authorization")).toBe("Bearer good-token");
 	});
 
 	it("calls next() and attaches the session user id when the session is valid", async () => {
-		sessionFindUnique.mockResolvedValue({
-			expiresAt: new Date(Date.now() + 60_000),
+		getSession.mockResolvedValue({
+			session: { expiresAt: new Date(Date.now() + 60_000) },
 			user: { id: "user-1" },
 		});
 		const req = {
@@ -107,6 +108,26 @@ describe("isAuthenticated middleware", () => {
 		expect(next).toHaveBeenCalledOnce();
 		expect(res.status).not.toHaveBeenCalled();
 		expect(req.user).toEqual({ id: "user-1" });
+	});
+});
+
+describe("BETTER_AUTH_SECRET env", () => {
+	it("is read from the environment (not a hardcoded constant)", async () => {
+		vi.resetModules();
+		const SENTINEL = "test-secret-from-env-1234567890";
+		const prev = process.env.BETTER_AUTH_SECRET;
+		process.env.BETTER_AUTH_SECRET = SENTINEL;
+		try {
+			const { default: env } = await import("@src/common/constants/env");
+			expect(env.BETTER_AUTH_SECRET).toBe(SENTINEL);
+		} finally {
+			if (prev === undefined) {
+				delete process.env.BETTER_AUTH_SECRET;
+			} else {
+				process.env.BETTER_AUTH_SECRET = prev;
+			}
+			vi.resetModules();
+		}
 	});
 });
 

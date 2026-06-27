@@ -22,6 +22,11 @@ export interface EnvConfig {
 	DISABLE_HELMET?: boolean;
 	CORS_ORIGINS?: string;
 	OPENAI_API_KEY?: string;
+	// better-auth (#7/#8/#9). Secret used to sign/encrypt sessions & tokens —
+	// MUST come from env, never hardcoded. BETTER_AUTH_URL is the public base URL
+	// better-auth uses to build callback/issuer URLs.
+	BETTER_AUTH_SECRET?: string;
+	BETTER_AUTH_URL?: string;
 	GOOGLE_CLIENT_ID?: string;
 	GOOGLE_CLIENT_SECRET?: string;
 	APPLE_CLIENT_ID?: string;
@@ -55,6 +60,10 @@ const TWILIO_VERIFY_SERVICE_SID = process.env.TWILIO_VERIFY_SERVICE_SID;
 const DISABLE_HELMET = process.env.DISABLE_HELMET == "true";
 const CORS_ORIGINS = process.env.CORS_ORIGINS;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+
+// better-auth (#7/#8/#9). Read from env only — never hardcode a secret.
+const BETTER_AUTH_SECRET = process.env.BETTER_AUTH_SECRET;
+const BETTER_AUTH_URL = process.env.BETTER_AUTH_URL;
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
@@ -98,6 +107,8 @@ const env: EnvConfig = {
 	DISABLE_HELMET,
 	CORS_ORIGINS,
 	OPENAI_API_KEY,
+	BETTER_AUTH_SECRET,
+	BETTER_AUTH_URL,
 	GOOGLE_CLIENT_ID,
 	GOOGLE_CLIENT_SECRET,
 	APPLE_CLIENT_ID,
