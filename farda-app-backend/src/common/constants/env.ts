@@ -20,6 +20,7 @@ export interface EnvConfig {
 	TWILIO_PHONE_NUMBER?: string;
 	TWILIO_VERIFY_SERVICE_SID?: string;
 	DISABLE_HELMET?: boolean;
+	CORS_ORIGINS?: string;
 	OPENAI_API_KEY?: string;
 	GOOGLE_CLIENT_ID?: string;
 	GOOGLE_CLIENT_SECRET?: string;
@@ -45,6 +46,7 @@ const TWILIO_PHONE_NUMBER = process.env.TWILIO_PHONE_NUMBER;
 const TWILIO_VERIFY_SERVICE_SID = process.env.TWILIO_VERIFY_SERVICE_SID;
 // biome-ignore lint/suspicious/noDoubleEquals: <String Boolean>
 const DISABLE_HELMET = process.env.DISABLE_HELMET == "true";
+const CORS_ORIGINS = process.env.CORS_ORIGINS;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
@@ -66,6 +68,7 @@ const env: EnvConfig = {
 	TWILIO_PHONE_NUMBER,
 	TWILIO_VERIFY_SERVICE_SID,
 	DISABLE_HELMET,
+	CORS_ORIGINS,
 	OPENAI_API_KEY,
 	GOOGLE_CLIENT_ID,
 	GOOGLE_CLIENT_SECRET,

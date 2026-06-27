@@ -1,14 +1,12 @@
 import path from "node:path";
-import HttpStatusCodes from "@src/common/constants/HttpStatusCodes";
-import { RouteError } from "@src/common/utils/route-errors";
+import {
+	createCorsMiddleware,
+	errorHandler,
+	parseCorsOrigins,
+} from "@src/common/utils/http-security";
 import BaseRouter from "@src/routes/apiRouter";
-import express, {
-	type NextFunction,
-	type Request,
-	type Response,
-} from "express";
+import express, { type Request, type Response } from "express";
 import helmet from "helmet";
-import logger from "jet-logger";
 import morgan from "morgan";
 import env from "./common/constants/env";
 import Paths from "./common/constants/Paths";
@@ -21,6 +19,16 @@ const app = express();
 
 // **** Middleware **** //
 
+// Security headers — applied in ALL environments (#31). The previous
+// `NODE_ENV === 'production' && !DISABLE_HELMET` gating meant helmet never ran,
+// because the production env file set DISABLE_HELMET=TRUE.
+app.use(helmet());
+
+// CORS allowlist (#31). Env-driven via CORS_ORIGINS (comma-separated). No
+// wildcard is ever emitted, so authenticated/credentialed routes stay safe;
+// only explicitly allowed origins are reflected. Registered BEFORE routes.
+app.use(createCorsMiddleware(parseCorsOrigins(env.CORS_ORIGINS)));
+
 // Basic middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -30,29 +38,8 @@ if (env.NODE_ENV === "development") {
 	app.use(morgan("dev"));
 }
 
-// Security
-if (env.NODE_ENV === "production") {
-	// eslint-disable-next-line no-process-env
-	if (!env.DISABLE_HELMET) {
-		app.use(helmet());
-	}
-}
-
 // Add APIs, must be after middleware
 app.use(Paths._, BaseRouter);
-
-// Add error handler
-app.use((err: Error, _: Request, res: Response, next: NextFunction) => {
-	if (env.NODE_ENV !== "development") {
-		logger.err(err, true);
-	}
-	let status: HttpStatusCodes = HttpStatusCodes.BAD_REQUEST;
-	if (err instanceof RouteError) {
-		status = err.status;
-		res.status(status).json({ error: err.message });
-	}
-	return next(err);
-});
 
 // **** FrontEnd Content **** //
 
@@ -73,6 +60,13 @@ app.get("/", (_: Request, res: Response) => {
 app.get("/users", (_: Request, res: Response) => {
 	return res.sendFile("users.html", { root: viewsDir });
 });
+
+// **** Error handler **** //
+
+// Global error handler — MUST be registered LAST, after all routes (#15/#32).
+// Returns clean structured JSON with the correct status for known RouteErrors,
+// and a generic sanitized 500 (no message/stack) for unexpected errors.
+app.use(errorHandler);
 
 /******************************************************************************
                                 Export default
