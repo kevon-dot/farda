@@ -17,6 +17,7 @@ class PrescriptionProvider extends ChangeNotifier {
   TextEditingController prescriptionNumberController = TextEditingController();
   TextEditingController storeNumberController = TextEditingController();
   TextEditingController pillQtyController = TextEditingController();
+  TextEditingController dobController = TextEditingController();
 
   List<File> images = [];
 
@@ -74,12 +75,17 @@ Future<void> getExtractPrescriptionApi(List<File> files) async {
               : '';
 
       if (prescriptionModel.medicinesNames != null && prescriptionModel.medicinesNames!.isNotEmpty) {
-        pillQtyController.text = 
+        pillQtyController.text =
             prescriptionModel.medicinesNames!.first.qty?.toString() ?? '';
       } else {
         pillQtyController.text = '';
       }
-      
+
+      dobController.text =
+          (prescriptionModel.dob != null && prescriptionModel.dob != 'none')
+              ? prescriptionModel.dob.toString()
+              : '';
+
       notifyListeners();
     } else {
       // Clear images to revert to the scan UI if API fails completely
@@ -96,11 +102,45 @@ Future<void> getExtractPrescriptionApi(List<File> files) async {
   }
 }
 
+  /// Merge the current text-field values back into [prescriptionModel] so that
+  /// manual edits override/augment the OCR-extracted data on save. The
+  /// controllers are treated as the source of truth here; empty fields fall
+  /// back to whatever the model already holds.
+  void syncControllersToModel() {
+    final rx = prescriptionNumberController.text.trim();
+    if (rx.isNotEmpty) {
+      prescriptionModel.rxNumber = rx;
+    }
+
+    final store = storeNumberController.text.trim();
+    if (store.isNotEmpty) {
+      prescriptionModel.storeNumber = store;
+    }
+
+    final dob = dobController.text.trim();
+    if (dob.isNotEmpty) {
+      prescriptionModel.dob = dob;
+    }
+
+    final pillQty = pillQtyController.text.trim();
+    if (pillQty.isNotEmpty) {
+      final medicines = prescriptionModel.medicinesNames;
+      if (medicines != null && medicines.isNotEmpty) {
+        medicines.first.qty = pillQty;
+      } else {
+        prescriptionModel.medicinesNames = [MedicinesNames(qty: pillQty)];
+      }
+    }
+  }
+
   //
   Future<bool> submitPrescriptionApi() async {
   try {
     isSaving = true;
     notifyListeners();
+    // Pull the latest manual edits from the form controllers into the model
+    // before serializing, so user edits are not dropped from the payload.
+    syncControllersToModel();
     final int? response = await PrecriptionRepo().submitPrescription(prescriptionModel);
     if (response == 201 || response == 200) {
       return true;
