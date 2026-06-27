@@ -7,9 +7,21 @@
  * device/adherence data.
  *
  * These helpers make the authorization decision depend ONLY on a trusted
- * server-side grant: the device owner (patient) explicitly assigned a caregiver
- * to a device, recorded on `device.caregiver_id` (and mirrored to a
+ * server-side grant: the device owner (patient) explicitly invited a caregiver
+ * to a device AND the caregiver explicitly accepted that invite. The accepted
+ * relationship is recorded on `device.caregiver_id` (mirrored from an ACCEPTED
  * CaregiverGrant record). The caller's asserted role is never consulted.
+ *
+ * GTM-507-followup — two-sided consent state machine:
+ *   (none) --invite(owner)--> pending --accept(caregiver)--> accepted
+ *                                 |                              |
+ *                                 +--------revoke(owner|cg)------+--> revoked
+ *
+ *   - A `pending` invite grants NOTHING: the caregiver has no access until they
+ *     accept. `device.caregiver_id` is set ONLY once the grant is `accepted`.
+ *   - `revoked` is terminal and cuts access (and clears `device.caregiver_id`).
+ *   - Only the invited caregiver may accept. The owner OR the caregiver may
+ *     revoke. Illegal transitions (e.g. accept on a revoked grant) are rejected.
  *
  * All functions are pure (no DB, no req) so they can be unit-tested without a
  * live MongoDB and reused by every caregiver-scoped handler.
@@ -65,13 +77,76 @@ function isDeviceOwner({ ownerUserId, device } = {}) {
 }
 
 // Grant lifecycle states for the CaregiverGrant relationship/consent record.
+//   pending  — owner invited a caregiver; consent not yet given; grants NOTHING.
+//   accepted — caregiver consented; the relationship authorizes reads.
+//   revoked  — terminal; access cut by owner or caregiver.
 const GRANT_STATUS = Object.freeze({
+  PENDING: 'pending',
   ACCEPTED: 'accepted',
   REVOKED: 'revoked',
 });
 
+/**
+ * Decide whether `actorUserId` may ACCEPT `grant`. Two-sided consent: only the
+ * invited CAREGIVER may accept, and only while the grant is still `pending`.
+ * Accepting an already-accepted or revoked grant is an illegal transition.
+ *
+ * @param {Object} params
+ * @param {string} params.actorUserId  authenticated caller id
+ * @param {{caregiverUserId: ?string, status: ?string}|null} params.grant
+ * @returns {{ok: boolean, reason?: string}}
+ */
+function canAcceptGrant({ actorUserId, grant } = {}) {
+  if (!actorUserId || typeof actorUserId !== 'string') {
+    return { ok: false, reason: 'invalid_actor' };
+  }
+  if (!grant || typeof grant !== 'object') {
+    return { ok: false, reason: 'not_found' };
+  }
+  if (grant.status !== GRANT_STATUS.PENDING) {
+    // accepted (already consented) or revoked (terminal) — no transition.
+    return { ok: false, reason: 'illegal_transition' };
+  }
+  if (grant.caregiverUserId !== actorUserId) {
+    // Only the invited caregiver consents on their own behalf.
+    return { ok: false, reason: 'forbidden' };
+  }
+  return { ok: true };
+}
+
+/**
+ * Decide whether `actorUserId` may REVOKE `grant`. Either the patient/owner who
+ * extended the invite OR the caregiver themselves may revoke. Revoking is valid
+ * from `pending` (withdraw/decline the invite) or `accepted` (end access).
+ * Revoking an already-revoked grant is an illegal (no-op) transition.
+ *
+ * @param {Object} params
+ * @param {string} params.actorUserId  authenticated caller id
+ * @param {{patientUserId: ?string, caregiverUserId: ?string, status: ?string}|null} params.grant
+ * @returns {{ok: boolean, reason?: string}}
+ */
+function canRevokeGrant({ actorUserId, grant } = {}) {
+  if (!actorUserId || typeof actorUserId !== 'string') {
+    return { ok: false, reason: 'invalid_actor' };
+  }
+  if (!grant || typeof grant !== 'object') {
+    return { ok: false, reason: 'not_found' };
+  }
+  if (grant.status === GRANT_STATUS.REVOKED) {
+    return { ok: false, reason: 'illegal_transition' };
+  }
+  const isOwner = grant.patientUserId === actorUserId;
+  const isCaregiver = grant.caregiverUserId === actorUserId;
+  if (!isOwner && !isCaregiver) {
+    return { ok: false, reason: 'forbidden' };
+  }
+  return { ok: true };
+}
+
 module.exports = {
   isCaregiverAuthorizedForDevice,
   isDeviceOwner,
+  canAcceptGrant,
+  canRevokeGrant,
   GRANT_STATUS,
 };

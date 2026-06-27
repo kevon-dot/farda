@@ -9,6 +9,8 @@ const CaregiverGrant = require('../models/CaregiverGrant');
 const {
     isCaregiverAuthorizedForDevice,
     isDeviceOwner,
+    canAcceptGrant,
+    canRevokeGrant,
     GRANT_STATUS,
 } = require('../utils/caregiverAuthorization');
 
@@ -36,7 +38,15 @@ const authorizeCaregiverDevice = async (device_id, caregiver_id) => {
     return { device };
 };
 
-// Claim a device for caregiver - device owner assigns a caregiver
+// Invite a caregiver to a device — device OWNER (patient) only.
+//
+// TWO-SIDED CONSENT: this creates a `pending` grant ONLY. The caregiver gets NO
+// access until they explicitly accept (POST /grants/:id/accept). The device's
+// `caregiver_id` is deliberately NOT set here — it is mirrored only once the
+// caregiver accepts, so a pending invite never authorizes a read.
+//
+// (Route is kept as POST /claim-device for backwards compatibility; it now
+// performs an invite, not an immediate grant.)
 const claimDeviceForCaregiver = async (req, res) => {
     try {
         const { device_id, caregiver_id } = req.body;
@@ -51,7 +61,7 @@ const claimDeviceForCaregiver = async (req, res) => {
             return res.status(400).json({ error: 'device_id and caregiver_id must be strings' });
         }
 
-        // A user cannot make themselves the caregiver of their own device.
+        // A user cannot invite themselves as the caregiver of their own device.
         if (caregiver_id === user_id) {
             return res.status(400).json({ error: 'Cannot assign yourself as caregiver' });
         }
@@ -62,7 +72,7 @@ const claimDeviceForCaregiver = async (req, res) => {
             return res.status(404).json({ error: 'Device not found' });
         }
 
-        // SERVER-AUTHORITATIVE: only the trusted owner of the device may grant a
+        // SERVER-AUTHORITATIVE: only the trusted owner of the device may invite a
         // caregiver. The caller cannot grant access to a device they don't own.
         if (!isDeviceOwner({ ownerUserId: user_id, device })) {
             return res.status(403).json({ error: 'Access denied: Only device owner can assign caregivers' });
@@ -70,7 +80,8 @@ const claimDeviceForCaregiver = async (req, res) => {
 
         // Ensure the caregiver user record exists (without trusting any
         // client-supplied role: we set the role here, server-side, as part of an
-        // owner-authorized grant — not because the caregiver asked for it).
+        // owner-authorized invite — not because the caregiver asked for it). Note
+        // the caregiver still gets NO device access until they accept.
         let caregiver = await User.findOne({ user_id: caregiver_id });
         if (!caregiver) {
             caregiver = new User({
@@ -82,42 +93,222 @@ const claimDeviceForCaregiver = async (req, res) => {
         } else if (!caregiver.user_roles.includes('caregiver')) {
             caregiver.user_roles.push('caregiver');
         }
-
-        // Assign caregiver to device (the owner-granted relationship).
-        device.caregiver_id = caregiver_id;
-        await device.save();
-
-        if (!caregiver.caregiving_device_ids.includes(device_id)) {
-            caregiver.caregiving_device_ids.push(device_id);
-        }
         caregiver.lastLogin = new Date();
         await caregiver.save();
 
-        // Record/refresh the auditable consent grant (server-authoritative).
-        await CaregiverGrant.findOneAndUpdate(
+        // Re-invite handling: if there's already an ACCEPTED grant for this
+        // (device, caregiver), the relationship is live — nothing to re-invite.
+        const existing = await CaregiverGrant.findOne({
+            deviceId: device_id,
+            caregiverUserId: caregiver_id,
+        });
+        if (existing && existing.status === GRANT_STATUS.ACCEPTED) {
+            return res.status(200).json({
+                status: 'Caregiver already has access to this device',
+                grant: serializeGrant(existing),
+            });
+        }
+
+        // Create or re-open the invite as a fresh `pending` grant (this also
+        // re-invites a previously revoked or still-pending relationship). The
+        // unique (deviceId, caregiverUserId) index keeps it to one record.
+        const now = new Date();
+        const grant = await CaregiverGrant.findOneAndUpdate(
             { deviceId: device_id, caregiverUserId: caregiver_id },
             {
                 deviceId: device_id,
                 caregiverUserId: caregiver_id,
                 patientUserId: user_id,
-                status: GRANT_STATUS.ACCEPTED,
-                grantedAt: new Date(),
+                status: GRANT_STATUS.PENDING,
+                invitedBy: user_id,
+                invitedAt: now,
+                // Reset prior consent/audit fields on a fresh invite.
+                acceptedAt: null,
+                acceptedBy: null,
+                grantedAt: null,
                 revokedAt: null,
+                revokedBy: null,
             },
             { upsert: true, new: true, setDefaultsOnInsert: true }
         );
 
+        // TODO(GTM-537): fire a notification to the invited caregiver here so
+        // they know a patient has requested they accept a caregiving invite.
+
         res.status(200).json({
-            status: 'Caregiver assigned successfully',
+            status: 'Caregiver invited successfully; awaiting caregiver acceptance',
+            grant: serializeGrant(grant),
             device: {
                 device_id: device.device_id,
                 device_name: device.device_name,
-                caregiver_id: device.caregiver_id
-            }
+                // Intentionally still null/unchanged: access is not granted until
+                // the caregiver accepts.
+                caregiver_id: device.caregiver_id,
+            },
         });
     } catch (err) {
-        console.error('Error assigning caregiver:', err.message);
-        res.status(500).json({ error: 'Server error assigning caregiver' });
+        console.error('Error inviting caregiver:', err.message);
+        res.status(500).json({ error: 'Server error inviting caregiver' });
+    }
+};
+
+// Lightweight, PHI-free serialization of a grant for API responses.
+const serializeGrant = (grant) => {
+    if (!grant) return null;
+    return {
+        id: grant._id ? String(grant._id) : grant.id || null,
+        device_id: grant.deviceId,
+        patient_user_id: grant.patientUserId,
+        caregiver_user_id: grant.caregiverUserId,
+        status: grant.status,
+        invited_at: grant.invitedAt || null,
+        invited_by: grant.invitedBy || null,
+        accepted_at: grant.acceptedAt || null,
+        accepted_by: grant.acceptedBy || null,
+        revoked_at: grant.revokedAt || null,
+        revoked_by: grant.revokedBy || null,
+    };
+};
+
+// Accept a pending caregiver invite — the INVITED CAREGIVER only.
+// TWO-SIDED CONSENT: this is the explicit consent step. Moves `pending →
+// accepted` and ONLY THEN mirrors the relationship onto `device.caregiver_id`
+// (and the caregiver's caregiving_device_ids) so reads become authorized.
+const acceptCaregiverGrant = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const user_id = req.user_id;
+
+        if (!id || typeof id !== 'string') {
+            return res.status(400).json({ error: 'grant id is required' });
+        }
+
+        const grant = await CaregiverGrant.findById(id);
+        if (!grant) {
+            return res.status(404).json({ error: 'Grant not found' });
+        }
+
+        // State machine + authorization: only the invited caregiver may accept,
+        // and only from `pending`. Rejects illegal transitions (already accepted,
+        // revoked) and any other caller.
+        const decision = canAcceptGrant({ actorUserId: user_id, grant });
+        if (!decision.ok) {
+            if (decision.reason === 'forbidden' || decision.reason === 'invalid_actor') {
+                return res.status(403).json({ error: 'Access denied: only the invited caregiver can accept this invite' });
+            }
+            if (decision.reason === 'illegal_transition') {
+                return res.status(409).json({ error: `Cannot accept a grant in status '${grant.status}'` });
+            }
+            return res.status(404).json({ error: 'Grant not found' });
+        }
+
+        // Confirm the device still exists and is owned by the inviting patient.
+        const device = await Device.findOne({ device_id: grant.deviceId });
+        if (!device) {
+            return res.status(404).json({ error: 'Device not found' });
+        }
+
+        const now = new Date();
+        grant.status = GRANT_STATUS.ACCEPTED;
+        grant.acceptedAt = now;
+        grant.acceptedBy = user_id;
+        grant.grantedAt = now; // legacy/compat field
+        await grant.save();
+
+        // ONLY NOW is the relationship mirrored onto the device — this is what
+        // makes isCaregiverAuthorizedForDevice return true for this caregiver.
+        device.caregiver_id = grant.caregiverUserId;
+        await device.save();
+
+        const caregiver = await User.findOne({ user_id: grant.caregiverUserId });
+        if (caregiver) {
+            if (!Array.isArray(caregiver.caregiving_device_ids)) {
+                caregiver.caregiving_device_ids = [];
+            }
+            if (!caregiver.caregiving_device_ids.includes(grant.deviceId)) {
+                caregiver.caregiving_device_ids.push(grant.deviceId);
+            }
+            await caregiver.save();
+        }
+
+        // TODO(GTM-537): notify the patient/owner that the caregiver accepted.
+
+        res.status(200).json({
+            status: 'Caregiver invite accepted; access granted',
+            grant: serializeGrant(grant),
+        });
+    } catch (err) {
+        console.error('Error accepting caregiver grant:', err.message);
+        res.status(500).json({ error: 'Server error accepting caregiver grant' });
+    }
+};
+
+// Revoke a caregiver grant — the OWNER (patient) OR the CAREGIVER themselves.
+// Valid from `pending` (decline/withdraw the invite) or `accepted` (end access).
+// Moves `* → revoked` (terminal) and clears `device.caregiver_id` so any later
+// read is immediately denied.
+const revokeCaregiverGrant = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const user_id = req.user_id;
+
+        if (!id || typeof id !== 'string') {
+            return res.status(400).json({ error: 'grant id is required' });
+        }
+
+        const grant = await CaregiverGrant.findById(id);
+        if (!grant) {
+            return res.status(404).json({ error: 'Grant not found' });
+        }
+
+        // State machine + authorization: owner OR caregiver may revoke, but not
+        // an already-revoked (terminal) grant, and not an unrelated caller.
+        const decision = canRevokeGrant({ actorUserId: user_id, grant });
+        if (!decision.ok) {
+            if (decision.reason === 'forbidden' || decision.reason === 'invalid_actor') {
+                return res.status(403).json({ error: 'Access denied: only the patient or caregiver can revoke this grant' });
+            }
+            if (decision.reason === 'illegal_transition') {
+                return res.status(409).json({ error: `Cannot revoke a grant in status '${grant.status}'` });
+            }
+            return res.status(404).json({ error: 'Grant not found' });
+        }
+
+        const wasAccepted = grant.status === GRANT_STATUS.ACCEPTED;
+
+        grant.status = GRANT_STATUS.REVOKED;
+        grant.revokedAt = new Date();
+        grant.revokedBy = user_id;
+        await grant.save();
+
+        // If this grant was the live relationship, cut access by clearing the
+        // device mirror and the caregiver's device list.
+        if (wasAccepted) {
+            const device = await Device.findOne({ device_id: grant.deviceId });
+            if (device && device.caregiver_id === grant.caregiverUserId) {
+                device.caregiver_id = null;
+                await device.save();
+            }
+
+            const caregiver = await User.findOne({ user_id: grant.caregiverUserId });
+            if (caregiver && Array.isArray(caregiver.caregiving_device_ids)) {
+                const idx = caregiver.caregiving_device_ids.indexOf(grant.deviceId);
+                if (idx > -1) {
+                    caregiver.caregiving_device_ids.splice(idx, 1);
+                    await caregiver.save();
+                }
+            }
+        }
+
+        // TODO(GTM-537): notify the other party that the grant was revoked.
+
+        res.status(200).json({
+            status: 'Caregiver grant revoked',
+            grant: serializeGrant(grant),
+        });
+    } catch (err) {
+        console.error('Error revoking caregiver grant:', err.message);
+        res.status(500).json({ error: 'Server error revoking caregiver grant' });
     }
 };
 
@@ -331,6 +522,8 @@ const filterEventsByDateRange = async (req, res) => {
 module.exports = {
     authorizeCaregiverDevice,
     claimDeviceForCaregiver,
+    acceptCaregiverGrant,
+    revokeCaregiverGrant,
     getCaregiver_A_device_summery,
     getAllCaregiverDevices,
     searchDeviceById,

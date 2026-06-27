@@ -350,9 +350,30 @@ Authorization: Bearer <token>
 
 Base path: `/api/caregiver`
 
-### Assign Caregiver to Device
+### Two-sided caregiver consent
 
-Device owner assigns a caregiver to their device.
+Caregiver access uses an explicit two-sided consent state machine. A caregiver
+gets **no access** until they accept an invite from the device owner (patient):
+
+```
+(none) --invite(owner)--> pending --accept(caregiver)--> accepted
+                              |                              |
+                              +--------revoke(owner|cg)------+--> revoked
+```
+
+- **Owner invites** the caregiver → creates a `pending` grant. The caregiver has
+  no access while pending; `device.caregiver_id` is NOT set yet.
+- **The invited caregiver accepts** → `pending → accepted`; only now is access
+  granted (the relationship is mirrored to `device.caregiver_id`).
+- **Owner OR caregiver revokes** → `* → revoked` (terminal); access is cut.
+
+Each grant carries a PHI-free consent audit: `invitedBy/invitedAt`,
+`acceptedBy/acceptedAt`, `revokedBy/revokedAt`.
+
+### Invite Caregiver to Device
+
+Device owner (patient) invites a caregiver. Creates a **pending** grant — the
+caregiver gets no access until they accept.
 
 **Endpoint**: `POST /api/caregiver/claim-device`
 
@@ -373,18 +394,82 @@ Content-Type: application/json
 **Response** (200 OK):
 ```json
 {
-  "status": "Caregiver assigned successfully",
+  "status": "Caregiver invited successfully; awaiting caregiver acceptance",
+  "grant": {
+    "id": "65fa...",
+    "device_id": "DEVICE001",
+    "patient_user_id": "65abc...",
+    "caregiver_user_id": "65def456abc123789",
+    "status": "pending",
+    "invited_at": "2026-06-27T10:00:00.000Z",
+    "invited_by": "65abc..."
+  },
   "device": {
     "device_id": "DEVICE001",
     "device_name": "Smart Vial Device",
-    "caregiver_id": "65def456abc123789"
+    "caregiver_id": null
   }
 }
 ```
 
 **Errors**:
 - `403` - User is not device owner
-- `404` - Caregiver not found
+- `404` - Device not found
+
+---
+
+### Accept Caregiver Invite
+
+The **invited caregiver** explicitly accepts a pending invite. Moves
+`pending → accepted` and grants access.
+
+**Endpoint**: `POST /api/caregiver/grants/:id/accept`
+
+**Headers**:
+```http
+Authorization: Bearer <caregiver_token>
+```
+
+**Response** (200 OK):
+```json
+{
+  "status": "Caregiver invite accepted; access granted",
+  "grant": { "id": "65fa...", "status": "accepted", "accepted_by": "65def...", "accepted_at": "2026-06-27T10:05:00.000Z" }
+}
+```
+
+**Errors**:
+- `403` - Caller is not the invited caregiver
+- `404` - Grant not found
+- `409` - Illegal transition (e.g. grant is not `pending`)
+
+---
+
+### Revoke Caregiver Grant
+
+The **owner (patient) OR the caregiver** revokes a grant. Valid from `pending`
+(decline/withdraw) or `accepted` (end access). Moves `* → revoked` and cuts
+access.
+
+**Endpoint**: `POST /api/caregiver/grants/:id/revoke`
+
+**Headers**:
+```http
+Authorization: Bearer <user_or_caregiver_token>
+```
+
+**Response** (200 OK):
+```json
+{
+  "status": "Caregiver grant revoked",
+  "grant": { "id": "65fa...", "status": "revoked", "revoked_by": "65abc...", "revoked_at": "2026-06-27T11:00:00.000Z" }
+}
+```
+
+**Errors**:
+- `403` - Caller is neither the patient nor the caregiver
+- `404` - Grant not found
+- `409` - Illegal transition (grant already `revoked`)
 
 ---
 

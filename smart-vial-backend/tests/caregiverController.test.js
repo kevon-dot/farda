@@ -41,6 +41,10 @@ function withStubbedController(seed, run) {
   }));
   const users = new Map((seed.users || []).map((u) => [u.user_id, u]));
   const grantWrites = [];
+  // In-memory grant store keyed by _id, seeded for accept/revoke tests.
+  const grants = new Map(
+    (seed.grants || []).map((g) => [String(g._id), g])
+  );
 
   function stub(path, exports) {
     const m = new Module(path, module);
@@ -79,15 +83,39 @@ function withStubbedController(seed, run) {
   stub(grantPath, {
     findOneAndUpdate: async (filter, update) => {
       grantWrites.push(update);
-      return update;
+      // Return a doc-like with save() so handlers that re-persist still work,
+      // and stash it in the store so a later findById can retrieve it.
+      const doc = {
+        _id: `grant_${grantWrites.length}`,
+        ...update,
+        save: async function () {
+          grants.set(String(this._id), this);
+          return this;
+        },
+      };
+      grants.set(String(doc._id), doc);
+      return doc;
     },
+    findOne: async (q) => {
+      for (const g of grants.values()) {
+        if (
+          (q.deviceId === undefined || g.deviceId === q.deviceId) &&
+          (q.caregiverUserId === undefined ||
+            g.caregiverUserId === q.caregiverUserId)
+        ) {
+          return g;
+        }
+      }
+      return null;
+    },
+    findById: async (id) => grants.get(String(id)) || null,
     updateMany: async () => ({}),
   });
 
   delete require.cache[ctrlPath];
   const controller = require(ctrlPath);
 
-  return Promise.resolve(run({ controller, devices, users, grantWrites })).finally(() => {
+  return Promise.resolve(run({ controller, devices, users, grantWrites, grants })).finally(() => {
     for (const p of paths) {
       if (saved[p]) require.cache[p] = saved[p];
       else delete require.cache[p];
@@ -195,25 +223,234 @@ test("claim endpoint: non-owner cannot grant a caregiver (403)", async () => {
   );
 });
 
-test("claim endpoint: owner grants caregiver and an accepted grant is recorded", async () => {
+test("invite endpoint: owner invites caregiver and a PENDING grant is recorded (no access yet)", async () => {
   await withStubbedController(
     {
       devices: [{ device_id: "D1", user_id: "owner_1", caregiver_id: null, isActive: true, save: async function () {} }],
       users: [],
     },
     async ({ controller, devices, grantWrites }) => {
-      // Give the seeded device a save() since the handler persists it.
-      devices[0].save = async function () {};
       const res = makeRes();
       await controller.claimDeviceForCaregiver(
         { body: { device_id: "D1", caregiver_id: "cg_1" }, user_id: "owner_1" },
         res
       );
       assert.strictEqual(res.statusCode, 200);
-      assert.strictEqual(devices[0].caregiver_id, "cg_1");
+      // Two-sided consent: device.caregiver_id is NOT set on invite.
+      assert.strictEqual(devices[0].caregiver_id, null);
       assert.strictEqual(grantWrites.length, 1);
-      assert.strictEqual(grantWrites[0].status, "accepted");
+      assert.strictEqual(grantWrites[0].status, "pending");
       assert.strictEqual(grantWrites[0].patientUserId, "owner_1");
+      assert.strictEqual(grantWrites[0].invitedBy, "owner_1");
+    }
+  );
+});
+
+test("invite endpoint: re-inviting an already-accepted relationship is a sane no-op (200, stays accepted)", async () => {
+  await withStubbedController(
+    {
+      devices: [{ device_id: "D1", user_id: "owner_1", caregiver_id: "cg_1", isActive: true, save: async function () {} }],
+      grants: [
+        {
+          _id: "g_live",
+          deviceId: "D1",
+          patientUserId: "owner_1",
+          caregiverUserId: "cg_1",
+          status: "accepted",
+          save: async function () {},
+        },
+      ],
+    },
+    async ({ controller, grantWrites }) => {
+      const res = makeRes();
+      await controller.claimDeviceForCaregiver(
+        { body: { device_id: "D1", caregiver_id: "cg_1" }, user_id: "owner_1" },
+        res
+      );
+      assert.strictEqual(res.statusCode, 200);
+      // No new pending invite was written over the live grant.
+      assert.strictEqual(grantWrites.length, 0);
+      assert.strictEqual(res.body.grant.status, "accepted");
+    }
+  );
+});
+
+// ============================================
+// Two-sided consent — pending authorizes nothing; accept grants; revoke cuts.
+// ============================================
+
+test("pending grant authorizes NOTHING: caregiver read is denied (403) before acceptance", async () => {
+  await withStubbedController(
+    {
+      // Owner invited cg_1 but device.caregiver_id is still null (pending).
+      devices: [{ device_id: "D1", user_id: "owner_1", caregiver_id: null, isActive: true }],
+      grants: [
+        {
+          _id: "g1",
+          deviceId: "D1",
+          patientUserId: "owner_1",
+          caregiverUserId: "cg_1",
+          status: "pending",
+        },
+      ],
+    },
+    async ({ controller }) => {
+      const res = makeRes();
+      await controller.getCaregiver_A_device_summery(
+        { params: { device_id: "D1" }, user_id: "cg_1" },
+        res
+      );
+      assert.strictEqual(res.statusCode, 403);
+    }
+  );
+});
+
+test("accept endpoint: only the invited caregiver can accept (others 403)", async () => {
+  await withStubbedController(
+    {
+      devices: [{ device_id: "D1", user_id: "owner_1", caregiver_id: null, isActive: true, save: async function () {} }],
+      grants: [
+        { _id: "g1", deviceId: "D1", patientUserId: "owner_1", caregiverUserId: "cg_1", status: "pending", save: async function () {} },
+      ],
+    },
+    async ({ controller }) => {
+      // Owner tries to accept on the caregiver's behalf — forbidden.
+      const res1 = makeRes();
+      await controller.acceptCaregiverGrant(
+        { params: { id: "g1" }, user_id: "owner_1" },
+        res1
+      );
+      assert.strictEqual(res1.statusCode, 403);
+
+      // Unrelated user — forbidden.
+      const res2 = makeRes();
+      await controller.acceptCaregiverGrant(
+        { params: { id: "g1" }, user_id: "attacker" },
+        res2
+      );
+      assert.strictEqual(res2.statusCode, 403);
+    }
+  );
+});
+
+test("accept endpoint: caregiver accepts a pending invite -> access granted (200, device mirrored)", async () => {
+  await withStubbedController(
+    {
+      devices: [{ device_id: "D1", user_id: "owner_1", caregiver_id: null, isActive: true, save: async function () {} }],
+      users: [{ user_id: "cg_1", caregiving_device_ids: [], save: async function () {} }],
+      grants: [
+        { _id: "g1", deviceId: "D1", patientUserId: "owner_1", caregiverUserId: "cg_1", status: "pending", save: async function () {} },
+      ],
+    },
+    async ({ controller, devices }) => {
+      const res = makeRes();
+      await controller.acceptCaregiverGrant(
+        { params: { id: "g1" }, user_id: "cg_1" },
+        res
+      );
+      assert.strictEqual(res.statusCode, 200);
+      assert.strictEqual(res.body.grant.status, "accepted");
+      // device.caregiver_id is mirrored ONLY now -> reads become authorized.
+      assert.strictEqual(devices[0].caregiver_id, "cg_1");
+    }
+  );
+});
+
+test("state machine: accepting a revoked grant is rejected (409 illegal transition)", async () => {
+  await withStubbedController(
+    {
+      devices: [{ device_id: "D1", user_id: "owner_1", caregiver_id: null, isActive: true }],
+      grants: [
+        { _id: "g1", deviceId: "D1", patientUserId: "owner_1", caregiverUserId: "cg_1", status: "revoked", save: async function () {} },
+      ],
+    },
+    async ({ controller }) => {
+      const res = makeRes();
+      await controller.acceptCaregiverGrant(
+        { params: { id: "g1" }, user_id: "cg_1" },
+        res
+      );
+      assert.strictEqual(res.statusCode, 409);
+    }
+  );
+});
+
+test("revoke endpoint: owner revokes an accepted grant -> access cut (device.caregiver_id cleared)", async () => {
+  await withStubbedController(
+    {
+      devices: [{ device_id: "D1", user_id: "owner_1", caregiver_id: "cg_1", isActive: true, save: async function () {} }],
+      users: [{ user_id: "cg_1", caregiving_device_ids: ["D1"], save: async function () {} }],
+      grants: [
+        { _id: "g1", deviceId: "D1", patientUserId: "owner_1", caregiverUserId: "cg_1", status: "accepted", save: async function () {} },
+      ],
+    },
+    async ({ controller, devices }) => {
+      const res = makeRes();
+      await controller.revokeCaregiverGrant(
+        { params: { id: "g1" }, user_id: "owner_1" },
+        res
+      );
+      assert.strictEqual(res.statusCode, 200);
+      assert.strictEqual(res.body.grant.status, "revoked");
+      assert.strictEqual(devices[0].caregiver_id, null);
+    }
+  );
+});
+
+test("revoke endpoint: caregiver may revoke (decline) their own pending invite", async () => {
+  await withStubbedController(
+    {
+      devices: [{ device_id: "D1", user_id: "owner_1", caregiver_id: null, isActive: true, save: async function () {} }],
+      grants: [
+        { _id: "g1", deviceId: "D1", patientUserId: "owner_1", caregiverUserId: "cg_1", status: "pending", save: async function () {} },
+      ],
+    },
+    async ({ controller }) => {
+      const res = makeRes();
+      await controller.revokeCaregiverGrant(
+        { params: { id: "g1" }, user_id: "cg_1" },
+        res
+      );
+      assert.strictEqual(res.statusCode, 200);
+      assert.strictEqual(res.body.grant.status, "revoked");
+    }
+  );
+});
+
+test("revoke endpoint: an unrelated user cannot revoke (403)", async () => {
+  await withStubbedController(
+    {
+      devices: [{ device_id: "D1", user_id: "owner_1", caregiver_id: "cg_1", isActive: true, save: async function () {} }],
+      grants: [
+        { _id: "g1", deviceId: "D1", patientUserId: "owner_1", caregiverUserId: "cg_1", status: "accepted", save: async function () {} },
+      ],
+    },
+    async ({ controller }) => {
+      const res = makeRes();
+      await controller.revokeCaregiverGrant(
+        { params: { id: "g1" }, user_id: "attacker" },
+        res
+      );
+      assert.strictEqual(res.statusCode, 403);
+    }
+  );
+});
+
+test("state machine: revoking an already-revoked grant is rejected (409)", async () => {
+  await withStubbedController(
+    {
+      devices: [{ device_id: "D1", user_id: "owner_1", caregiver_id: null, isActive: true }],
+      grants: [
+        { _id: "g1", deviceId: "D1", patientUserId: "owner_1", caregiverUserId: "cg_1", status: "revoked", save: async function () {} },
+      ],
+    },
+    async ({ controller }) => {
+      const res = makeRes();
+      await controller.revokeCaregiverGrant(
+        { params: { id: "g1" }, user_id: "owner_1" },
+        res
+      );
+      assert.strictEqual(res.statusCode, 409);
     }
   );
 });

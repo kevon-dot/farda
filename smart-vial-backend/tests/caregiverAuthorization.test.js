@@ -4,6 +4,8 @@ const assert = require("node:assert");
 const {
   isCaregiverAuthorizedForDevice,
   isDeviceOwner,
+  canAcceptGrant,
+  canRevokeGrant,
   GRANT_STATUS,
 } = require("../utils/caregiverAuthorization");
 
@@ -123,7 +125,121 @@ test("isDeviceOwner denies when device has no owner or inputs missing", () => {
   assert.strictEqual(isDeviceOwner({}), false);
 });
 
-test("GRANT_STATUS exposes accepted/revoked lifecycle states", () => {
+test("GRANT_STATUS exposes pending/accepted/revoked lifecycle states", () => {
+  assert.strictEqual(GRANT_STATUS.PENDING, "pending");
   assert.strictEqual(GRANT_STATUS.ACCEPTED, "accepted");
   assert.strictEqual(GRANT_STATUS.REVOKED, "revoked");
+});
+
+// ============================================
+// Two-sided consent — accept transition (caregiver only, from pending)
+// ============================================
+
+test("canAcceptGrant: invited caregiver may accept a pending grant", () => {
+  const grant = {
+    patientUserId: "owner_1",
+    caregiverUserId: "cg_1",
+    status: GRANT_STATUS.PENDING,
+  };
+  assert.deepStrictEqual(canAcceptGrant({ actorUserId: "cg_1", grant }), {
+    ok: true,
+  });
+});
+
+test("canAcceptGrant: the owner CANNOT accept on the caregiver's behalf", () => {
+  const grant = {
+    patientUserId: "owner_1",
+    caregiverUserId: "cg_1",
+    status: GRANT_STATUS.PENDING,
+  };
+  const r = canAcceptGrant({ actorUserId: "owner_1", grant });
+  assert.strictEqual(r.ok, false);
+  assert.strictEqual(r.reason, "forbidden");
+});
+
+test("canAcceptGrant: an unrelated user cannot accept", () => {
+  const grant = {
+    patientUserId: "owner_1",
+    caregiverUserId: "cg_1",
+    status: GRANT_STATUS.PENDING,
+  };
+  assert.strictEqual(
+    canAcceptGrant({ actorUserId: "attacker", grant }).ok,
+    false
+  );
+});
+
+test("canAcceptGrant: accepting an already-accepted grant is an illegal transition", () => {
+  const grant = {
+    patientUserId: "owner_1",
+    caregiverUserId: "cg_1",
+    status: GRANT_STATUS.ACCEPTED,
+  };
+  const r = canAcceptGrant({ actorUserId: "cg_1", grant });
+  assert.strictEqual(r.ok, false);
+  assert.strictEqual(r.reason, "illegal_transition");
+});
+
+test("canAcceptGrant: accepting a revoked grant is an illegal transition", () => {
+  const grant = {
+    patientUserId: "owner_1",
+    caregiverUserId: "cg_1",
+    status: GRANT_STATUS.REVOKED,
+  };
+  const r = canAcceptGrant({ actorUserId: "cg_1", grant });
+  assert.strictEqual(r.ok, false);
+  assert.strictEqual(r.reason, "illegal_transition");
+});
+
+test("canAcceptGrant: missing inputs are denied", () => {
+  assert.strictEqual(canAcceptGrant().ok, false);
+  assert.strictEqual(canAcceptGrant({ actorUserId: "cg_1" }).ok, false);
+  assert.strictEqual(
+    canAcceptGrant({ actorUserId: "", grant: { status: "pending" } }).ok,
+    false
+  );
+});
+
+// ============================================
+// Two-sided consent — revoke transition (owner OR caregiver, not from revoked)
+// ============================================
+
+test("canRevokeGrant: owner may revoke an accepted grant", () => {
+  const grant = {
+    patientUserId: "owner_1",
+    caregiverUserId: "cg_1",
+    status: GRANT_STATUS.ACCEPTED,
+  };
+  assert.strictEqual(canRevokeGrant({ actorUserId: "owner_1", grant }).ok, true);
+});
+
+test("canRevokeGrant: caregiver may revoke (decline) their own pending grant", () => {
+  const grant = {
+    patientUserId: "owner_1",
+    caregiverUserId: "cg_1",
+    status: GRANT_STATUS.PENDING,
+  };
+  assert.strictEqual(canRevokeGrant({ actorUserId: "cg_1", grant }).ok, true);
+});
+
+test("canRevokeGrant: an unrelated user cannot revoke", () => {
+  const grant = {
+    patientUserId: "owner_1",
+    caregiverUserId: "cg_1",
+    status: GRANT_STATUS.ACCEPTED,
+  };
+  const r = canRevokeGrant({ actorUserId: "attacker", grant });
+  assert.strictEqual(r.ok, false);
+  assert.strictEqual(r.reason, "forbidden");
+});
+
+test("canRevokeGrant: revoking an already-revoked grant is an illegal transition", () => {
+  const grant = {
+    patientUserId: "owner_1",
+    caregiverUserId: "cg_1",
+    status: GRANT_STATUS.REVOKED,
+  };
+  const r = canRevokeGrant({ actorUserId: "owner_1", grant });
+  assert.strictEqual(r.ok, false);
+  assert.strictEqual(r.reason, "illegal_transition");
 });
