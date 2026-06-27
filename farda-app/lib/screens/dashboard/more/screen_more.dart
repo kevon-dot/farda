@@ -360,6 +360,57 @@ class ScreenMore extends StatelessWidget {
                   ),
                 ),
               ),
+              12.verticalSpace,
+              // GTM-541 — entry point for refill prediction + pharmacy-readiness.
+              InkWell(
+                onTap: () => context.push(CustomRoutePaths.refill),
+                borderRadius: BorderRadius.circular(16.r),
+                child: Container(
+                  padding: spacing.allM,
+                  decoration: BoxDecoration(
+                    color: colors.baseWhite,
+                    borderRadius: BorderRadius.circular(16.r),
+                    boxShadow: [
+                      BoxShadow(
+                        color: colors.baseBlack.withValues(alpha: 0.06),
+                        offset: const Offset(0, 2),
+                        blurRadius: 16,
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        height: 48.h,
+                        width: 48.w,
+                        decoration: BoxDecoration(
+                          color: colors.slate.shade100,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          Icons.medication_outlined,
+                          color: theme.primaryColor,
+                          size: 24.h,
+                        ),
+                      ),
+                      16.horizontalSpace,
+                      Expanded(
+                        child: TextMedium(
+                          text: "Refills & pharmacy",
+                          style: TextStyle(
+                            color: colors.baseBlack,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                      Icon(
+                        Icons.chevron_right,
+                        color: colors.slate.shade400,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
               20.verticalSpace,
             ],
           ),

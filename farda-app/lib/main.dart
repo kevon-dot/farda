@@ -6,6 +6,7 @@ import 'package:farda/screens/dashboard/calendar/calender_provider.dart';
 import 'package:farda/screens/dashboard/home/home_provider.dart';
 import 'package:farda/screens/emoji/emoji_provider.dart';
 import 'package:farda/screens/prescription_info/prescription_provider.dart';
+import 'package:farda/screens/refill/refill_provider.dart';
 import 'package:farda/theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -51,6 +52,11 @@ class _MyAppState extends State<MyApp> {
               // Vial endpoints are authenticated, so the screen triggers
               // loadGrants()/loadAuthorizedSummaries() post-auth in initState.
               ChangeNotifierProvider(create: (_) => CaregiverProvider()),
+              // GTM-541 — refill prediction + pharmacy-readiness. Like the
+              // calendar / prescription / caregiver providers it does NOT fetch
+              // on construction (its `/refills` endpoint is authenticated); the
+              // refill screen triggers load() post-auth in initState.
+              ChangeNotifierProvider(create: (_) => RefillProvider()),
             ],
             child: MaterialApp.router(
               theme: AppTheme.theme,

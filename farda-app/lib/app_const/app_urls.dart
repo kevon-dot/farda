@@ -20,6 +20,16 @@ class AppUrls {
 
   /// POST register an FCM/APNs push token for this device (SCAFFOLD).
   static const String reminderPushTokens = "reminders/push-tokens";
+
+  // --- Refill prediction + pharmacy-readiness (GTM-541) ---------------------
+  /// GET per-prescription remaining / days-left / refill-due predictions.
+  static const String refills = "refills";
+
+  /// POST a single refill lifecycle event (requested/completed/delayed).
+  static const String refillEvents = "refills/events";
+
+  /// GET refill-adherence metrics for the session user.
+  static const String refillMetrics = "refills/metrics";
 }
 
 /// Vial API (VIAL_API_URL) endpoint paths — issue #14/#30 (app-calls-both).

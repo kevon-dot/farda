@@ -4,6 +4,7 @@ import { maybeLimiter, ocrRateLimiter } from "@src/middleware/rateLimiters";
 import { Router } from "express";
 import OcrRoutes from "./OcrRoutes";
 import { createPrescription } from "./PrescriptionRoutes";
+import RefillRoutes from "./RefillRoutes";
 import ReminderRoutes from "./ReminderRoutes";
 
 /******************************************************************************
@@ -108,6 +109,21 @@ reminderRouter.post(
 );
 
 apiRouter.use(reminderRouter);
+
+// ----------------------- Add RefillRouter ------------------------------- //
+// Refill prediction + pharmacy-readiness (GTM-541). Deny-by-default: every
+// route is session-gated. GET /refills computes per-prescription depletion +
+// refill-due on read (pure RefillService math over existing Rx qty + Dose
+// rows); POST /refills/events logs the refill lifecycle; GET /refills/metrics
+// surfaces refill-adherence. Pharmacy auto-refill is a STUB seam only.
+const refillRouter = Router();
+refillRouter.use(isAuthenticated);
+
+refillRouter.get(Paths.Refills.GetAll, RefillRoutes.getRefills);
+refillRouter.post(Paths.Refills.Events, RefillRoutes.logEvent);
+refillRouter.get(Paths.Refills.Metrics, RefillRoutes.getMetrics);
+
+apiRouter.use(refillRouter);
 
 /******************************************************************************
                                 Export
