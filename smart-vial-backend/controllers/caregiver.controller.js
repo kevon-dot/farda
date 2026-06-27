@@ -312,6 +312,72 @@ const revokeCaregiverGrant = async (req, res) => {
     }
 };
 
+// List the authenticated user's caregiver grants — SERVER-AUTHORITATIVE.
+//
+// Returns the relationships keyed off the SESSION user id only (req.user_id);
+// no client-supplied identity (body/query userId) is ever trusted. A grant is
+// surfaced in two buckets depending on which side of it the caller sits:
+//   - as_caregiver: grants where caregiverUserId === me (my invites inbox /
+//     the patients I look after). Filterable to pending (invites awaiting my
+//     acceptance) or accepted (live relationships).
+//   - as_owner:     grants where patientUserId === me (relationships I, as the
+//     device owner/patient, created — outstanding invites + accepted caregivers
+//     I can revoke).
+//
+// Optional filters:
+//   ?status=pending|accepted|revoked  — restrict to one lifecycle state.
+//   ?role=caregiver|owner             — return only that bucket.
+//
+// PHI-FREE: the response carries only opaque ids, status and consent
+// timestamps (via serializeGrant). It deliberately exposes NO device telemetry
+// or patient data — a pending grant therefore reveals nothing readable; the
+// caller must still go through the authorized device endpoints (which require an
+// ACCEPTED grant) to read anything.
+const listCaregiverGrants = async (req, res) => {
+    try {
+        const user_id = req.user_id;
+        const { status, role } = req.query;
+
+        // Validate the optional status filter against the known lifecycle states
+        // so a typo fails loudly instead of silently returning nothing.
+        if (status !== undefined && !Object.values(GRANT_STATUS).includes(status)) {
+            return res.status(400).json({
+                error: `Invalid status filter. Allowed: ${Object.values(GRANT_STATUS).join(', ')}`,
+            });
+        }
+        if (role !== undefined && role !== 'caregiver' && role !== 'owner') {
+            return res.status(400).json({
+                error: "Invalid role filter. Allowed: caregiver, owner",
+            });
+        }
+
+        const statusClause = status ? { status } : {};
+
+        // Build only the buckets the caller asked for. Each query is keyed off
+        // the trusted session id, so a caller can never list someone else's
+        // grants.
+        const wantCaregiver = role === undefined || role === 'caregiver';
+        const wantOwner = role === undefined || role === 'owner';
+
+        const [asCaregiverDocs, asOwnerDocs] = await Promise.all([
+            wantCaregiver
+                ? CaregiverGrant.find({ caregiverUserId: user_id, ...statusClause }).sort({ updatedAt: -1 })
+                : Promise.resolve([]),
+            wantOwner
+                ? CaregiverGrant.find({ patientUserId: user_id, ...statusClause }).sort({ updatedAt: -1 })
+                : Promise.resolve([]),
+        ]);
+
+        res.status(200).json({
+            as_caregiver: (asCaregiverDocs || []).map(serializeGrant),
+            as_owner: (asOwnerDocs || []).map(serializeGrant),
+        });
+    } catch (err) {
+        console.error('Error listing caregiver grants:', err.message);
+        res.status(500).json({ error: 'Server error listing caregiver grants' });
+    }
+};
+
 // caregiver check events of a device
 const getCaregiver_A_device_summery = async (req, res) => {
     try {
@@ -524,6 +590,7 @@ module.exports = {
     claimDeviceForCaregiver,
     acceptCaregiverGrant,
     revokeCaregiverGrant,
+    listCaregiverGrants,
     getCaregiver_A_device_summery,
     getAllCaregiverDevices,
     searchDeviceById,

@@ -1,3 +1,4 @@
+import 'package:farda/screens/caregiver/screen_caregiver_hub.dart';
 import 'package:farda/screens/connect_onboard/screen_setup_vial.dart';
 import 'package:farda/screens/dashboard/calibration/screen_calibration.dart';
 import 'package:farda/screens/dashboard/dashboard_shell.dart';
@@ -56,6 +57,12 @@ class AppRouter {
         path: CustomRoutePaths.calibration,
         builder: (context, state) => const ScreenCalibration(),
       ),
+      // GTM-517 — caregiver/patient hub. Behind the auth guard like every other
+      // protected route; all caregiver reads are server-authoritative.
+      GoRoute(
+        path: CustomRoutePaths.caregiver,
+        builder: (context, state) => const ScreenCaregiverHub(),
+      ),
     ],
     // Auth guard. Deep links to protected routes require a valid session
     // (a non-empty bearer token in secure storage, cached in [authState]).
@@ -83,4 +90,5 @@ class CustomRoutePaths {
   // calendar it was opened from.
   static const String emoji = '/emoji';
   static const String calibration = '/calibration';
+  static const String caregiver = '/caregiver';
 }

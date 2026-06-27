@@ -5,6 +5,7 @@ const {
     claimDeviceForCaregiver,
     acceptCaregiverGrant,
     revokeCaregiverGrant,
+    listCaregiverGrants,
     getCaregiver_A_device_summery,
     getAllCaregiverDevices,
     searchDeviceById,
@@ -19,6 +20,11 @@ router.post('/claim-device', verifyToken, claimDeviceForCaregiver);
 router.post('/grants/:id/accept', verifyToken, acceptCaregiverGrant);
 //   3. Owner OR caregiver REVOKES — `* → revoked`, access cut.
 router.post('/grants/:id/revoke', verifyToken, revokeCaregiverGrant);
+
+// List the session user's caregiver grants (server-authoritative, PHI-free):
+//   as a caregiver (my invites inbox / patients I look after) and/or as an
+//   owner (relationships I created). Filterable by ?status= and ?role=.
+router.get('/grants', verifyToken, listCaregiverGrants);
 
 // Get summary of a specific device (caregiver access)
 router.get('/devices/:device_id/summary', verifyToken, getCaregiver_A_device_summery);

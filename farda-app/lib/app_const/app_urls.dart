@@ -74,6 +74,20 @@ class VialUrls {
   /// POST `{ device_id, caregiver_id }` — owner assigns a caregiver to a device.
   static const String caregiverClaimDevice = "api/caregiver/claim-device";
 
+  /// GET `?status=&role=` — the session user's caregiver grants (GTM-517),
+  /// server-authoritative + PHI-free. Returns `as_caregiver` (my invites inbox /
+  /// patients I look after) and `as_owner` (relationships I created).
+  static const String caregiverGrants = "api/caregiver/grants";
+
+  /// POST — the invited caregiver ACCEPTS a pending grant (`pending → accepted`).
+  static String caregiverAcceptGrant(String grantId) =>
+      "api/caregiver/grants/${Uri.encodeComponent(grantId)}/accept";
+
+  /// POST — owner OR caregiver REVOKES a grant (`* → revoked`). The caregiver
+  /// uses this to DECLINE a pending invite; the owner uses it to cut access.
+  static String caregiverRevokeGrant(String grantId) =>
+      "api/caregiver/grants/${Uri.encodeComponent(grantId)}/revoke";
+
   /// GET — all devices assigned to the current caregiver.
   static const String caregiverDevices = "api/caregiver/devices";
 
