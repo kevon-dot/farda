@@ -1,4 +1,5 @@
 import env from "@src/common/constants/env";
+import { parseCorsOrigins } from "@src/common/utils/http-security";
 import { prisma } from "@src/lib/prisma";
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
@@ -6,6 +7,9 @@ import { phoneNumber } from "better-auth/plugins";
 import { sendSmsOTP, verifyTwilioOTP } from "./services/twilioService";
 
 export const auth = betterAuth({
+	// Align trusted origins with the CORS allowlist (#31) so better-auth accepts
+	// requests from the same set of explicitly allowed origins.
+	trustedOrigins: parseCorsOrigins(env.CORS_ORIGINS),
 	database: prismaAdapter(prisma, {
 		provider: "postgresql",
 	}),
