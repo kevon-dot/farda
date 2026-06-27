@@ -1,0 +1,30 @@
+menu "Smart Pill Bottle (Farda)"
+
+    config SPB_DEBUG_BUILD
+        bool "Build with debug command surface (READ_LOG_FILE, GATTS DB dump)"
+        default y
+        help
+            B5 build hygiene gate. When enabled, the firmware compiles in the
+            debug-only BLE commands (READ_LOG_FILE 0x33, DELETE_LOG_FILE 0x34)
+            and the GATTS database dump routine. Production / release images
+            MUST set this to n (see sdkconfig.defaults.prod) so the debug
+            surface is stripped from the binary entirely.
+
+    config SPB_REQUIRE_TLS
+        bool "Reject plaintext API targets (require https/mqtts)"
+        default y
+        help
+            B3 transport hardening. When enabled, SET_API_TARGET rejects any
+            target whose scheme is not https:// or mqtts://, and the telemetry
+            client fails closed if server certificate verification cannot be
+            performed. Disable ONLY for isolated bench testing.
+
+    config SPB_RESTRICT_API_DOMAIN
+        bool "Restrict SET_API_TARGET to allowed backend domain(s)"
+        default y
+        help
+            B3. When enabled, SET_API_TARGET only accepts hosts that match the
+            allow-list compiled into board_config.h (the Farda backend
+            domain). Prevents redirecting telemetry to an attacker host.
+
+endmenu

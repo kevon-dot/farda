@@ -1,0 +1,51 @@
+# sdkconfig.defaults.prod - Farda Smart Pill Bottle PRODUCTION overlay
+#
+# Apply ON TOP of sdkconfig.defaults for hardened production images:
+#   idf.py -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.prod" build
+#
+# !!!  DANGER  !!!
+# The Secure Boot v2 and Flash Encryption options below BURN ONE-WAY eFUSES on
+# first boot and CANNOT be undone. They are listed here for completeness and
+# reproducibility ONLY. Do NOT enable them on a device without the explicit
+# maintainer sign-off and procedure in docs/PROVISIONING.md. This file should
+# be applied in manufacturing only, deliberately.
+
+# --- B5: release stripping ---
+# Disable the debug/log-dump command surface (READ_LOG_FILE 0x33,
+# DELETE_LOG_FILE 0x34, GATTS DB dump). Code behind CONFIG_SPB_DEBUG_BUILD is
+# compiled out of the image entirely.
+CONFIG_SPB_DEBUG_BUILD=n
+CONFIG_LOG_DEFAULT_LEVEL_WARN=y
+CONFIG_BOOTLOADER_LOG_LEVEL_WARN=y
+CONFIG_COMPILER_OPTIMIZATION_SIZE=y
+
+# --- B4: Secure Boot v2 (image signing) ---
+# Verifies the app/bootloader signature; rejects unsigned images.
+# BURNS eFUSES. Gated behind docs/PROVISIONING.md sign-off.
+CONFIG_SECURE_BOOT=y
+CONFIG_SECURE_BOOT_V2_ENABLED=y
+CONFIG_SECURE_SIGNED_APPS_RSA_SCHEME=y
+CONFIG_SECURE_BOOT_BUILD_SIGNED_BINARIES=y
+# Path to the RSA-3072 signing key (kept OUT of the repo / in an HSM).
+# TODO(provisioning): point at the manufacturing signing key, never commit it.
+CONFIG_SECURE_BOOT_SIGNING_KEY="secure_boot_signing_key.pem"
+
+# --- B4: Flash Encryption (release mode) ---
+# Encrypts app + NVS-stored secrets at rest. BURNS eFUSES. Release mode
+# disables the UART download path that could be used to read plaintext.
+CONFIG_SECURE_FLASH_ENC_ENABLED=y
+CONFIG_SECURE_FLASH_ENCRYPTION_MODE_RELEASE=y
+CONFIG_SECURE_BOOT_INSECURE=n
+CONFIG_SECURE_DISABLE_ROM_DL_MODE=y
+
+# --- B4: signed OTA, anti-rollback / downgrade rejection ---
+CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
+CONFIG_BOOTLOADER_APP_ANTI_ROLLBACK=y
+CONFIG_APP_ANTI_ROLLBACK=y
+# Secure version starts at 1; bump on each security-relevant release so the
+# bootloader rejects downgrades.
+CONFIG_BOOTLOADER_APP_SECURE_VERSION=1
+CONFIG_ESP_HTTPS_OTA_ALLOW_HTTP=n
+
+# --- B3: NVS encryption for stored secrets (Wi-Fi creds, device key) ---
+CONFIG_NVS_ENCRYPTION=y

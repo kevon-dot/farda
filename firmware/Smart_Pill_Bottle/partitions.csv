@@ -1,0 +1,21 @@
+# Partition table for Farda Smart Pill Bottle (ESP32, 4 MB flash, DIO).
+# REFERENCE layout reconstructed from the audit: dual OTA app slots (signed
+# OTA, B4), NVS for config/secrets, an encrypted nvs_keys partition for the
+# flash-encryption key material, and a SPIFFS data partition for the cached
+# event log (/spiffs/log.bin, /spiffs/log.csv).
+#
+# Sized to fit 4 MB (0x400000). Two OTA app slots of 0x180000 each leave room
+# for a 0xE0000 SPIFFS partition. TODO(hardware): confirm exact offsets/sizes
+# against the production partition table on a real unit -- the shipped .bin is
+# the app image only and does NOT contain the partition table, so these are
+# best-effort. Enabling Secure Boot v2 + flash encryption (B4) requires the
+# bootloader to fit; re-check headroom. See docs/PROVISIONING.md.
+#
+# Name,     Type, SubType,  Offset,   Size,    Flags
+nvs,        data, nvs,      0x9000,   0x5000,
+otadata,    data, ota,      0xe000,   0x2000,
+phy_init,   data, phy,      0x10000,  0x1000,
+nvs_keys,   data, nvs_keys, 0x11000,  0x1000,  encrypted
+ota_0,      app,  ota_0,    0x20000,  0x180000,
+ota_1,      app,  ota_1,    0x1A0000, 0x180000,
+storage,    data, spiffs,   0x320000, 0xE0000,

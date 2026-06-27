@@ -1,0 +1,66 @@
+# sdkconfig.defaults - Farda Smart Pill Bottle (REFERENCE, DEV defaults)
+#
+# Baseline development configuration for ESP-IDF v5.4.1, ESP32-WROOM-32D.
+# Production hardening (Secure Boot v2, flash encryption, release stripping)
+# lives in sdkconfig.defaults.prod and is gated behind explicit maintainer
+# sign-off (see docs/PROVISIONING.md) because those settings BURN one-way
+# eFuses. DO NOT enable them automatically.
+
+# --- Target / chip ---
+CONFIG_IDF_TARGET="esp32"
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+CONFIG_ESPTOOLPY_FLASHMODE_DIO=y
+CONFIG_ESPTOOLPY_FLASHFREQ_40M=y
+
+# --- Partition table ---
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+
+# --- Bluetooth: Bluedroid BLE only ---
+CONFIG_BT_ENABLED=y
+CONFIG_BT_BLUEDROID_ENABLED=y
+CONFIG_BT_BLE_ENABLED=y
+CONFIG_BT_GATTS_ENABLE=y
+CONFIG_BT_CONTROLLER_ONLY=n
+# B2: require LE Secure Connections + bonding + MITM protection. Privileged
+# characteristics demand an encrypted, authenticated link.
+CONFIG_BT_BLE_SMP_ENABLE=y
+CONFIG_BT_SMP_ENABLE=y
+CONFIG_BT_BLE_42_FEATURES_SUPPORTED=y
+# Classic BT off (BLE-only device).
+CONFIG_BT_CLASSIC_ENABLED=n
+
+# --- FreeRTOS / watchdog (5-second TWDT per feature doc) ---
+CONFIG_ESP_TASK_WDT_EN=y
+CONFIG_ESP_TASK_WDT_TIMEOUT_S=5
+CONFIG_ESP_TASK_WDT_INIT=y
+
+# --- Filesystem: SPIFFS for cached log ---
+CONFIG_SPIFFS_PAGE_SIZE=256
+
+# --- TLS / crypto (B1, B3): mbedTLS, server cert verification on ---
+CONFIG_ESP_TLS_USING_MBEDTLS=y
+CONFIG_MBEDTLS_HARDWARE_AES=y
+CONFIG_MBEDTLS_HARDWARE_SHA=y
+# B1: HMAC-SHA256 / SHA-256 only. SHA-1 left available ONLY because the X.509
+# / TLS chain may still need it for legacy CA parsing; it is NOT used for our
+# own auth path. See device_identity (HMAC-SHA256).
+CONFIG_MBEDTLS_SHA256_C=y
+CONFIG_MBEDTLS_SHA512_C=y
+
+# --- MQTT (mqtts) ---
+CONFIG_MQTT_PROTOCOL_5=y
+
+# --- HTTP(S) client / OTA ---
+CONFIG_ESP_HTTPS_OTA_ALLOW_HTTP=n
+
+# --- Logging (dev build keeps INFO; release lowers this, see prod) ---
+CONFIG_LOG_DEFAULT_LEVEL_INFO=y
+
+# --- App descriptor: embed project version from git (B5) ---
+CONFIG_APP_PROJECT_VER_FROM_CONFIG=n
+
+# --- SPB debug build flag (B5). DEV default = ON, so READ_LOG_FILE /
+# DELETE_LOG_FILE / GATTS DB dump are available on the bench. Release build
+# (sdkconfig.defaults.prod) sets this OFF and strips those commands. ---
+CONFIG_SPB_DEBUG_BUILD=y

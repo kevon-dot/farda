@@ -71,3 +71,21 @@ jobs:
         run: flutter pub get
       - name: Run unit tests
         run: flutter test
+
+  firmware:
+    name: Firmware (structure + security validator)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: firmware/Smart_Pill_Bottle
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      # Structure + B1-B5 security lint for the reconstructed ESP-IDF firmware.
+      # This is NOT a real `idf.py build` (the multi-GB toolchain is not
+      # installed in CI); it asserts the project structure and security
+      # invariants and must stay green.
+      - name: Validate firmware project
+        run: python3 tools/validate_firmware.py
