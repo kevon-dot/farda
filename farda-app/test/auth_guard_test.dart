@@ -13,9 +13,7 @@ void main() {
         for (final location in const [
           '/dashboard',
           '/prescription',
-          '/subscription',
           '/calibration',
-          '/mood',
           '/emoji',
           '/screen-connect-onboard',
         ]) {

@@ -233,6 +233,70 @@ class ScreenMore extends StatelessWidget {
                                 "None"
                             : "None",
                   ),
+              Divider(color: colors.slate.shade100, height: 40.h),
+              Text(
+                "Device",
+                style: theme.textTheme.titleMedium?.merge(
+                  TextStyle(fontWeight: FontWeight.w500),
+                ),
+              ),
+              4.verticalSpace,
+              TextMedium(
+                text: "Calibrate your Farda device",
+                style: TextStyle(color: colors.slate.shade600),
+              ),
+              12.verticalSpace,
+              // Entry point for the device calibration screen (GTM-538 builds
+              // the full flow; this just makes the screen reachable).
+              InkWell(
+                onTap: () => context.push(CustomRoutePaths.calibration),
+                borderRadius: BorderRadius.circular(16.r),
+                child: Container(
+                  padding: EdgeInsets.all(16.w),
+                  decoration: BoxDecoration(
+                    color: colors.baseWhite,
+                    borderRadius: BorderRadius.circular(16.r),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.06),
+                        offset: const Offset(0, 2),
+                        blurRadius: 16,
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        height: 48.h,
+                        width: 48.h,
+                        decoration: BoxDecoration(
+                          color: colors.slate.shade100,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          Icons.tune,
+                          color: theme.primaryColor,
+                          size: 24.h,
+                        ),
+                      ),
+                      16.horizontalSpace,
+                      Expanded(
+                        child: TextMedium(
+                          text: "Calibrate Device",
+                          style: TextStyle(
+                            color: colors.baseBlack,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                      Icon(
+                        Icons.chevron_right,
+                        color: colors.slate.shade400,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
               20.verticalSpace,
             ],
           ),
