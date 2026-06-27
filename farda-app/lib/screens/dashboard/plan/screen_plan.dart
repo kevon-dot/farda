@@ -103,7 +103,7 @@ class _PlanItemCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(16.r),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.06),
+            color: colors.baseBlack.withValues(alpha: 0.06),
             offset: const Offset(0, 2),
             blurRadius: 16,
           ),
@@ -113,7 +113,7 @@ class _PlanItemCard extends StatelessWidget {
         children: [
           Container(
             height: 48.h,
-            width: 48.h,
+            width: 48.w,
             decoration: BoxDecoration(
               color: colors.slate.shade100,
               shape: BoxShape.circle,

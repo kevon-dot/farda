@@ -13,6 +13,8 @@ class FardaColors extends ThemeExtension<FardaColors> {
   final Color baseWhite;
   final Color baseBlack;
   final Color blue;
+  final Color divider;
+  final Color doseCardBlue;
 
   const FardaColors({
     required this.success,
@@ -22,6 +24,8 @@ class FardaColors extends ThemeExtension<FardaColors> {
     this.baseWhite = const Color(0xFFFFFFFF),
     this.baseBlack = const Color(0xFF000000),
     this.blue = const Color(0xFF2D9CDB),
+    this.divider = const Color(0xFFE0E0E0),
+    this.doseCardBlue = const Color(0xFFBBDEFB),
   });
 
   // Default light theme colors with baseWhite and baseBlack included
@@ -92,6 +96,9 @@ class FardaColors extends ThemeExtension<FardaColors> {
     MaterialColor? slate,
     Color? baseWhite,
     Color? baseBlack,
+    Color? blue,
+    Color? divider,
+    Color? doseCardBlue,
   }) {
     return FardaColors(
       success: success ?? this.success,
@@ -100,6 +107,9 @@ class FardaColors extends ThemeExtension<FardaColors> {
       slate: slate ?? this.slate,
       baseWhite: baseWhite ?? this.baseWhite,
       baseBlack: baseBlack ?? this.baseBlack,
+      blue: blue ?? this.blue,
+      divider: divider ?? this.divider,
+      doseCardBlue: doseCardBlue ?? this.doseCardBlue,
     );
   }
 

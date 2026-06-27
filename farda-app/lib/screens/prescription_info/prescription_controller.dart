@@ -35,18 +35,18 @@ class PrescriptionController {
         child: Wrap(
           children: [
             ListTile(
-              leading: const Icon(Icons.photo_library, color: Colors.white),
-              title: const Text(
+              leading: Icon(Icons.photo_library, color: colors.baseWhite),
+              title: Text(
                 'Gallery',
-                style: TextStyle(color: Colors.white),
+                style: TextStyle(color: colors.baseWhite),
               ),
               onTap: () => handleGallerySelection(ctx),
             ),
             ListTile(
-              leading: const Icon(Icons.camera_alt, color: Colors.white),
-              title: const Text(
+              leading: Icon(Icons.camera_alt, color: colors.baseWhite),
+              title: Text(
                 'Camera',
-                style: TextStyle(color: Colors.white),
+                style: TextStyle(color: colors.baseWhite),
               ),
               onTap: () => handleCameraSelection(ctx),
             ),

@@ -2,14 +2,42 @@
 // (no widgets, plugins, or platform channels) so they run fast and reliably
 // under `flutter test` in CI.
 
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:farda/application/prescription/model/prescription_model.dart';
 import 'package:farda/application/calender/model/mood_model.dart';
 import 'package:farda/screens/login/login_provider.dart';
 import 'package:farda/screens/prescription_info/prescription_provider.dart';
+import 'package:farda/theme.dart';
 
 void main() {
+  group('FardaColors.copyWith', () {
+    test('copyWith overrides blue while preserving other tokens', () {
+      const base = FardaColors.light;
+      const newBlue = Color(0xFF112233);
+
+      final copy = base.copyWith(blue: newBlue);
+
+      expect(copy.blue, newBlue);
+      // Untouched tokens are preserved.
+      expect(copy.baseWhite, base.baseWhite);
+      expect(copy.baseBlack, base.baseBlack);
+      expect(copy.slate, base.slate);
+      expect(copy.success, base.success);
+      expect(copy.warning, base.warning);
+      expect(copy.error, base.error);
+    });
+
+    test('copyWith without blue keeps the original blue token', () {
+      const base = FardaColors.light;
+      final copy = base.copyWith(baseWhite: const Color(0xFFEEEEEE));
+
+      expect(copy.blue, base.blue);
+      expect(copy.baseWhite, const Color(0xFFEEEEEE));
+    });
+  });
+
   group('PrescriptionModel', () {
     test('fromJson maps snake_case keys and nested medicines', () {
       final model = PrescriptionModel.fromJson({

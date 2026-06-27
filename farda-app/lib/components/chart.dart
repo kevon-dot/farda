@@ -55,6 +55,7 @@ class _AnimatedChartState extends State<AnimatedChart>
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).extension<FardaColors>()!;
     if (!widget.hasData) {
       // No real series yet: show an explicit placeholder, never a fake curve.
       return Center(
@@ -76,6 +77,7 @@ class _AnimatedChartState extends State<AnimatedChart>
           painter: ChartPainter(
             isRtl: widget.isRtl,
             primaryColor: widget.primaryColor,
+            markerColor: colors.baseWhite,
             markerScale: _scale.value,
             data: widget.data!,
           ),
@@ -89,6 +91,7 @@ class _AnimatedChartState extends State<AnimatedChart>
 class ChartPainter extends CustomPainter {
   final bool isRtl;
   final Color primaryColor;
+  final Color markerColor;
   final double markerScale;
 
   /// The real series to plot, as fractions in `[0, 1]` (0 = bottom, 1 = top).
@@ -98,6 +101,7 @@ class ChartPainter extends CustomPainter {
   ChartPainter({
     required this.isRtl,
     required this.primaryColor,
+    required this.markerColor,
     required this.markerScale,
     required this.data,
   });
@@ -159,7 +163,7 @@ class ChartPainter extends CustomPainter {
       ..style = PaintingStyle.fill;
 
     final centerPaint = Paint()
-      ..color = Colors.white
+      ..color = markerColor
       ..style = PaintingStyle.fill;
 
     for (var i = 1; i < actualPoints.length - 1; i++) {

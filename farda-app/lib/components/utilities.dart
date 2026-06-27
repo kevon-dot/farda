@@ -677,7 +677,7 @@ class PrescriptionView extends StatelessWidget {
             children: [
               SizedBox(
                 height: 40.h,
-                width: 40.h,
+                width: 40.w,
                 child: Center(child: SvgPicture.asset("assets/icons/rx.svg")),
               ),
               Expanded(
@@ -791,7 +791,7 @@ class PrescriptionView extends StatelessWidget {
                 IconButton(
                   onPressed: onSetupVial,
                   style: IconButton.styleFrom(
-                    backgroundColor: theme.primaryColor.withOpacity(0.1),
+                    backgroundColor: theme.primaryColor.withValues(alpha: 0.1),
                   ),
                   icon: Icon(
                     Icons.bluetooth_connected,
@@ -940,7 +940,7 @@ class PillProgressSection extends StatelessWidget {
               ),
             ),
             // important to have a gap under
-            const Text("", style: TextStyle(color: Colors.grey, fontSize: 12)),
+            Text("", style: TextStyle(color: colors.slate.shade400, fontSize: 12)),
           ],
         ),
       ),

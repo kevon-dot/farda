@@ -2,6 +2,7 @@ import 'package:farda/application/calender/model/dose_time_model.dart';
 import 'package:farda/components/note_dialog.dart';
 import 'package:farda/routes/routes.dart';
 import 'package:farda/screens/dashboard/calendar/calender_provider.dart';
+import 'package:farda/theme.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
@@ -65,11 +66,12 @@ class _ScreenCalendarState extends State<ScreenCalendar> {
 
     // final height = (duration / 140) * 100.0; // Proportional height based on 24 hours
 
+    final colors = Theme.of(context).extension<FardaColors>()!;
     return  Container(
           margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: Colors.blue.shade100,
+            color: colors.doseCardBlue,
             borderRadius: BorderRadius.circular(12),
           ),
           // height: height, // Set dynamic height based on time difference
@@ -131,6 +133,7 @@ class _ScreenCalendarState extends State<ScreenCalendar> {
 
   // Reusable HourRow Widget
   Widget buildHourRow(TimeOfDay time, CalenderProvider data) {
+  final colors = Theme.of(context).extension<FardaColors>()!;
   List<DoseTimeModel> doseList =data.doseTimeModel;
 
   // Convert the TimeOfDay to 24-hour format string (HH:mm:ss)
@@ -164,7 +167,7 @@ class _ScreenCalendarState extends State<ScreenCalendar> {
               padding: const EdgeInsets.only(left: 8.0),
               child: Container(
                 width: 0.5,
-                color: Color(0xFFE0E0E0),
+                color: colors.divider,
                 height: 130, // Height of the vertical divider
               ),
             ),
@@ -179,7 +182,7 @@ class _ScreenCalendarState extends State<ScreenCalendar> {
                     child: Row(
                       children: [
                         Container(
-                          color: Colors.black,
+                          color: colors.baseBlack,
                           height: 0.3,
                           width: 100, // Divider width on the left side of the current time
                         ),
@@ -187,7 +190,7 @@ class _ScreenCalendarState extends State<ScreenCalendar> {
                         Text(formattedTime.toString()), 
                         SizedBox(width: 5,),// Display the current hour
                         Container(
-                          color: Colors.black,
+                          color: colors.baseBlack,
                           height: 0.3,
                           width: 100// Divider width on the right side of the current time
                         ),
@@ -212,7 +215,7 @@ class _ScreenCalendarState extends State<ScreenCalendar> {
                     child: Row(
                       children: [
                         Container(
-                          color: Colors.black,
+                          color: colors.baseBlack,
                           height: 0.3,
                           width: 100, // Divider width on the left side of the current time
                         ),
@@ -220,7 +223,7 @@ class _ScreenCalendarState extends State<ScreenCalendar> {
                         Text(formattedTime.toString()), 
                         SizedBox(width: 5,),// Display the current hour
                         Container(
-                          color: Colors.black,
+                          color: colors.baseBlack,
                           height: 0.3,
                           width: 100// Divider width on the right side of the current time
                         ),
@@ -244,7 +247,7 @@ class _ScreenCalendarState extends State<ScreenCalendar> {
           ],
         ),
       ),
-      const Divider(height: 1, color: Color(0xFFE0E0E0),), // Divider at the end of the row
+      Divider(height: 1, color: colors.divider), // Divider at the end of the row
     ],
   );
 }
@@ -273,6 +276,7 @@ class _ScreenCalendarState extends State<ScreenCalendar> {
       (i) => TimeOfDay(hour: 5 + i, minute: 0),
     );
     final data = context.watch<CalenderProvider>();
+    final colors = Theme.of(context).extension<FardaColors>()!;
     return Scaffold(
       body: SafeArea(
         child: Column(
@@ -302,7 +306,7 @@ class _ScreenCalendarState extends State<ScreenCalendar> {
                 },
               ),
             ),
-            const Divider(height: 1, color: Color(0xFFE0E0E0),),
+            Divider(height: 1, color: colors.divider),
             // Time-based dose list
             Expanded(
               child: ListView.builder(
@@ -368,6 +372,7 @@ class DateCellWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).extension<FardaColors>()!;
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -381,22 +386,22 @@ class DateCellWidget extends StatelessWidget {
               children: [
                 Text(
                   DateFormat.E().format(date),
-                  style: const TextStyle(color: Colors.black, fontSize: 14),
+                  style: TextStyle(color: colors.baseBlack, fontSize: 14),
                 ),
                 const SizedBox(height: 4),
                 isSelected
                     ? DecoratedBox(
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: const Color(0xff2D9CDB),
+                        color: colors.blue,
                       ),
                       child: Padding(
                         padding: const EdgeInsets.all(4.0),
                         child: Text(
                           date.day.toString(),
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontWeight: FontWeight.bold,
-                            color: Colors.white,
+                            color: colors.baseWhite,
                             fontSize: 12,
                           ),
                         ),
@@ -404,9 +409,9 @@ class DateCellWidget extends StatelessWidget {
                     )
                     : Text(
                       date.day.toString(),
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontWeight: FontWeight.bold,
-                        color: Colors.black,
+                        color: colors.baseBlack,
                         fontSize: 12,
                       ),
                     ),
@@ -415,7 +420,7 @@ class DateCellWidget extends StatelessWidget {
             SizedBox(width: 5,),
             Container(
               width: 0.2,
-              color: Color(0xFFE0E0E0),
+              color: colors.divider,
             )
           ],
         ),

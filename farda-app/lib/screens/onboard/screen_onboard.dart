@@ -1,6 +1,7 @@
 
 import 'package:farda/components/_components.dart';
 import 'package:farda/routes/routes.dart';
+import 'package:farda/theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:go_router/go_router.dart';
@@ -84,10 +85,16 @@ class _ScreenOnboardState extends State<ScreenOnboard> {
   }
 
   Widget _shaderText({required String text}) {
+    final colors = Theme.of(context).extension<FardaColors>()!;
     return ShaderMask(
       shaderCallback: (Rect bounds) {
         return LinearGradient(
-          colors: [Color(0xFF535862), Color(0xFFADAEB1), Color(0xFF717680)],
+          // Decorative grey shimmer gradient stops (not design-system tokens).
+          colors: const [
+            Color(0xFF535862),
+            Color(0xFFADAEB1),
+            Color(0xFF717680),
+          ],
           begin: Alignment.centerLeft,
           end: Alignment.centerRight,
         ).createShader(bounds);
@@ -97,7 +104,7 @@ class _ScreenOnboardState extends State<ScreenOnboard> {
         style: TextStyle(
           fontSize: 32.sp,
           fontWeight: FontWeight.w600,
-          color: Colors.white,
+          color: colors.baseWhite,
         ),
       ),
     );

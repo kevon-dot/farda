@@ -1,14 +1,19 @@
+import 'package:farda/theme.dart';
 import 'package:flutter/material.dart';
 
 class CustomSnackbar {
   static void show(
     BuildContext context, {
     required String message,
-    Color backgroundColor = Colors.black87,
-    Color textColor = Colors.white,
+    Color? backgroundColor,
+    Color? textColor,
     Duration duration = const Duration(seconds: 3),
     IconData? icon,
   }) {
+    final colors = Theme.of(context).extension<FardaColors>()!;
+    // Matches Material's Colors.black87 (alpha 0xDD).
+    backgroundColor ??= colors.baseBlack.withValues(alpha: 0xDD / 0xFF);
+    textColor ??= colors.baseWhite;
     final snackBar = SnackBar(
       duration: duration,
       behavior: SnackBarBehavior.floating,

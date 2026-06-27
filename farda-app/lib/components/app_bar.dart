@@ -156,7 +156,7 @@ class _BottomNavBarState extends State<BottomNavBar> {
           color: colors.baseWhite,
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.06),
+              color: colors.baseBlack.withValues(alpha: 0.06),
               offset: Offset(4, 0),
               blurRadius: 14.r,
             ),
