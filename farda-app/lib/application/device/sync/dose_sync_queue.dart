@@ -53,6 +53,8 @@ class DoseSyncQueue {
   /// * anything else (e.g. 429, 500, 502, 503) -> RETRY later.
   static bool shouldRetry(int? statusCode) {
     if (statusCode == null) return true;
+    // Any 2xx is durably delivered (incl. 202/204 and the idempotent dup-200).
+    if (statusCode >= 200 && statusCode < 300) return false;
     if (_terminalStatuses.contains(statusCode)) return false;
     return true;
   }
