@@ -99,6 +99,10 @@ app.use('/api/caregiver', authLimiter, caregiverRoutes);
 const userRoutes = require('./routes/userAPI');
 app.use('/api/user', authLimiter, userRoutes);
 
+// GTM-539 — admin-only device registry / OTA / fleet-health endpoints.
+const adminRoutes = require('./routes/adminAPI');
+app.use('/api/admin', authLimiter, adminRoutes);
+
 // ============================================
 // JSON error handler (#36)
 // ============================================

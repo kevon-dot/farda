@@ -22,6 +22,22 @@ const DeviceCredentialSchema = new mongoose.Schema(
     { _id: false }
 );
 
+// ============================================
+// GTM-539 — Calibration record (registry metadata)
+// ============================================
+// Latest calibration applied to the device. `version` bumps each time a new
+// calibration is recorded; `data` is an opaque, operator-supplied blob (e.g.
+// sensor offsets) — deliberately Mixed so it isn't coupled to a sensor schema.
+const CalibrationSchema = new mongoose.Schema(
+    {
+        version: { type: Number, default: 1 },
+        data: { type: mongoose.Schema.Types.Mixed, default: {} },
+        calibrated_at: { type: Date, default: Date.now },
+        calibrated_by: { type: String, default: null },
+    },
+    { _id: false }
+);
+
 const DeviceSchema = new mongoose.Schema({
     // ============================================
     // Device Identification
@@ -76,10 +92,47 @@ const DeviceSchema = new mongoose.Schema({
         type: String,
         default: '1.0.0'
     },
+    // Last time this device's battery_percent / firmware_version was updated
+    // from telemetry (#50). Distinct from last_seen (any contact) — this tracks
+    // a successful telemetry sync and drives fleet-health staleness.
+    battery_updated_at: {
+        type: Date,
+        default: null,
+    },
+    // Last time the device completed a successful data sync (telemetry OR event
+    // ingestion). Fleet-health derives stale-sync from this. Updated on the
+    // authenticated ingestion path.
+    last_sync_at: {
+        type: Date,
+        default: null,
+        index: true,
+    },
     isActive: {
         type: Boolean,
         default: true,
         index: true
+    },
+
+    // ============================================
+    // GTM-539 — Registry / OTA orchestration metadata
+    // ============================================
+    // Optional cohort label for staged rollouts (e.g. "beta", "us-east").
+    cohort: {
+        type: String,
+        default: null,
+        index: true,
+    },
+    // Explicit per-device OTA pin: when set, OTA resolution serves exactly this
+    // release version (used for single-device staged rollout AND rollback to a
+    // prior version). Null ⇒ device follows normal active/staged rollout.
+    pinned_release_version: {
+        type: String,
+        default: null,
+    },
+    // Latest calibration record + version (registry metadata).
+    calibration: {
+        type: CalibrationSchema,
+        default: null,
     },
 
     // ============================================
@@ -135,6 +188,52 @@ DeviceSchema.index({ user_id: 1, isActive: 1 });
 DeviceSchema.methods.isOnline = function() {
     const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
     return this.last_seen >= fiveMinutesAgo;
+};
+
+// ============================================
+// GTM-539 — Registry serialization (admin-facing, PHI-safe)
+// ============================================
+// Returns the full device registry record for admin endpoints. Deliberately
+// exposes only the device↔user BINDING ids (user_id / caregiver_id) and device
+// operational state — NEVER the encrypted credential, and no patient PHI beyond
+// those binding ids. The `credential` field is `select:false` so it isn't even
+// present here unless explicitly selected; we never include it regardless.
+DeviceSchema.methods.toRegistry = function() {
+    return {
+        device_id: this.device_id,
+        device_name: this.device_name,
+        // Binding ids only (no patient PHI).
+        user_id: this.user_id || null,
+        caregiver_id: this.caregiver_id || null,
+        claimed: this.claimed === true,
+        claimed_at: this.claimed_at || null,
+        isActive: this.isActive !== false,
+        revoked: this.revoked === true,
+        revoked_at: this.revoked_at || null,
+        // Credential metadata only — never the secret/ciphertext.
+        credential_version:
+            this.credential && this.credential.version ? this.credential.version : null,
+        credential_issued_at:
+            this.credential && this.credential.issued_at ? this.credential.issued_at : null,
+        battery_percent: this.battery_percent,
+        battery_updated_at: this.battery_updated_at || null,
+        firmware_version: this.firmware_version,
+        cohort: this.cohort || null,
+        pinned_release_version: this.pinned_release_version || null,
+        calibration: this.calibration
+            ? {
+                  version: this.calibration.version,
+                  data: this.calibration.data,
+                  calibrated_at: this.calibration.calibrated_at,
+                  calibrated_by: this.calibration.calibrated_by || null,
+              }
+            : null,
+        last_seen: this.last_seen || null,
+        last_sync_at: this.last_sync_at || null,
+        is_online: this.isOnline(),
+        created_at: this.createdAt,
+        updated_at: this.updatedAt,
+    };
 };
 
 // ============================================

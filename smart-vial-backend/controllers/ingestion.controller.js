@@ -42,6 +42,7 @@ const updateTelemetry = async (req, res) => {
 
         // Device may not exist in the database during boot, so create it if needed
         let device = await Device.findOne({ device_id });
+        const now = new Date();
 
         if (!device) {
             // Create new device if it doesn't exist
@@ -49,15 +50,23 @@ const updateTelemetry = async (req, res) => {
                 device_id,
                 battery_percent: battery_percent !== undefined ? battery_percent : 100,
                 firmware_version: firmware_version || '1.0.0',
-                last_seen: new Date(),
+                last_seen: now,
+                // GTM-539: telemetry IS a successful sync; track it for fleet health.
+                last_sync_at: now,
+                battery_updated_at: battery_percent !== undefined ? now : null,
                 claimed: false,
                 isActive: true
             });
         } else {
             // Update existing device
-            device.battery_percent = battery_percent !== undefined ? battery_percent : device.battery_percent;
+            if (battery_percent !== undefined) {
+                device.battery_percent = battery_percent;
+                device.battery_updated_at = now;
+            }
             device.firmware_version = firmware_version || device.firmware_version;
-            device.last_seen = new Date();
+            device.last_seen = now;
+            // GTM-539: a telemetry POST is a successful sync.
+            device.last_sync_at = now;
         }
 
         await device.save();
@@ -117,8 +126,11 @@ const ingestEvent = async (req, res) => {
 
         await newEvent.save();
 
-        // Update device last_seen timestamp if device exists
-        device.last_seen = new Date();
+        // Update device last_seen + last_sync_at timestamps (a successful event
+        // ingestion is a successful sync; drives GTM-539 fleet-health staleness).
+        const now = new Date();
+        device.last_seen = now;
+        device.last_sync_at = now;
         await device.save();
 
         res.status(200).json({ status: 'Event logged successfully' });
