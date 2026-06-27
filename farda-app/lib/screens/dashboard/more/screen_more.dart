@@ -93,9 +93,18 @@ class ScreenMore extends StatelessWidget {
               // prescription view
               prescriptionProvider.prescriptionModelList.isEmpty
                   ? PrescriptionView(
-                    onSetupVial:
-                        () =>
-                            context.push(CustomRoutePaths.screenConnectOnBoard),
+                    onSetupVial: () async {
+                      // Link the paired vial ID returned by the pairing screen
+                      // to the prescription model. A null/empty result (user
+                      // backed out) leaves the existing deviceId untouched.
+                      // Capture the provider before the await so we don't use
+                      // BuildContext across an async gap.
+                      final provider = context.read<PrescriptionProvider>();
+                      final pairedId = await context.push<String>(
+                        CustomRoutePaths.screenConnectOnBoard,
+                      );
+                      provider.applyPairedDeviceId(pairedId);
+                    },
                     drName: "Doctor Name",
                     address: "Address not found",
                     patientName: patientName,
@@ -111,9 +120,18 @@ class ScreenMore extends StatelessWidget {
                     sideEffects: "None",
                   )
                   : PrescriptionView(
-                    onSetupVial:
-                        () =>
-                            context.push(CustomRoutePaths.screenConnectOnBoard),
+                    onSetupVial: () async {
+                      // Link the paired vial ID returned by the pairing screen
+                      // to the prescription model. A null/empty result (user
+                      // backed out) leaves the existing deviceId untouched.
+                      // Capture the provider before the await so we don't use
+                      // BuildContext across an async gap.
+                      final provider = context.read<PrescriptionProvider>();
+                      final pairedId = await context.push<String>(
+                        CustomRoutePaths.screenConnectOnBoard,
+                      );
+                      provider.applyPairedDeviceId(pairedId);
+                    },
                     drName:
                         prescriptionProvider
                             .prescriptionModelList

@@ -102,6 +102,19 @@ Future<void> getExtractPrescriptionApi(List<File> files) async {
   }
 }
 
+  /// Link a paired/typed smart-vial ID to the current prescription so it is
+  /// carried into the submit payload via [PrescriptionModel.toSubmit]. The
+  /// pairing screen returns the vial ID through `Navigator.pop`/`context.push`,
+  /// which is `null` (or empty) when the user backs out or skips — in that case
+  /// the existing [PrescriptionModel.deviceId] is left untouched so a previously
+  /// linked vial is not silently cleared.
+  void applyPairedDeviceId(String? deviceId) {
+    final id = deviceId?.trim();
+    if (id == null || id.isEmpty) return;
+    prescriptionModel.deviceId = id;
+    notifyListeners();
+  }
+
   /// Merge the current text-field values back into [prescriptionModel] so that
   /// manual edits override/augment the OCR-extracted data on save. The
   /// controllers are treated as the source of truth here; empty fields fall

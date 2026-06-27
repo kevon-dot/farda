@@ -75,6 +75,52 @@ void main() {
 
       expect(submit['dob'], '1985-12-31');
     });
+
+    test('toSubmit carries deviceId set after construction', () {
+      final model = PrescriptionModel(rxNumber: 'RX-1');
+      expect(model.toSubmit('user-42')['deviceId'], isNull);
+
+      // Simulate a paired vial id being linked to the model.
+      model.deviceId = 'AA:BB:CC:DD:EE:FF';
+      final submit = model.toSubmit('user-42');
+
+      expect(submit['deviceId'], 'AA:BB:CC:DD:EE:FF');
+    });
+  });
+
+  group('PrescriptionProvider.applyPairedDeviceId', () {
+    test('links a paired vial id into the submit payload', () {
+      final provider = PrescriptionProvider();
+      provider.prescriptionModel = PrescriptionModel(rxNumber: 'RX-1');
+
+      provider.applyPairedDeviceId('vial-42');
+
+      expect(provider.prescriptionModel.deviceId, 'vial-42');
+      expect(
+        provider.prescriptionModel.toSubmit('user-7')['deviceId'],
+        'vial-42',
+      );
+    });
+
+    test('trims surrounding whitespace from the paired id', () {
+      final provider = PrescriptionProvider();
+      provider.applyPairedDeviceId('  vial-99  ');
+
+      expect(provider.prescriptionModel.deviceId, 'vial-99');
+    });
+
+    test('leaves deviceId untouched when the user backs out (null/empty)', () {
+      final provider = PrescriptionProvider();
+      provider.prescriptionModel = PrescriptionModel(deviceId: 'existing-vial');
+
+      // User cancels/skips the pairing screen -> null result.
+      provider.applyPairedDeviceId(null);
+      expect(provider.prescriptionModel.deviceId, 'existing-vial');
+
+      // Empty/whitespace-only result is likewise ignored.
+      provider.applyPairedDeviceId('   ');
+      expect(provider.prescriptionModel.deviceId, 'existing-vial');
+    });
   });
 
   group('PrescriptionProvider.syncControllersToModel', () {

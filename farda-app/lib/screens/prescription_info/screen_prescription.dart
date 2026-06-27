@@ -226,8 +226,15 @@ class ScreenPrescription extends StatelessWidget {
                             color: theme.primaryColor,
                           ),
                           text: "Setup Vial",
-                          onClick: () {
-                            context.push(CustomRoutePaths.screenConnectOnBoard);
+                          onClick: () async {
+                            // The pairing screen returns the vial ID via
+                            // Navigator.pop; link it to the prescription so it
+                            // is included in the submit payload. A null/empty
+                            // result (user backed out) leaves deviceId as-is.
+                            final pairedId = await context.push<String>(
+                              CustomRoutePaths.screenConnectOnBoard,
+                            );
+                            controller.provider.applyPairedDeviceId(pairedId);
                           },
                         ),
                       ],
