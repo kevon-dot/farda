@@ -1,0 +1,107 @@
+// Prisma schema for better-auth with phone number authentication
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id                  String   @id @default(cuid())
+  email               String?  @unique
+  name                String?
+  image               String?
+  phoneNumber         String?  @unique
+  phoneNumberVerified Boolean  @default(false)
+  emailVerified       Boolean  @default(false)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  accounts      Account[]
+  sessions      Session[]
+  prescriptions Prescription[]
+  doses         Dose[]
+}
+
+model Prescription {
+  id                   String    @id @default(cuid())
+  userId               String    @unique // One prescription per user
+  medicationName       String
+  dosageInstructions   String?
+  deviceId             String?   @unique // The vial ID from the external API
+  rxNumber             String?
+  storeNumber          String?
+  pharmacyOrDoctorName String?
+  contactDetails       String?
+  dateFilled           DateTime?
+  dateExpired          DateTime?
+  address              String?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  doses Dose[]
+
+  @@index([userId])
+}
+
+model Dose {
+  id             String    @id @default(cuid())
+  prescriptionId String
+  userId         String
+  scheduledFor   DateTime
+  takenAt        DateTime?
+  mood           String?
+  note           String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  prescription Prescription @relation(fields: [prescriptionId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([prescriptionId])
+}
+
+model Account {
+  id                   String    @id @default(cuid())
+  userId               String
+  type                 String
+  provider             String
+  providerAccountId    String
+  accessToken          String?
+  refreshToken         String?
+  accessTokenExpiresAt DateTime?
+  user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Verification {
+  id         String   @id @default(cuid())
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([identifier, value])
+  @@map("verifications")
+}

@@ -1,0 +1,670 @@
+{
+  "info": {
+    "_postman_id": "d215099b-09b4-4718-bdc3-8bbc605fad45",
+    "name": "vial",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "46156869",
+    "_collection_link": "https://go.postman.co/collection/46156869-d215099b-09b4-4718-bdc3-8bbc605fad45?source=collection_link"
+  },
+  "item": [
+    {
+      "name": "INGESTION API",
+      "item": [
+        {
+          "name": "add a new device",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "your-strong-device-api-key",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"device_id\": \"DEVICE007\",\r\n  \"battery_percent\": 85,\r\n  \"firmware_version\": \"1.0.2\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "http://localhost:5000/api/ingest/telemetry",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "5000",
+              "path": [
+                "api",
+                "ingest",
+                "telemetry"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "add a new event to a device",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "your-strong-device-api-key",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"device_id\": \"DEVICE003\",\r\n  \"event\": \"OPEN\",\r\n  \"event_id\": \"evt-20260201-004\",\r\n  \"timestamp\": 1738398900,\r\n  \"payload\": {\r\n    \"amount\": 5,\r\n    \"unit\": \"ml\",\r\n    \"temperature\": 22.5\r\n  }\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "http://localhost:5000/api/ingest/event",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "5000",
+              "path": [
+                "api",
+                "ingest",
+                "event"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "USER API",
+      "item": [
+        {
+          "name": "Device Claim",
+          "request": {
+            "auth": {
+              "type": "jwt",
+              "jwt": [
+                {
+                  "key": "algorithm",
+                  "value": "HS256",
+                  "type": "string"
+                },
+                {
+                  "key": "isSecretBase64Encoded",
+                  "value": false,
+                  "type": "boolean"
+                },
+                {
+                  "key": "payload",
+                  "value": "{}",
+                  "type": "string"
+                },
+                {
+                  "key": "addTokenTo",
+                  "value": "header",
+                  "type": "string"
+                },
+                {
+                  "key": "headerPrefix",
+                  "value": "Bearer",
+                  "type": "string"
+                },
+                {
+                  "key": "queryParamKey",
+                  "value": "token",
+                  "type": "string"
+                },
+                {
+                  "key": "header",
+                  "value": "{}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJuY190ZXN0MzQ1MyIsInJvbGUiOiJ1c2VyIiwiaWF0IjoxNzcwMTA3NzA4LCJleHAiOjE3NzI2OTk3MDh9.BRZjmlGEkZEY6_V5fmtBbo10_gMyrbjPXZG_vm04opo",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"device_id\": \"DEVICE007\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "http://localhost:5000/api/user/claim",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "5000",
+              "path": [
+                "api",
+                "user",
+                "claim"
+              ]
+            },
+            "description": "1.1 Claim a device- **Endpoint:** \\`POST /api/user/claim\\`- **Purpose:** Connect a physical device to the user’s account.- **Who calls this:** The main user, after getting a device.  \nEndFragment"
+          },
+          "response": []
+        },
+        {
+          "name": "Get all devices for the user",
+          "protocolProfileBehavior": {
+            "disableBodyPruning": true
+          },
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2NWFiYzEyM2RlZjQ1Njc4OSIsInJvbGUiOiJ1c2VyIiwiZW1haWwiOiJ0ZXN0QGV4YW1wbGUuY29tIiwiaWF0IjoxNzY5OTY5MDMwLCJleHAiOjE3NzI1NjEwMzB9.BqJl35WMdIY8cqeyo5GMSpK64v3-P4Nn59zdeAho52Q",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "http://localhost:5000/api/user/devices",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "5000",
+              "path": [
+                "api",
+                "user",
+                "devices"
+              ]
+            },
+            "description": "StartFragment1. Uses the current user’s ID from the token.\n\n2\\. Finds all devices where \\`user_id\\` matches the logged‑in user.\n\n3\\. Returns the list of devices.EndFragment"
+          },
+          "response": []
+        },
+        {
+          "name": "Get events for a single device",
+          "protocolProfileBehavior": {
+            "disableBodyPruning": true
+          },
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2NWFiYzEyM2RlZjQ1Njc4OSIsInJvbGUiOiJ1c2VyIiwiZW1haWwiOiJ0ZXN0QGV4YW1wbGUuY29tIiwiaWF0IjoxNzY5OTY5MDMwLCJleHAiOjE3NzI1NjEwMzB9.BqJl35WMdIY8cqeyo5GMSpK64v3-P4Nn59zdeAho52Q",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "http://localhost:5000/api/user/devices/:nisal'smart_vial21423456423/events",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "5000",
+              "path": [
+                "api",
+                "user",
+                "devices",
+                ":nisal'smart_vial21423456423",
+                "events"
+              ],
+              "variable": [
+                {
+                  "key": "nisal'smart_vial21423456423",
+                  "value": "nisal'smart_vial21423456423"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get events from all user’s devices",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2NWFiYzEyM2RlZjQ1Njc4OSIsInJvbGUiOiJ1c2VyIiwiZW1haWwiOiJ0ZXN0QGV4YW1wbGUuY29tIiwiaWF0IjoxNzY5OTY5MDMwLCJleHAiOjE3NzI1NjEwMzB9.BqJl35WMdIY8cqeyo5GMSpK64v3-P4Nn59zdeAho52Q",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:5000/api/user/events/all",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "5000",
+              "path": [
+                "api",
+                "user",
+                "events",
+                "all"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Search device events by time range",
+          "protocolProfileBehavior": {
+            "disableBodyPruning": true
+          },
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2NWFiYzEyM2RlZjQ1Njc4OSIsInJvbGUiOiJ1c2VyIiwiZW1haWwiOiJ0ZXN0QGV4YW1wbGUuY29tIiwiaWF0IjoxNzY5OTY5MDMwLCJleHAiOjE3NzI1NjEwMzB9.BqJl35WMdIY8cqeyo5GMSpK64v3-P4Nn59zdeAho52Q",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "http://localhost:5000/api/user/devices/:nisal'smart_vial21423456423/events/search?start_time=2026-02-01T00:00:00Z&end_time=2026-02-02T00:00:00Z",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "5000",
+              "path": [
+                "api",
+                "user",
+                "devices",
+                ":nisal'smart_vial21423456423",
+                "events",
+                "search"
+              ],
+              "query": [
+                {
+                  "key": "start_time",
+                  "value": "2026-02-01T00:00:00Z"
+                },
+                {
+                  "key": "end_time",
+                  "value": "2026-02-02T00:00:00Z"
+                }
+              ],
+              "variable": [
+                {
+                  "key": "nisal'smart_vial21423456423",
+                  "value": "nisal'smart_vial21423456423"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Unclaim  a device from the user",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2NWFiYzEyM2RlZjQ1Njc4OSIsInJvbGUiOiJ1c2VyIiwiZW1haWwiOiJ0ZXN0QGV4YW1wbGUuY29tIiwiaWF0IjoxNzY5OTY5MDMwLCJleHAiOjE3NzI1NjEwMzB9.BqJl35WMdIY8cqeyo5GMSpK64v3-P4Nn59zdeAho52Q",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "http://localhost:5000/api/user/devices/:nisal'smart_vial21423456423/unclaim",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "5000",
+              "path": [
+                "api",
+                "user",
+                "devices",
+                ":nisal'smart_vial21423456423",
+                "unclaim"
+              ],
+              "variable": [
+                {
+                  "key": "nisal'smart_vial21423456423",
+                  "value": "nisal'smart_vial21423456423"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete all events for a device",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2NWFiYzEyM2RlZjQ1Njc4OSIsInJvbGUiOiJ1c2VyIiwiZW1haWwiOiJ0ZXN0QGV4YW1wbGUuY29tIiwiaWF0IjoxNzY5OTY5MDMwLCJleHAiOjE3NzI1NjEwMzB9.BqJl35WMdIY8cqeyo5GMSpK64v3-P4Nn59zdeAho52Q",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": ""
+            },
+            "url": {
+              "raw": "http://localhost:5000/api/user/devices/:device_id/events",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "5000",
+              "path": [
+                "api",
+                "user",
+                "devices",
+                ":device_id",
+                "events"
+              ],
+              "variable": [
+                {
+                  "key": "device_id",
+                  "value": "DEVICE001"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "save user model",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2NWFiYzEyM2RlZjQ1Njc4OSIsInJvbGUiOiJ1c2VyIiwiZW1haWwiOiJ0ZXN0QGV4YW1wbGUuY29tIiwiaWF0IjoxNzY5OTY5MDMwLCJleHAiOjE3NzI1NjEwMzB9.BqJl35WMdIY8cqeyo5GMSpK64v3-P4Nn59zdeAho52Q",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:5000/api/user/save",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "5000",
+              "path": [
+                "api",
+                "user",
+                "save"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Caregiver APIs",
+      "item": [
+        {
+          "name": "Remove caregiver",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyMTAxMDEwIiwicm9sZSI6InVzZXIiLCJpYXQiOjE3NzAxMDU2MTUsImV4cCI6MTc3MjY5NzYxNX0.M_99GO42C4fULHUH5lWw0CQIFm4UQVontied-fxbwp8",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:5000/api/user/devices/DEVICE004/caregiver",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "5000",
+              "path": [
+                "api",
+                "user",
+                "devices",
+                "DEVICE004",
+                "caregiver"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Assign a caregiver to a device",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyMTAxMDEwIiwicm9sZSI6InVzZXIiLCJpYXQiOjE3NzAxMDU2MTUsImV4cCI6MTc3MjY5NzYxNX0.M_99GO42C4fULHUH5lWw0CQIFm4UQVontied-fxbwp8",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"device_id\": \"DEVICE006\",\r\n  \"caregiver_id\": \"caregiver_nc\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "http://localhost:5000/api/caregiver/claim-device",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "5000",
+              "path": [
+                "api",
+                "caregiver",
+                "claim-device"
+              ]
+            },
+            "description": "StartFragmentThe device owner assigns a caregiver to a device.EndFragment"
+          },
+          "response": []
+        },
+        {
+          "name": "summary of one device",
+          "protocolProfileBehavior": {
+            "disableBodyPruning": true
+          },
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJjYXJlZ2l2ZXJfbmMiLCJyb2xlIjoiY2FyZWdpdmVyIiwiaWF0IjoxNzcwMTA1NjE1LCJleHAiOjE3NzI2OTc2MTV9.aXalwABTQ16rR5lDjESoVhscHdbVEDV4xDLO-F8Ugd8",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"device_id\": \"DEVICE001\",\r\n  \"caregiver_id\": \"65def456abc123789\"\r\n}"
+            },
+            "url": {
+              "raw": "http://localhost:5000/api/caregiver/devices/DEVICE004/summary",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "5000",
+              "path": [
+                "api",
+                "caregiver",
+                "devices",
+                "DEVICE004",
+                "summary"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "all devices list",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJjYXJlZ2l2ZXJfbmMiLCJyb2xlIjoiY2FyZWdpdmVyIiwiaWF0IjoxNzcwMTA1NjE1LCJleHAiOjE3NzI2OTc2MTV9.aXalwABTQ16rR5lDjESoVhscHdbVEDV4xDLO-F8Ugd8",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:5000/api/caregiver/devices",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "5000",
+              "path": [
+                "api",
+                "caregiver",
+                "devices"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "device by ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJjYXJlZ2l2ZXJfbmMiLCJyb2xlIjoiY2FyZWdpdmVyIiwiaWF0IjoxNzcwMTA1NjE1LCJleHAiOjE3NzI2OTc2MTV9.aXalwABTQ16rR5lDjESoVhscHdbVEDV4xDLO-F8Ugd8",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:5000/api/caregiver/search/device?device_id=DEVICE006",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "5000",
+              "path": [
+                "api",
+                "caregiver",
+                "search",
+                "device"
+              ],
+              "query": [
+                {
+                  "key": "device_id",
+                  "value": "DEVICE006"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "events by date range",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJjYXJlZ2l2ZXJfbmMiLCJyb2xlIjoiY2FyZWdpdmVyIiwiaWF0IjoxNzcwMTA1NjE1LCJleHAiOjE3NzI2OTc2MTV9.aXalwABTQ16rR5lDjESoVhscHdbVEDV4xDLO-F8Ugd8",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:5000/api/caregiver/events/filter/date?device_id=DEVICE006&start_date=2026-05-01T00:00:00Z&end_date=2026-07-02T00:00:00Z",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "5000",
+              "path": [
+                "api",
+                "caregiver",
+                "events",
+                "filter",
+                "date"
+              ],
+              "query": [
+                {
+                  "key": "device_id",
+                  "value": "DEVICE006"
+                },
+                {
+                  "key": "start_date",
+                  "value": "2026-05-01T00:00:00Z"
+                },
+                {
+                  "key": "end_date",
+                  "value": "2026-07-02T00:00:00Z"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ],
+      "description": "StartFragmentThese are used by **caregivers** (e.g., family members or professionals). They require a user token where the user has the role \\`caregiver\\`.EndFragment"
+    }
+  ]
+}

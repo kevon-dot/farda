@@ -1,0 +1,46 @@
+{
+	"name": "farda-app-backend",
+	"version": "1.0.0",
+	"scripts": {
+		"build": "npm run lint && tsc --project tsconfig.prod.json",
+		"dev": "cross-env NODE_ENV=development tsx watch --clear-screen=false --exclude \"src/**/*.test.ts\" ./src/main.ts",
+		"my-prisma:restart:lin": "rm -rf ./prisma/migrations && prisma migrate reset && prisma migrate dev --name init && prisma generate"
+	},
+	"engines": {
+		"node": ">=16.0.0"
+	},
+	"_moduleAliases": {
+		"@src": "dist"
+	},
+	"dependencies": {
+		"@prisma/adapter-pg": "^7.4.0",
+		"@prisma/client": "^7.4.0",
+		"@types/multer": "^2.1.0",
+		"better-auth": "^1.4.18",
+		"cookie-parser": "^1.4.7",
+		"dayjs": "^1.11.19",
+		"dotenv": "^17.3.1",
+		"express": "^5.2.1",
+		"helmet": "^8.1.0",
+		"jet-logger": "^2.2.3",
+		"jet-paths": "^2.0.1",
+		"jsonfile": "^6.2.0",
+		"module-alias": "^2.3.4",
+		"morgan": "^1.10.1",
+		"multer": "^2.1.1",
+		"openai": "^6.27.0",
+		"pg": "^8.18.0",
+		"twilio": "^5.12.1",
+		"zod": "^4.3.6"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "2.4.0",
+		"@types/express": "^5.0.6",
+		"@types/morgan": "^1.9.10",
+		"@types/node": "^25.2.3",
+		"@types/pg": "^8.16.0",
+		"cross-env": "^10.1.0",
+		"prisma": "^7.4.0",
+		"tsx": "^4.21.0"
+	}
+}

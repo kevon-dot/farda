@@ -1,0 +1,16 @@
+SOFTWARE LICENSE AND OWNERSHIP TRANSFER
+Project: smart vial api
+
+Developer: n Chathu
+
+Client: kevon
+
+Date: February 3, 2026
+
+1. Transfer of Rights: Upon final payment and delivery, the Developer hereby assigns and transfers all intellectual property rights, title, and interest in the software to the Client.
+
+2. Grant of License: The Developer provides the Client with a perpetual, irrevocable, worldwide license to use, modify, and distribute the source code.
+
+3. Warranty & Liability: The software is provided "as is" without warranty of any kind. The Developer is not liable for any damages resulting from the use or inability to use the software.
+
+4. Third-Party Libraries: This software utilizes [e.g., Node.js, Express, MongoDB]. These components remain subject to their respective open-source licenses (MIT, Apache, etc.).

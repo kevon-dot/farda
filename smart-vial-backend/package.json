@@ -1,0 +1,37 @@
+{
+  "name": "smart-vial-backend",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "node Server.js"
+  },
+  "keywords": [
+    "smart-vial",
+    "iot",
+    "healthcare",
+    "medication",
+    "device-management",
+    "api",
+    "backend",
+    "express",
+    "mongodb"
+  ],
+  "author": "N chathu",
+  "license": "client has all rights once order is completed",
+  "description": "Backend API for Smart Vial medication management system. Handles device ingestion, user authentication, caregiver management, and event tracking.",
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "better-auth": "^1.5.4",
+    "body-parser": "^2.2.2",
+    "cors": "^2.8.6",
+    "dotenv": "^17.2.3",
+    "express": "^5.2.1",
+    "jsonwebtoken": "^9.0.3",
+    "mongoose": "^9.1.5",
+    "pg": "^8.20.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.11"
+  }
+}
