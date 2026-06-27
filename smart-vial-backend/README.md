@@ -1,6 +1,6 @@
 # Smart Vial IoT Backend
 
-REST API backend for Smart Vial 
+REST API backend for Smart Vial
 ---
 
 ## Quick Links
@@ -9,8 +9,9 @@ REST API backend for Smart Vial
 
 Essential guides:
 - **[API Reference](docs/API_REFERENCE.md)** - All endpoints with examples
-- **[Quick Start](docs/DEVELOPMENT.md#quick-start)** - Get running in 5 minutes
-- **[Authentication](docs/AUTHENTICATION.md)** - JWT and API key setup
+- **[Quick Start](docs/DEVELOPMENT.md)** - Get running locally
+- **[Authentication](docs/AUTHENTICATION.md)** - User (better-auth) + device (HMAC) auth
+- **[Device Auth Wire Contract](docs/DEVICE_AUTH.md)** - Per-device HMAC signing scheme
 - **[Deployment](docs/DEPLOYMENT.md)** - Production deployment guide
 - **[Troubleshooting](docs/TROUBLESHOOTING.md)** - Common issues and fixes
 
@@ -40,7 +41,8 @@ ESP32 Device → Cloud Backend → Mobile Apps
 - Multi-user support (patient + caregiver)
 
 ✅ **Event Tracking**
-- Log OPEN/CLOSE events from devices
+- Log typed device events (OPEN/CLOSE, BATTERY, HEARTBEAT, BOOT, TILT, TAMPER, …)
+- Per-`event_type` payload validation (zod)
 - Timestamp-based adherence tracking
 - Idempotent event ingestion (prevents duplicates)
 
@@ -49,19 +51,35 @@ ESP32 Device → Cloud Backend → Mobile Apps
 - Users can be caregivers (monitor others' devices)
 - Same user can have both roles simultaneously
 
+✅ **Security**
+- User/caregiver auth via **better-auth** session validation (shared PostgreSQL store)
+- Device auth via **per-device HMAC-SHA256** signing with replay protection
+- `helmet` security headers, CORS allowlist, and active rate limiting
+- NoSQL operator-injection sanitization on every request
+
 ✅ **RESTful APIs**
 - User/Patient APIs for device ownership
 - Caregiver APIs for monitoring
-- Device ingestion APIs for telemetry
+- Device ingestion APIs for telemetry and events
 
 ---
 
 ## Tech Stack
 
-- **Runtime**: Node.js 16+
-- **Framework**: Express.js
-- **Database**: MongoDB (Mongoose ODM)
-- **Authentication**: JWT (users/caregivers), API Keys (devices)
+- **Runtime**: Node.js, Express.js (Express 5)
+- **Databases (dual-store)**:
+  - **MongoDB** (Mongoose ODM) — devices, events, telemetry
+  - **PostgreSQL** — shared **better-auth** identity/session store (accessed via `pg`)
+- **User authentication**: better-auth session validation (NOT raw JWT)
+- **Device authentication**: per-device HMAC-SHA256 signatures (NOT a shared API key)
+- **Validation**: zod (event payloads), request sanitization middleware
+- **Hardening**: helmet, cors (allowlist), express-rate-limit
+
+> **Note on data stores.** Device, event, and telemetry data live in **MongoDB**.
+> User identity and sessions live in a **PostgreSQL** database shared with the main
+> application; this backend validates sessions against it through better-auth. There
+> is no Mongo `User`-collection-based login — the local `User` model only mirrors
+> roles and device-claim lists keyed by the better-auth user id.
 
 ---
 
@@ -69,9 +87,10 @@ ESP32 Device → Cloud Backend → Mobile Apps
 
 ### Prerequisites
 
-- Node.js 16 or higher
-- MongoDB database (MongoDB Atlas recommended)
-- npm or yarn
+- Node.js (LTS recommended)
+- MongoDB database (MongoDB Atlas recommended) for device/event data
+- Access to the shared PostgreSQL / better-auth database used by the main app
+- npm or pnpm
 
 ### Installation
 
@@ -86,31 +105,39 @@ ESP32 Device → Cloud Backend → Mobile Apps
    npm install
    ```
 
-3. **Configure environment**:
-   ```bash
-   cp .env.example .env
-   ```
-   
-   Edit `.env` and set:
+3. **Configure environment** (`.env`):
    ```env
-   MONGODB_URI=your_mongodb_connection_string
-   JWT_SECRET=your_secret_key_min_32_chars
-   DEVICE_API_KEY=your_device_api_key
+   # Server
+   PORT=5000
+   NODE_ENV=development
+
+   # MongoDB (device/event/telemetry store)
+   MONGO_URI=your_mongodb_connection_string
+
+   # PostgreSQL / better-auth (shared identity store)
+   DATABASE_URL=postgres://user:pass@host:5432/dbname
+   BETTER_AUTH_URL=http://localhost:5000
+
+   # Device auth (per-device HMAC secrets are encrypted at rest)
+   DEVICE_SECRET_ENC_KEY=64_char_hex_32_byte_master_key
+   TYME_SYNC_TOLERANCE_SECONDS=300
+
+   # CORS + rate limiting (optional; sensible defaults exist)
+   CORS_ORIGINS=https://app.example.com,https://admin.example.com
+   RATE_LIMIT_WINDOW_MS=900000
+   RATE_LIMIT_MAX_REQUESTS=100
    ```
+
+   > `Server.js` connects to MongoDB with `process.env.MONGO_URI`. The better-auth
+   > middleware connects to PostgreSQL with `process.env.DATABASE_URL`.
 
 4. **Start server**:
    ```bash
-   # Development (auto-restart)
+   # Development (auto-restart with nodemon, if installed)
    npm run dev
-   
+
    # Production
    npm start
-   ```
-
-5. **Test connection**:
-   ```bash
-   curl http://localhost:5000/
-   # Should return: "Welcome to Vial Server!"
    ```
 
 ---
@@ -119,27 +146,35 @@ ESP32 Device → Cloud Backend → Mobile Apps
 
 ### User/Patient APIs (`/api/user`)
 
-- `POST /save` - Create/update user account
+- `POST /save` - Create/update user record (mirrors better-auth identity locally)
 - `POST /claim` - Claim ownership of a device
 - `GET /devices` - List your devices
-- `GET /devices/:id/events` - Get device events
-- `DELETE /devices/:id/unclaim` - Release device ownership
+- `GET /devices/:device_id/events` - Get device events
+- `GET /events/all` - Get events across all your devices
+- `GET /devices/:device_id/events/search` - Search a device's events by time range
+- `DELETE /devices/:device_id/unclaim` - Release device ownership
+- `DELETE /devices/:device_id/events` - Delete a device's events
+- `DELETE /devices/:device_id/caregiver` - Remove caregiver access
 
 ### Caregiver APIs (`/api/caregiver`)
 
 - `POST /claim-device` - Assign caregiver to device
 - `GET /devices` - List devices you're monitoring
-- `GET /devices/:id/summary` - Device summary with latest events
+- `GET /devices/:device_id/summary` - Device summary with latest events
+- `GET /search/device` - Search a device by `device_id`
 - `GET /events/filter/date` - Filter events by date range
 
 ### Device Ingestion APIs (`/api/ingest`)
 
-- `POST /telemetry` - Update battery, firmware version
-- `POST /event` - Log OPEN/CLOSE interaction events
+- `POST /telemetry` - Update battery (`battery_percent`) and firmware version
+- `POST /event` - Log a typed device event
 
 **Authentication**:
-- User/Caregiver APIs: `Authorization: Bearer <JWT_TOKEN>`
-- Device APIs: `X-API-Key: <API_KEY>`
+- User/Caregiver APIs: better-auth session — sent as a session cookie **or**
+  `Authorization: Bearer <session_token>` (validated against PostgreSQL via better-auth).
+- Device APIs: per-device HMAC headers
+  `x-device-id`, `x-nonce`, `x-timestamp`, `x-signature`
+  (see **[Device Auth](docs/DEVICE_AUTH.md)**).
 
 📘 **[Full API Documentation →](docs/API_REFERENCE.md)**
 
@@ -149,37 +184,42 @@ ESP32 Device → Cloud Backend → Mobile Apps
 
 ```
 smart-vial-backend/
-├── Server.js                 # Application entry point
+├── Server.js                 # App entry: helmet, CORS, rate limiting, routes, Mongo connect
 ├── config/
-│   ├── config.js             # Environment configuration
-│   └── databaseConfig.js     # MongoDB connection
-├── models/
-│   ├── User.js               # User accounts (dual roles)
-│   ├── Device.js             # Smart bottle cap registry
-│   └── Event.js              # Interaction event log
+│   └── config.js             # Environment configuration
+├── models/                   # MongoDB (Mongoose) models
+│   ├── User.js               # Local role/claim mirror keyed by better-auth user id
+│   ├── Device.js             # Smart bottle cap registry + encrypted device credential
+│   └── Event.js              # Typed interaction event log
 ├── controllers/
 │   ├── app.api.controller.js         # User API logic
 │   ├── caregiver.controller.js       # Caregiver API logic
-│   └── ingestion.controller.js       # Device ingestion logic
+│   ├── ingestion.controller.js       # Device ingestion logic
+│   └── saveUserController.js         # User save/provisioning logic
 ├── routes/
 │   ├── userAPI.js            # User endpoint routes
 │   ├── caregiverAPI.js       # Caregiver endpoint routes
 │   └── ingestionAPI.js       # Device ingestion routes
 ├── middleware/
-│   ├── verifyUserToken.js    # JWT authentication
-│   └── authDevice.js         # API key validation
+│   ├── verifyUserToken.js    # better-auth session validation (PostgreSQL)
+│   ├── authDevice.js         # Per-device HMAC auth + replay protection
+│   └── sanitize.js           # NoSQL operator-injection sanitization
 ├── utils/
-│   ├── generateTestToken.js  # Create test JWT tokens
-│   └── testJWT.js            # Validate JWT tokens
+│   ├── deviceAuth.js         # Pure HMAC verification (wire contract)
+│   ├── deviceCredentials.js  # AES-256-GCM encrypt/decrypt of device secrets
+│   ├── deviceClaim.js        # Device claim helpers
+│   ├── eventValidation.js    # zod event-type/payload validation
+│   └── userProvisioning.js   # User provisioning helpers
 └── docs/                     # Complete documentation
     ├── README.md             # Documentation index
     ├── API_REFERENCE.md      # API endpoints
-    ├── AUTHENTICATION.md     # Auth guide
-    ├── DEVELOPMENT.md        # Local development
-    ├── DEPLOYMENT.md         # Production deployment
-    ├── DATABASE_SCHEMA.md    # MongoDB schema
-    ├── ARCHITECTURE.md       # System architecture
-    └── TROUBLESHOOTING.md    # Common issues
+    ├── AUTHENTICATION.md      # Auth guide (better-auth + device HMAC)
+    ├── DEVICE_AUTH.md         # Device HMAC wire contract
+    ├── DEVELOPMENT.md         # Local development
+    ├── DEPLOYMENT.md          # Production deployment
+    ├── DATABASE_SCHEMA.md     # Data models (MongoDB) + identity store
+    ├── ARCHITECTURE.md        # System architecture
+    └── TROUBLESHOOTING.md     # Common issues
 ```
 
 ---
@@ -189,152 +229,98 @@ smart-vial-backend/
 ### Available Scripts
 
 ```bash
-# Start development server (auto-restart on changes)
-npm run dev
+# Start server
+npm start          # node Server.js
+npm run dev        # node Server.js (use nodemon for auto-restart in dev)
 
-# Start production server
-npm start
-
-# Generate test JWT token
-node utils/generateTestToken.js
-
-# Validate JWT token
-node utils/testJWT.js <token>
+# Run tests
+npm test           # node --test
 ```
+
+> The old `generateTestToken.js` / `testJWT.js` helpers were removed when raw-JWT
+> auth was replaced by better-auth. To exercise authenticated user endpoints, obtain
+> a real better-auth session from the main app and send it as a cookie or bearer token.
 
 ### Testing APIs
 
-Generate a test token:
+User/caregiver endpoint (better-auth session as bearer token):
 ```bash
-node utils/generateTestToken.js
-```
-
-Test user endpoint:
-```bash
-curl -H "Authorization: Bearer <token>" \
+curl -H "Authorization: Bearer <better_auth_session_token>" \
   http://localhost:5000/api/user/devices
 ```
+
+Device ingestion requires a signed request — see **[Device Auth](docs/DEVICE_AUTH.md)**
+for how to compute `x-signature`.
 
 📘 **[Development Guide →](docs/DEVELOPMENT.md)**
 
 ---
 
-## Deployment
+## Rate Limiting
 
-### Heroku Deployment
+Rate limiting is **active** (`express-rate-limit`) and returns HTTP **429** when
+exceeded. Standardized `RateLimit-*` headers are sent (`standardHeaders: true`);
+the legacy `X-RateLimit-*` headers are disabled.
 
-```bash
-# Login to Heroku
-heroku login
+| Limiter   | Scope                          | Default window | Default max |
+| --------- | ------------------------------ | -------------- | ----------- |
+| General   | All routes                     | 15 min         | 100 / IP    |
+| Ingestion | `/api/ingest/*`                | 1 min          | 120 / IP    |
+| Auth      | `/api/user/*`, `/api/caregiver/*` | 15 min      | 100 / IP    |
 
-# Create app
-heroku create your-app-name
-
-# Set environment variables
-heroku config:set MONGODB_URI="your_mongodb_uri"
-heroku config:set JWT_SECRET="your_jwt_secret"
-heroku config:set DEVICE_API_KEY="your_api_key"
-
-# Deploy
-git push heroku main
-
-# View logs
-heroku logs --tail
-```
-
-📘 **[Full Deployment Guide →](docs/DEPLOYMENT.md)**
-
----
-
-## Database Schema
-
-### Models
-
-**User** - User accounts with flexible roles
-```javascript
-{
-  user_id: String,
-  user_roles: [String],  // ["user", "caregiver"]
-  claim_device_ids: [String],
-  caregiving_device_ids: [String]
-}
-```
-
-**Device** - Smart bottle cap registry
-```javascript
-{
-  device_id: String,
-  user_id: String,
-  caregiver_id: String,
-  battery_percent: Number,
-  firmware_version: String,
-  isActive: Boolean
-}
-```
-
-**Event** - Interaction event log
-```javascript
-{
-  device_id: String,
-  event_type: String,  // "OPEN" or "CLOSE"
-  timestamp: Date,
-  server_timestamp: Date,
-  idempotency_key: String
-}
-```
-
-📘 **[Complete Schema Documentation →](docs/DATABASE_SCHEMA.md)**
+Windows/limits are configurable via env (`RATE_LIMIT_*`, `INGEST_RATE_LIMIT_*`,
+`AUTH_RATE_LIMIT_*`). See [API Reference](docs/API_REFERENCE.md#rate-limiting).
 
 ---
 
 ## Security
 
 🔐 **Authentication**:
-- JWT tokens for user/caregiver endpoints (30-day expiration)
-- API keys for device endpoints
-- Ownership validation on all operations
+- **better-auth** session validation for user/caregiver endpoints (shared PostgreSQL store)
+- **Per-device HMAC-SHA256** signatures for device endpoints, with monotonic-nonce
+  replay protection and a timestamp freshness window
+- Ownership/role validation on all operations
 
-🛡️ **Best Practices**:
-- Store JWT_SECRET and API keys in environment variables
+🛡️ **Hardening**:
+- `helmet` security headers
+- CORS allowlist (`CORS_ORIGINS`); requests with no `Origin` (native devices, curl)
+  are allowed so device ingestion keeps working
+- Active rate limiting (429) on general, ingestion, and auth surfaces
+- NoSQL operator-injection sanitization (strips `$`-prefixed/dotted keys)
+- Per-device secrets encrypted at rest (AES-256-GCM); plaintext never stored
 - Use HTTPS in production
-- Implement rate limiting
-- Regular security audits
 
-📘 **[Security Guide →](docs/AUTHENTICATION.md#security-best-practices)**
+📘 **[Security & Auth Guide →](docs/AUTHENTICATION.md)**
 
 ---
 
 ## Environment Variables
 
-Required configuration in `.env`:
+Required/important configuration in `.env`:
 
 ```env
 # Server
 PORT=5000
 NODE_ENV=production
 
-# Database
-MONGODB_URI=mongodb+srv://user:pass@cluster.mongodb.net/dbname
+# MongoDB (devices/events/telemetry)
+MONGO_URI=mongodb+srv://user:pass@cluster.mongodb.net/dbname
 
-# Authentication
-JWT_SECRET=your-secret-min-32-characters
-DEVICE_API_KEY=your-device-api-key
+# PostgreSQL / better-auth (shared identity store)
+DATABASE_URL=postgres://user:pass@host:5432/dbname
+BETTER_AUTH_URL=https://your-server.com
+
+# Device auth
+DEVICE_SECRET_ENC_KEY=64-char-hex-32-byte-master-key   # required in prod
+TYME_SYNC_TOLERANCE_SECONDS=300
+
+# CORS + rate limiting
+CORS_ORIGINS=https://app.example.com
+RATE_LIMIT_WINDOW_MS=900000
+RATE_LIMIT_MAX_REQUESTS=100
 ```
 
-📘 **[Environment Configuration →](docs/DEPLOYMENT.md#environment-variables)**
-
----
-
-## Troubleshooting
-
-Common issues:
-
-- **Database connection fails**: Check MongoDB URI and network access
-- **Invalid token**: Regenerate using `generateTestToken.js`
-- **Device already claimed**: Unclaim first or use different device
-- **Empty response**: Check server logs for errors
-
-📘 **[Full Troubleshooting Guide →](docs/TROUBLESHOOTING.md)**
+📘 **[Environment Configuration →](docs/DEPLOYMENT.md)**
 
 ---
 
@@ -344,7 +330,7 @@ Common issues:
 
 ```bash
 curl -X POST http://localhost:5000/api/user/claim \
-  -H "Authorization: Bearer <your_token>" \
+  -H "Authorization: Bearer <better_auth_session_token>" \
   -H "Content-Type: application/json" \
   -d '{"device_id": "DEVICE001"}'
 ```
@@ -352,22 +338,25 @@ curl -X POST http://localhost:5000/api/user/claim \
 ### Get Device Events
 
 ```bash
-curl -H "Authorization: Bearer <your_token>" \
+curl -H "Authorization: Bearer <better_auth_session_token>" \
   http://localhost:5000/api/user/devices/DEVICE001/events
 ```
 
-### Log Device Event (from ESP32)
+### Log a Device Event (from ESP32)
+
+Device requests are signed with per-device HMAC headers (no shared API key):
 
 ```bash
 curl -X POST http://localhost:5000/api/ingest/event \
-  -H "X-API-Key: your_api_key" \
+  -H "x-device-id: DEVICE001" \
+  -H "x-nonce: 42" \
+  -H "x-timestamp: 1738483200" \
+  -H "x-signature: <lowercase_hex_hmac_sha256>" \
   -H "Content-Type: application/json" \
-  -d '{
-    "device_id": "DEVICE001",
-    "event": "OPEN",
-    "event_id": "unique_id_123"
-  }'
+  -d '{"device_id":"DEVICE001","event":"OPEN","event_id":"unique_id_123"}'
 ```
+
+See **[Device Auth](docs/DEVICE_AUTH.md)** for exactly how `x-signature` is computed.
 
 📘 **[More Examples →](docs/API_REFERENCE.md)**
 
@@ -381,20 +370,13 @@ Complete documentation is available in the [`docs/`](docs/) folder:
 |----------|-------------|
 | [README](docs/README.md) | Documentation index and overview |
 | [API Reference](docs/API_REFERENCE.md) | Complete API endpoint documentation |
-| [Authentication](docs/AUTHENTICATION.md) | JWT and API key setup |
-| [Database Schema](docs/DATABASE_SCHEMA.md) | MongoDB models and relationships |
+| [Authentication](docs/AUTHENTICATION.md) | better-auth (users) + device HMAC setup |
+| [Device Auth](docs/DEVICE_AUTH.md) | Per-device HMAC wire contract |
+| [Database Schema](docs/DATABASE_SCHEMA.md) | Data models and stores |
 | [Development](docs/DEVELOPMENT.md) | Local development guide |
 | [Deployment](docs/DEPLOYMENT.md) | Production deployment |
 | [Architecture](docs/ARCHITECTURE.md) | System architecture and design |
 | [Troubleshooting](docs/TROUBLESHOOTING.md) | Common issues and solutions |
-
----
-
-## Support
-
-- 📧 Report issues in GitHub Issues
-- 📖 Check [Troubleshooting Guide](docs/TROUBLESHOOTING.md)
-- 💬 Review [API Documentation](docs/API_REFERENCE.md)
 
 ---
 
@@ -415,9 +397,4 @@ Date: February 3, 2026
 
 3. Warranty & Liability: The software is provided "as is" without warranty of any kind. The Developer is not liable for any damages resulting from the use or inability to use the software.
 
-4. Third-Party Libraries: This software utilizes [e.g., Node.js, Express, MongoDB]. These components remain subject to their respective open-source licenses (MIT, Apache, etc.).
-
-
----
-
-**Last Updated**: February 3, 2026
+4. Third-Party Libraries: This software utilizes [e.g., Node.js, Express, MongoDB, PostgreSQL]. These components remain subject to their respective open-source licenses (MIT, Apache, etc.).

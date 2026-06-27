@@ -17,16 +17,26 @@
 
 ## Overview
 
-**Database**: MongoDB (Mongoose ODM)
+This backend uses a **dual data store**:
 
-**Collections**:
-- `devices` - Device registry
-- `events` - Event store (append-only)
-- `users` - User accounts
+- **MongoDB** (Mongoose ODM) — device, event, and telemetry data (this document).
+- **PostgreSQL** — the shared **better-auth** identity/session store, owned by the
+  main application. This submodule validates sessions against it via better-auth
+  (`middleware/verifyUserToken.js`) but does **not** define its schema here.
 
-**Connection String**:
+**MongoDB collections**:
+- `devices` - Device registry (incl. encrypted per-device auth credential)
+- `events` - Typed event store (append-only)
+- `users` - **Local mirror** of roles/claims keyed by the better-auth user id
+  (NOT the authoritative login store — that lives in PostgreSQL)
+
+**Connection strings**:
 ```env
+# MongoDB (Server.js connects with process.env.MONGO_URI)
 MONGO_URI=mongodb+srv://user:password@cluster.mongodb.net/database
+
+# PostgreSQL / better-auth (verifyUserToken connects with process.env.DATABASE_URL)
+DATABASE_URL=postgres://user:password@host:5432/database
 ```
 
 ---
@@ -44,24 +54,44 @@ MONGO_URI=mongodb+srv://user:password@cluster.mongodb.net/database
   // Identification
   device_id: String,           // Unique device identifier
   device_name: String,         // Display name
-  
-  // Ownership
-  user_id: String | null,      // Owner's user ID
+
+  // Ownership (IDs are better-auth user ids, stored as strings)
+  user_id: String | null,      // Owner's user id
   claimed: Boolean,            // Is device claimed?
   claimed_at: Date | null,     // When was it claimed
-  caregiver_id: String | null, // Assigned caregiver ID
-  
+  caregiver_id: String | null, // Assigned caregiver id
+
   // Status & Telemetry
   battery_percent: Number,     // 0-100
   firmware_version: String,    // e.g., "1.0.2"
   isActive: Boolean,           // Is device active
   last_seen: Date,             // Last communication timestamp
-  
+
+  // Per-device authentication (A3 — see DEVICE_AUTH.md)
+  credential: {                // AES-256-GCM encrypted device secret; select:false
+    ciphertext: String,
+    iv: String,
+    tag: String,
+    version: Number,           // bumped on each rotation
+    issued_at: Date
+  } | null,
+  revoked: Boolean,            // revoked devices cannot authenticate
+  revoked_at: Date | null,
+  last_nonce: Number,          // highest accepted nonce (replay watermark; starts -1)
+
   // Timestamps (auto-managed)
   createdAt: Date,
   updatedAt: Date
 }
-//example data set 
+```
+
+> The `credential` subdocument is marked `select: false`, so it is **never returned
+> by default queries**; the ingestion auth path explicitly selects it. The plaintext
+> secret is decrypted into memory only at signature-verification time and is never
+> stored. Credential lifecycle methods: `issueCredential()`, `rotateCredential()`,
+> `revokeCredential()`, `getSecret()` (see `models/Device.js` and DEVICE_AUTH.md).
+
+Example document:
 
 ```json
 {
@@ -101,24 +131,34 @@ MONGO_URI=mongodb+srv://user:password@cluster.mongodb.net/database
 ```javascript
 {
   // Identification
-  idempotency_key: String | null,  // Unique event ID (optional) // strongly recomnd 
-  
+  idempotency_key: String | null,  // Unique event id (optional; sparse-unique index)
+
   // Device Reference
   device_id: String,               // Which device
-  
+
   // Event Data
-  event_type: String,              
-  payload: Object,                 // Additional event data
-  
+  event_type: String,              // uppercase; one of the allowed types (see below)
+  payload: Object,                 // type-specific, validated per event_type (zod)
+
   // Timestamps
-  device_timestamp: Date | null,   // Time from device
+  device_timestamp: Date | null,   // Time from device (from request `timestamp`, unix s)
   server_timestamp: Date,          // Time received by server
-  
+  time_drift_seconds: Number,      // server_time - device_time, in seconds
+
+  processed: Boolean,              // processing flag (default false)
+
   // Metadata (auto-managed)
-  createdAt: Date,
-  updatedAt: Date
+  createdAt: Date                  // NOTE: only createdAt; updatedAt is disabled
 }
 ```
+
+**Allowed `event_type` values** (others are rejected at validation):
+`OPEN`, `CLOSE`, `BATTERY`, `LOW_BATTERY`, `HEARTBEAT`, `BOOT`, `TILT`, `TAMPER`.
+
+**Payload validation**: payloads are validated against a per-`event_type` zod schema
+both in the ingestion controller and again in the model's `pre("validate")` hook
+(defense-in-depth), so no code path can persist an unknown type or malformed payload.
+Known fields are strictly typed; unknown extra fields are allowed (passthrough).
 **How it works**:
 1. Device sends `event_id` (optional)
 2. Stored as `idempotency_key`
@@ -148,8 +188,9 @@ MONGO_URI=mongodb+srv://user:password@cluster.mongodb.net/database
   },
   "device_timestamp": "2026-02-02T09:00:00.000Z",
   "server_timestamp": "2026-02-02T09:00:05.123Z",
-  "createdAt": "2026-02-02T09:00:05.123Z",
-  "updatedAt": "2026-02-02T09:00:05.123Z"
+  "time_drift_seconds": 5,
+  "processed": false,
+  "createdAt": "2026-02-02T09:00:05.123Z"
 }
 ```
 
@@ -191,6 +232,37 @@ Event.find({
 
 ---
 
+## User Model
+
+**Collection**: `users` (MongoDB)
+
+**File**: `models/User.js`
+
+This is a **local mirror** used for role and device-claim lookups. The authoritative
+user identity and sessions live in **PostgreSQL** (better-auth); `user_id` here is the
+better-auth user id, not a Mongo ObjectId.
+
+### Schema
+
+```javascript
+{
+  user_id: String,                  // better-auth user id (unique)
+  user_roles: [String],             // subset of ["caregiver", "user"]; must be non-empty
+  claim_device_ids: [String],       // devices this user owns
+  caregiving_device_ids: [String],  // devices this user monitors as a caregiver
+  createdAt: Date,
+  lastLogin: Date
+}
+```
+
+### Validation Rules
+
+- `user_id`: Required, unique, indexed
+- `user_roles`: Enum `['caregiver', 'user']`; must contain at least one role
+- Instance helpers: `hasRole(role)`, `addRole(role)`, `removeRole(role)`
+
+---
+
 ## Relationships
 
 ### Entity Relationship Diagram
@@ -214,4 +286,4 @@ Event.find({
 
 
 
-**Last Updated**: February 3, 2026
+**Last Updated**: June 27, 2026
