@@ -15,8 +15,8 @@ import type { Request, Response } from "express";
 import multer from "multer";
 import { z } from "zod";
 import {
-	MAX_UPLOAD_BYTES,
 	isAllowedImageUpload,
+	MAX_UPLOAD_BYTES,
 	sniffImageType,
 } from "./uploadFilter";
 
@@ -45,7 +45,9 @@ const upload = multer({
 const MedicineSchema = z.object({
 	medicine_name: z.string().optional().default(""),
 	generic_name: z.string().optional().default(""),
+	strength: z.string().optional().default(""),
 	instructions: z.string().optional().default(""),
+	frequency: z.string().optional().default(""),
 	qty: z.string().optional().default(""),
 	refills_info: z.string().optional().default(""),
 	side_effects: z.string().optional().default(""),
@@ -115,8 +117,7 @@ const OcrRoutes = {
 					const header = fs.readFileSync(filePath).subarray(0, 12);
 					if (sniffImageType(header) === null) {
 						return res.status(HttpStatusCodes.BAD_REQUEST).json({
-							error:
-								"Uploaded file is not a valid JPEG, PNG, or WebP image.",
+							error: "Uploaded file is not a valid JPEG, PNG, or WebP image.",
 						});
 					}
 				}
@@ -180,7 +181,9 @@ const OcrRoutes = {
 	},
 
 	/**
-	 * Save extracted prescription data to database (upsert - one per user)
+	 * Save extracted prescription data to database.
+	 * Each call CREATES a new prescription (a user may have many), and every
+	 * medication extracted by OCR is persisted as its own Medicine row.
 	 * POST /api/prescriptions/ocr/save
 	 */
 	savePrescription: async (req: Request, res: Response) => {
@@ -250,40 +253,28 @@ const OcrRoutes = {
 				});
 			}
 
-			// TRUNCATION FLAG (#33): The Prisma `Prescription` model is one-per-user
-			// with single-medication fields (medicationName / dosageInstructions).
-			// The OCR result can legitimately contain MULTIPLE medications, but
-			// only the first is persisted here — medications [1..n] are dropped.
-			// Supporting multiple meds requires a data-model change (one-to-many
-			// Medication relation) owned by a separate task and intentionally NOT
-			// done here. We log the drop so it is observable instead of silent.
-			if (data.medicines_names.length > 1) {
-				console.warn(
-					`savePrescription: received ${data.medicines_names.length} medications but the current one-per-user data model only persists the first; dropping ${
-						data.medicines_names.length - 1
-					} medication(s). See issue #33.`,
-				);
-			}
+			// Persist EVERY medication the OCR step extracted as its own Medicine
+			// row (#13). The data model is now one prescription -> many medicines,
+			// so the previous truncation to medicines_names[0] is gone.
+			const medicinesToCreate = data.medicines_names
+				.filter((m) => (m.medicine_name || "").trim().length > 0)
+				.map((m) => ({
+					medicineName: m.medicine_name,
+					genericName: m.generic_name || null,
+					dosageInstructions: m.instructions || null,
+					strength: m.strength || null,
+					qty: m.qty || null,
+					frequency: m.frequency || null,
+					refillsInfo: m.refills_info || null,
+					sideEffects: m.side_effects || null,
+				}));
 
-			// Upsert prescription - one per user (replace if exists, create if not)
-			const prescription = await prisma.prescription.upsert({
-				where: { userId },
-				update: {
-					medicationName: data.medicines_names[0]?.medicine_name || "",
-					dosageInstructions: data.medicines_names[0]?.instructions || "",
-					rxNumber: data.rx_number || null,
-					storeNumber: data.store_number || null,
-					pharmacyOrDoctorName: data.pharmacy_or_doctor_name || null,
-					contactDetails: data.contact_details || null,
-					dateFilled: dateFilledObj,
-					dateExpired: dateExpiredObj,
-					address: data.address || null,
-					deviceId: data.deviceId || null,
-				},
-				create: {
+			// CREATE a new prescription each save (a user may hold many). The
+			// medications are written via a nested create so they share the
+			// prescription's id atomically.
+			const prescription = await prisma.prescription.create({
+				data: {
 					userId,
-					medicationName: data.medicines_names[0]?.medicine_name || "",
-					dosageInstructions: data.medicines_names[0]?.instructions || "",
 					rxNumber: data.rx_number || null,
 					storeNumber: data.store_number || null,
 					pharmacyOrDoctorName: data.pharmacy_or_doctor_name || null,
@@ -292,16 +283,9 @@ const OcrRoutes = {
 					dateExpired: dateExpiredObj,
 					address: data.address || null,
 					deviceId: data.deviceId || null,
+					medicines: { create: medicinesToCreate },
 				},
-			});
-
-			// Generate Doses for Calendar
-			// First, remove any pending future doses so we don't duplicate when upserting
-			await prisma.dose.deleteMany({
-				where: {
-					prescriptionId: prescription.id,
-					takenAt: null, // delete only unset future ones
-				},
+				include: { medicines: true },
 			});
 
 			// Standard schedule (1-4 doses a day)
@@ -357,7 +341,8 @@ const OcrRoutes = {
 	},
 
 	/**
-	 * Get prescription for a user (one per user)
+	 * Get all prescriptions for a user (a user may have many), each with its
+	 * medications included.
 	 * GET /api/prescriptions/ocr/user/:userId
 	 */
 	getUserPrescriptions: async (req: Request, res: Response) => {
@@ -373,17 +358,13 @@ const OcrRoutes = {
 			// IDOR fix: reject if the requested userId is not the session user.
 			const userId = assertSameUser(req.user?.id, paramUserId as string);
 
-			const prescription = await prisma.prescription.findUnique({
+			const prescriptions = await prisma.prescription.findMany({
 				where: { userId },
+				orderBy: { createdAt: "desc" },
+				include: { medicines: true },
 			});
 
-			if (!prescription) {
-				return res.status(HttpStatusCodes.NOT_FOUND).json({
-					error: "No prescription found for this user",
-				});
-			}
-
-			return res.status(HttpStatusCodes.OK).json(prescription);
+			return res.status(HttpStatusCodes.OK).json(prescriptions);
 		} catch (error: unknown) {
 			if (error instanceof RouteError) {
 				return res.status(error.status).json({ error: error.message });

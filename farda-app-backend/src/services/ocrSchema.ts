@@ -53,9 +53,9 @@ export type OcrMedicine = z.infer<typeof OcrMedicineSchema>;
 
 /**
  * Full OCR extraction result. `medicines_names` preserves the FULL list of
- * medications found on the prescription (no truncation at the validation
- * layer — see OcrRoutes.savePrescription for where the one-per-user Prisma
- * data model currently forces a documented truncation).
+ * medications found on the prescription, and OcrRoutes.savePrescription now
+ * persists each one as its own Medicine row (one prescription -> many
+ * medicines).
  */
 export const OcrResultSchema = z
 	.object({

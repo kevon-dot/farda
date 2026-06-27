@@ -44,19 +44,22 @@ export const createPrescription = async (req: IReq, res: IRes) => {
 			}
 		}
 
-		const prescription = await prisma.prescription.upsert({
-			where: { userId },
-			update: {
-				medicationName,
-				dosageInstructions,
-				deviceId: deviceId || null,
-			},
-			create: {
+		// Create a new prescription (a user may have many) with the supplied
+		// medication as its first Medicine row.
+		const prescription = await prisma.prescription.create({
+			data: {
 				userId,
-				medicationName,
-				dosageInstructions,
 				deviceId: deviceId || null,
+				medicines: {
+					create: [
+						{
+							medicineName: medicationName,
+							dosageInstructions: dosageInstructions || null,
+						},
+					],
+				},
 			},
+			include: { medicines: true },
 		});
 
 		return res.status(HttpStatusCodes.OK).json({
