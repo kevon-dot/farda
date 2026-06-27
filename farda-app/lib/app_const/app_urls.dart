@@ -86,4 +86,23 @@ class VialUrls {
 
   /// GET `?device_id=&start_time=&end_time=` — caregiver event filter by date.
   static const String caregiverEventsByDate = "api/caregiver/events/filter/date";
+
+  // --- Ingestion (GTM-514: app-relayed vial dose-log sync) -------------------
+
+  /// POST `{ device_id, event, event_id, timestamp, payload }` — relay ONE dose
+  /// event the app read off a vial over BLE.
+  ///
+  /// NOTE (scope/hardware flag): the existing `/api/ingest/event` route
+  /// (routes/ingestionAPI.js) is signed with per-DEVICE HMAC (A3,
+  /// middleware/authDevice.js) and is meant to be called by the firmware itself
+  /// — the APP does not hold the device's HMAC secret, so it cannot post there.
+  /// This user-bearer relay path lets the app forward buffered events the device
+  /// couldn't send while offline; the backend authenticates it with the shared
+  /// better-auth session (verifyUserToken) + the device-claim check, and dedupes
+  /// on `event_id` exactly like the device path. Adding the matching
+  /// `POST /api/user/devices/:device_id/events/ingest` route + controller is a
+  /// SEPARATE backend task (out of farda-app/ scope); until it lands, uploads
+  /// fail transiently and stay safely buffered in [DoseSyncQueue].
+  static String ingestDeviceEvent(String deviceId) =>
+      "api/user/devices/${Uri.encodeComponent(deviceId)}/events/ingest";
 }
