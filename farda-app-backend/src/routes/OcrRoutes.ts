@@ -9,37 +9,27 @@ import {
 import type { Request, Response } from "express";
 import multer from "multer";
 import { z } from "zod";
+import {
+	MAX_UPLOAD_BYTES,
+	isAllowedImageUpload,
+	sniffImageType,
+} from "./uploadFilter";
 
-// Configure multer for file uploads
+// Configure multer for file uploads. The filter requires BOTH a valid image
+// MIME type AND extension (see uploadFilter.ts); content is additionally
+// verified by magic bytes after upload, before anything is sent to OCR.
 const upload = multer({
 	dest: path.join(process.cwd(), "temp_uploads"),
-	limits: { fileSize: 10 * 1024 * 1024 }, // 10MB max file size
+	limits: { fileSize: MAX_UPLOAD_BYTES },
 	fileFilter: (_req, file, cb) => {
-		// Allowed MIME types (including common variations)
-		const allowedMimes = [
-			"image/jpeg",
-			"image/jpg",
-			"image/png",
-			"image/webp",
-			"application/octet-stream", // Fallback for some clients
-		];
-
-		// Allowed file extensions
-		const allowedExtensions = [".jpg", ".jpeg", ".png", ".webp"];
-
-		// Check MIME type
-		const mimeTypeOk = allowedMimes.includes(file.mimetype);
-
-		// Check file extension
-		const fileExtension = path.extname(file.originalname).toLowerCase();
-		const extensionOk = allowedExtensions.includes(fileExtension);
-
-		if (mimeTypeOk || extensionOk) {
+		if (isAllowedImageUpload(file.mimetype, file.originalname)) {
 			cb(null, true);
 		} else {
 			cb(
 				new Error(
-					`Invalid file type. Only JPEG, PNG, and WebP allowed. Received: ${file.mimetype} with extension: ${fileExtension}`,
+					`Invalid file type. Only JPEG, PNG, and WebP allowed. Received: ${file.mimetype} with extension: ${path
+						.extname(file.originalname)
+						.toLowerCase()}`,
 				),
 			);
 		}
@@ -109,6 +99,19 @@ const OcrRoutes = {
 				// Collect paths of uploaded files
 				for (const file of req.files) {
 					tempFilePaths.push((file as Express.Multer.File).path);
+				}
+
+				// Defense-in-depth: verify each file's actual content signature
+				// (magic bytes) before sending it to the OCR/LLM pipeline. A
+				// request can lie about MIME type/extension; this can't.
+				for (const filePath of tempFilePaths) {
+					const header = fs.readFileSync(filePath).subarray(0, 12);
+					if (sniffImageType(header) === null) {
+						return res.status(HttpStatusCodes.BAD_REQUEST).json({
+							error:
+								"Uploaded file is not a valid JPEG, PNG, or WebP image.",
+						});
+					}
 				}
 
 				// Extract prescription data from images

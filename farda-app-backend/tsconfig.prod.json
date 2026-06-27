@@ -4,6 +4,7 @@
     "module": "CommonJS",
     "lib": ["ES2020"],
     "strict": true,
+    "ignoreDeprecations": "6.0",
     "baseUrl": "./",
     "outDir": "dist",
     "esModuleInterop": true,
@@ -21,7 +22,6 @@
     "tests",
     "src/public/",
     "scripts",
-    "eslint.config.ts",
     "vitest.config.js"
   ]
 }

@@ -1,10 +1,15 @@
 {
 	"name": "farda-app-backend",
 	"version": "1.0.0",
+	"packageManager": "pnpm@10.33.0",
 	"scripts": {
-		"build": "npm run lint && tsc --project tsconfig.prod.json",
+		"build": "pnpm run type-check && tsc --project tsconfig.prod.json",
 		"dev": "cross-env NODE_ENV=development tsx watch --clear-screen=false --exclude \"src/**/*.test.ts\" ./src/main.ts",
+		"start": "node dist/main.js",
 		"test": "vitest run",
+		"lint": "biome check .",
+		"lint:fix": "biome check --write .",
+		"type-check": "tsc --noEmit --project tsconfig.prod.json",
 		"my-prisma:restart:lin": "rm -rf ./prisma/migrations && prisma migrate reset && prisma migrate dev --name init && prisma generate"
 	},
 	"engines": {
