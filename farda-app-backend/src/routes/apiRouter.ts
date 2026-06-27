@@ -1,13 +1,9 @@
 import Paths from "@src/common/constants/Paths";
 import { isAuthenticated } from "@src/middleware/isAuthenticated";
 import { maybeLimiter, ocrRateLimiter } from "@src/middleware/rateLimiters";
-import { requireAdmin } from "@src/middleware/requireAdmin";
 import { Router } from "express";
-import CaregiverRoutes from "./CaregiverRoutes";
-import DeviceUserRoutes from "./DeviceUserRoutes";
 import OcrRoutes from "./OcrRoutes";
 import { createPrescription } from "./PrescriptionRoutes";
-import UserRoutes from "./UserRoutes";
 
 /******************************************************************************
                                 Setup
@@ -28,72 +24,13 @@ const apiRouter = Router();
 // (which validates the session via `auth.api.getSession`) so no route is
 // reachable without a valid better-auth session.
 
-// ----------------------- Add UserRouter --------------------------------- //
-
-const userRouter = Router();
-
-// Deny-by-default: require a valid session for every user route.
-userRouter.use(isAuthenticated);
-
-// NOTE: GET /users/all previously dumped every user (PII leak / IDOR). It is
-// now admin-locked: only an explicit admin allowlist may call it.
-userRouter.get(Paths.Users.Get, requireAdmin, UserRoutes.getAll);
-userRouter.post(Paths.Users.Add, UserRoutes.add);
-userRouter.put(Paths.Users.Update, UserRoutes.update);
-userRouter.delete(Paths.Users.Delete, UserRoutes.delete);
-
-apiRouter.use(userRouter);
-
-// ----------------------- Add DeviceUserRouter --------------------------- //
-
-const deviceUserRouter = Router();
-
-// Deny-by-default: require a valid session for every device-user route.
-deviceUserRouter.use(isAuthenticated);
-
-deviceUserRouter.post(Paths.DeviceUser.Claim, DeviceUserRoutes.claim);
-deviceUserRouter.get(Paths.DeviceUser.GetDevices, DeviceUserRoutes.getDevices);
-deviceUserRouter.delete(
-	Paths.DeviceUser.UnclaimDevice,
-	DeviceUserRoutes.unclaimDevice,
-);
-deviceUserRouter.get(
-	Paths.DeviceUser.GetDeviceEvents,
-	DeviceUserRoutes.getDeviceEvents,
-);
-deviceUserRouter.delete(
-	Paths.DeviceUser.DeleteDeviceEvents,
-	DeviceUserRoutes.deleteDeviceEvents,
-);
-deviceUserRouter.get(
-	Paths.DeviceUser.SearchDeviceEvents,
-	DeviceUserRoutes.searchDeviceEvents,
-);
-deviceUserRouter.get(
-	Paths.DeviceUser.GetAllEvents,
-	DeviceUserRoutes.getAllEvents,
-);
-
-apiRouter.use(deviceUserRouter);
-
-// ----------------------- Add CaregiverRouter ---------------------------- //
-
-const caregiverRouter = Router();
-
-// Deny-by-default: require a valid session for every caregiver route.
-caregiverRouter.use(isAuthenticated);
-
-caregiverRouter.post(Paths.Caregiver.Claim, CaregiverRoutes.claimDevice);
-caregiverRouter.delete(Paths.Caregiver.Remove, CaregiverRoutes.removeCaregiver);
-caregiverRouter.get(Paths.Caregiver.GetDevices, CaregiverRoutes.getDevices);
-caregiverRouter.get(
-	Paths.Caregiver.GetDeviceSummary,
-	CaregiverRoutes.getDeviceSummary,
-);
-caregiverRouter.get(Paths.Caregiver.SearchDevice, CaregiverRoutes.searchDevice);
-caregiverRouter.get(Paths.Caregiver.FilterEvents, CaregiverRoutes.filterEvents);
-
-apiRouter.use(caregiverRouter);
+// NOTE (#35): the express-generator numeric-id User scaffold (UserRoutes /
+// UserService / UserRepo / User.model) was incompatible with the cuid Prisma
+// `User` model and has been removed. User records are managed by better-auth.
+//
+// NOTE (#14/#30): the device-user and caregiver routers were thin proxies to
+// the dead FARDA_API_URL backend (via the removed DeviceTrackingService). The
+// app now calls the Vial API directly, so the proxy layer has been removed.
 
 // ----------------------- Add PrescriptionRouter ------------------------- //
 
