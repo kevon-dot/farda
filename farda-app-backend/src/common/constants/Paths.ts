@@ -38,6 +38,17 @@ const Paths = {
 		// POST register an FCM/APNs push token for this device (SCAFFOLD).
 		PushTokens: "/reminders/push-tokens",
 	},
+	// Refill prediction + pharmacy-readiness (GTM-541). All routes session-gated.
+	Refills: {
+		_: "/refills",
+		// GET per-prescription remaining / days-left / refill-due (derived on read
+		// from Prescription qty + Dose rows).
+		GetAll: "/refills",
+		// POST a single refill lifecycle event (requested/completed/delayed).
+		Events: "/refills/events",
+		// GET refill-adherence metrics for the session user.
+		Metrics: "/refills/metrics",
+	},
 };
 
 export default Paths;

@@ -7,6 +7,7 @@ import 'package:farda/screens/login/screen_login.dart';
 import 'package:farda/screens/onboard/screen_onboard.dart';
 import 'package:farda/screens/otp_verify/screen_otp_verify.dart';
 import 'package:farda/screens/prescription_info/screen_prescription.dart';
+import 'package:farda/screens/refill/screen_refill.dart';
 import 'package:farda/utilities/auth_state.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -63,6 +64,12 @@ class AppRouter {
         path: CustomRoutePaths.caregiver,
         builder: (context, state) => const ScreenCaregiverHub(),
       ),
+      // GTM-541 — refill prediction + pharmacy-readiness. Behind the auth guard
+      // like every other protected route; all refill data is server-derived.
+      GoRoute(
+        path: CustomRoutePaths.refill,
+        builder: (context, state) => const ScreenRefill(),
+      ),
     ],
     // Auth guard. Deep links to protected routes require a valid session
     // (a non-empty bearer token in secure storage, cached in [authState]).
@@ -91,4 +98,6 @@ class CustomRoutePaths {
   static const String emoji = '/emoji';
   static const String calibration = '/calibration';
   static const String caregiver = '/caregiver';
+  // GTM-541 — refill prediction + pharmacy-readiness.
+  static const String refill = '/refill';
 }

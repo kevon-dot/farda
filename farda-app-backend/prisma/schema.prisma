@@ -39,6 +39,7 @@ model User {
   auditLogs              AuditLog[]
   pushTokens             PushToken[]
   reminderResponseEvents ReminderResponseEvent[]
+  refillEvents           RefillEvent[]
 }
 
 model Prescription {
@@ -64,9 +65,10 @@ model Prescription {
   // ["08:00","20:00"]. Null = derive from the dose schedule as before.
   reminderTimes   Json?
 
-  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  doses     Dose[]
-  medicines Medicine[]
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  doses        Dose[]
+  medicines    Medicine[]
+  refillEvents RefillEvent[]
 
   @@index([userId])
 }
@@ -256,6 +258,59 @@ model PushToken {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+}
+
+/// Refill lifecycle event log (GTM-541).
+///
+/// One row per refill action a user (or the app on their behalf) takes for a
+/// prescription: the refill was REQUESTED, COMPLETED (picked up / dispensed),
+/// or DELAYED. Keyed to the session user (A2 / better-auth) and the
+/// prescription, this feeds refill-adherence metrics ("did the user refill on
+/// time?") and is the seam a real pharmacy auto-refill provider would write to.
+///
+/// PHI-safety: stores NO free-text PHI (no medication names / notes beyond a
+/// short structured outcome). Only ids + event types + timestamps + non-PHI
+/// metadata, mirroring ReminderResponseEvent.
+model RefillEvent {
+  id     String @id @default(cuid())
+  /// The session user the refill belongs to. Keyed so refill-adherence can be
+  /// attributed per user.
+  userId String
+  /// The prescription being refilled. Nullable + ON DELETE SET NULL so deleting
+  /// a prescription does not destroy refill history (it outlives the Rx for
+  /// adherence analytics), mirroring the ReminderResponseEvent/Dose pattern.
+  prescriptionId String?
+
+  /// REQUESTED | COMPLETED | DELAYED. Stored as a string for forward-
+  /// compatibility (new event types need no migration).
+  eventType String
+
+  /// Optional short, NON-PHI outcome code for the event (e.g. "auto",
+  /// "manual", "out_of_stock", "insurance_hold"). NEVER free-text PHI.
+  outcome String?
+
+  /// The refill-due date this event relates to (copied so the event is
+  /// self-contained even if the Rx is later deleted / re-projected).
+  refillDueDate DateTime?
+  /// When this event actually happened (client clock; defaults to now()).
+  occurredAt    DateTime  @default(now())
+
+  /// How the refill was initiated: MANUAL (user tapped) or AUTO (pharmacy
+  /// auto-refill provider). AUTO is the STUB seam — no real provider today.
+  channel String @default("MANUAL")
+
+  /// Non-PHI structured context only (e.g. daysLeft at request, remainingSource).
+  /// NEVER PHI.
+  metadata Json?
+
+  createdAt DateTime @default(now())
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  prescription Prescription? @relation(fields: [prescriptionId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([prescriptionId])
+  @@index([eventType])
 }
 
 model Verification {
