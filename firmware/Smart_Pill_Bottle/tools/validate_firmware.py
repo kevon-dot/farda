@@ -192,6 +192,37 @@ if os.path.isfile(ident_c):
     else:
         ok("B1/F8: no SHA-1 in device_identity auth path")
 
+    # B1 reconciliation: signing input order MUST match the merged backend
+    # (smart-vial-backend/utils/deviceAuth.js): device_id, nonce, timestamp,
+    # body -- each separated by '\n', body LAST, deviceId FIRST. We assert the
+    # hmac_update call sequence in device_identity_sign feeds device_id before
+    # nonce before timestamp before body.
+    sign_fn = it[it.find("device_identity_sign"):]
+    order_re = re.compile(
+        r"hmac_update.*?device_id"            # 1. deviceId first
+        r".*?hmac_update.*?nonce_dec"         # 2. nonce
+        r".*?hmac_update.*?ts_dec"            # 3. timestamp
+        r".*?hmac_update.*?body",             # 4. body last
+        re.S,
+    )
+    if order_re.search(sign_fn):
+        ok("B1: signing input order is device_id\\n nonce\\n timestamp\\n body "
+           "(matches merged backend)")
+    else:
+        bad("B1: signing input order does NOT match backend "
+            "(must be device_id, nonce, timestamp, body)")
+    # Nonce must be a MONOTONIC DECIMAL counter persisted in NVS, not a random
+    # hex blob. Assert the counter API + NVS persistence, and that the old
+    # random-hex nonce path is gone.
+    if "device_identity_next_nonce" in it and "nonceCtr" in it:
+        ok("B1: x-nonce is a monotonic counter persisted in NVS")
+    else:
+        bad("B1: monotonic NVS-persisted nonce counter missing")
+    if "esp_fill_random" in it or "random_nonce" in it:
+        bad("B1: random nonce path still present (must be monotonic counter)")
+    else:
+        ok("B1: no random-nonce path (decimal counter only)")
+
 # Headers the wire format requires must be emitted by telemetry.
 if os.path.isfile(telem_c):
     tt = read(telem_c)

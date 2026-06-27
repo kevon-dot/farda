@@ -8,18 +8,23 @@
 #include "device_identity.h"
 
 #include <string.h>
+#include <inttypes.h>
 #include "esp_log.h"
 #include "esp_mac.h"
-#include "esp_random.h"
 #include "mbedtls/md.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 #include "nvs_store.h"
 
 static const char *TAG = "device_identity";
 
 #define NVS_DEVICE_KEY_NAME  "devKey"
+#define NVS_NONCE_CTR_NAME   "nonceCtr"
 
 static uint8_t  s_device_key[SPB_DEVICE_KEY_LEN];
 static bool     s_provisioned = false;
+static uint64_t s_nonce_ctr = 0;
+static SemaphoreHandle_t s_nonce_lock = NULL;
 
 esp_err_t device_identity_init(void)
 {
@@ -35,7 +40,23 @@ esp_err_t device_identity_init(void)
         return ESP_ERR_NOT_FOUND;
     }
     s_provisioned = true;
-    ESP_LOGI(TAG, "Per-device identity loaded (key length %u).", (unsigned)len);
+
+    /* Restore the monotonic nonce counter so it keeps increasing across
+     * reboots (the backend rejects any nonce <= the last it saw). */
+    if (!s_nonce_lock) {
+        s_nonce_lock = xSemaphoreCreateMutex();
+    }
+    uint64_t ctr = 0;
+    size_t clen = sizeof(ctr);
+    if (nvs_store_get_blob(NVS_NONCE_CTR_NAME, &ctr, &clen) == ESP_OK &&
+        clen == sizeof(ctr)) {
+        s_nonce_ctr = ctr;
+    } else {
+        s_nonce_ctr = 0;
+    }
+
+    ESP_LOGI(TAG, "Per-device identity loaded (key length %u, nonce=%" PRIu64 ").",
+             (unsigned)len, s_nonce_ctr);
     return ESP_OK;
 }
 
@@ -58,13 +79,31 @@ esp_err_t device_identity_get_id(char *out, size_t out_len)
     return ESP_OK;
 }
 
-esp_err_t device_identity_random_nonce(uint8_t *out, size_t len)
+esp_err_t device_identity_next_nonce(char *out, size_t out_len, uint64_t *out_val)
 {
-    if (!out || len == 0) {
+    if (!out || out_len < SPB_NONCE_DEC_LEN) {
         return ESP_ERR_INVALID_ARG;
     }
-    /* esp_random() is the hardware RNG (TRNG when RF is active). */
-    esp_fill_random(out, len);
+    if (s_nonce_lock) xSemaphoreTake(s_nonce_lock, portMAX_DELAY);
+
+    /* Strictly-increasing counter. Advance, persist, then hand it out, so a
+     * crash after handing out a value can never re-issue it. */
+    uint64_t next = s_nonce_ctr + 1;
+    esp_err_t err = nvs_store_set_blob(NVS_NONCE_CTR_NAME, &next, sizeof(next));
+    if (err == ESP_OK) {
+        s_nonce_ctr = next;
+    }
+
+    if (s_nonce_lock) xSemaphoreGive(s_nonce_lock);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    int n = snprintf(out, out_len, "%" PRIu64, next);
+    if (n <= 0 || (size_t)n >= out_len) {
+        return ESP_ERR_INVALID_SIZE;
+    }
+    if (out_val) *out_val = next;
     return ESP_OK;
 }
 
@@ -83,13 +122,17 @@ void device_identity_hex(const uint8_t *in, size_t in_len, char *out, size_t out
     }
 }
 
-esp_err_t device_identity_sign(const uint8_t *body, size_t body_len,
-                               const uint8_t *nonce, size_t nonce_len,
+esp_err_t device_identity_sign(const char *device_id,
+                               const char *nonce_dec,
                                int64_t timestamp,
+                               const uint8_t *body, size_t body_len,
                                uint8_t out_mac[SPB_HMAC_LEN])
 {
     if (!s_provisioned) {
         return ESP_ERR_INVALID_STATE; /* fail closed: never sign with no key */
+    }
+    if (!device_id || !nonce_dec || (!body && body_len)) {
+        return ESP_ERR_INVALID_ARG;
     }
 
     const mbedtls_md_info_t *md = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
@@ -105,22 +148,24 @@ esp_err_t device_identity_sign(const uint8_t *body, size_t body_len,
     rc = mbedtls_md_hmac_starts(&ctx, s_device_key, sizeof(s_device_key));
     if (rc != 0) { mbedtls_md_free(&ctx); return ESP_FAIL; }
 
-    /* Canonical signing input (see docs/WIRE_FORMAT.md):
-     *   body || '\n' || lowercase_hex(nonce) || '\n' || decimal(timestamp)
-     * Hex-encode the nonce so the wire form and the signing form match byte
-     * for byte. */
-    char nonce_hex[2 * SPB_NONCE_LEN + 1];
-    device_identity_hex(nonce, nonce_len, nonce_hex, sizeof(nonce_hex));
-
+    /* Canonical signing input -- MUST match the merged backend verbatim
+     * (smart-vial-backend/utils/deviceAuth.js buildSignatureMessage):
+     *   device_id || '\n' || nonce_dec || '\n' || timestamp_dec || '\n' || body
+     * deviceId FIRST, then nonce, then timestamp, then raw body LAST. nonce and
+     * timestamp are signed as their decimal-string wire forms. */
     char ts_dec[24];
     int ts_len = snprintf(ts_dec, sizeof(ts_dec), "%lld", (long long)timestamp);
     const uint8_t sep = (uint8_t)'\n';
 
-    rc |= mbedtls_md_hmac_update(&ctx, body, body_len);
+    rc |= mbedtls_md_hmac_update(&ctx, (const uint8_t *)device_id, strlen(device_id));
     rc |= mbedtls_md_hmac_update(&ctx, &sep, 1);
-    rc |= mbedtls_md_hmac_update(&ctx, (const uint8_t *)nonce_hex, strlen(nonce_hex));
+    rc |= mbedtls_md_hmac_update(&ctx, (const uint8_t *)nonce_dec, strlen(nonce_dec));
     rc |= mbedtls_md_hmac_update(&ctx, &sep, 1);
     rc |= mbedtls_md_hmac_update(&ctx, (const uint8_t *)ts_dec, (size_t)ts_len);
+    rc |= mbedtls_md_hmac_update(&ctx, &sep, 1);
+    if (body_len) {
+        rc |= mbedtls_md_hmac_update(&ctx, body, body_len);
+    }
     if (rc != 0) { mbedtls_md_free(&ctx); return ESP_FAIL; }
 
     rc = mbedtls_md_hmac_finish(&ctx, out_mac);

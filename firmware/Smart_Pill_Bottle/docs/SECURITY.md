@@ -16,14 +16,20 @@ command.
 - `components/device_identity` holds a **factory-provisioned 32-byte per-device
   secret** (NVS `devKey`), loaded at boot, **never** serialized into a payload.
 - `device_identity_sign()` computes **HMAC-SHA256** over
-  `body || "\n" || nonce_hex || "\n" || timestamp` (SHA-256 only; no SHA-1 —
-  fixes F8).
+  `device_id || "\n" || nonce || "\n" || timestamp || "\n" || body` — the
+  **exact order the merged backend uses** (`smart-vial-backend/utils/deviceAuth.js`).
+  SHA-256 only; no SHA-1 (fixes F8).
+- `x-nonce` is a **monotonic decimal counter** persisted in NVS (`nonceCtr`),
+  strictly increasing per event; `x-timestamp` is Unix epoch seconds. The
+  backend rejects `nonce <= last_nonce` and stale timestamps.
 - `components/telemetry/telemetry.c` builds the event body **without an
-  `authKey` field** and transmits `x-device-id` / `x-nonce` / `x-timestamp` /
-  `x-signature` headers (HTTPS) or a JSON envelope (MQTTS).
+  `authKey` field** (fields `device_id`/`event`/`timestamp`/`payload` matching
+  the backend ingestion schema) and transmits `x-device-id` / `x-nonce` /
+  `x-timestamp` / `x-signature` headers (HTTPS) or a JSON envelope (MQTTS).
 - Constant-time comparison (`device_identity_ct_equal`) everywhere a secret/MAC
   is compared.
-- The exact contract is frozen in `docs/WIRE_FORMAT.md` so the backend (A3)
+- The exact contract is in `docs/WIRE_FORMAT.md` and **matches
+  `smart-vial-backend/docs/DEVICE_AUTH.md` (merged)** so the backend (A3)
   verifies the identical HMAC.
 
 ## B2 — BLE: secure pairing, per-command auth, replay defense

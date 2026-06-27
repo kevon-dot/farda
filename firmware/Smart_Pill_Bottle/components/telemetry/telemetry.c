@@ -131,16 +131,24 @@ esp_err_t telemetry_init(void)
 /* ---- B1: build canonical body (NO key) ------------------------------------ */
 
 /*
- * Canonical event body. NOTE: there is deliberately NO authKey field here. The
- * device id is included only as a routing label; it is NOT a secret. See
- * docs/WIRE_FORMAT.md for the exact byte layout the backend must reproduce.
+ * Canonical event body. NOTE: there is deliberately NO authKey field here.
+ *
+ * Field names match the MERGED backend ingestion schema
+ * (smart-vial-backend/utils/eventValidation.js): `device_id` (which the backend
+ * requires to equal the x-device-id header -- else DEVICE_ID_MISMATCH), `event`
+ * (the event-type name), `timestamp` (unix seconds), and a per-type `payload`.
+ * The body's `device_id` is a routing label, NOT a secret. See
+ * docs/WIRE_FORMAT.md for the exact bytes the backend re-hashes.
+ *
+ * The returned bytes are the EXACT body transmitted AND the exact body hashed
+ * into x-signature -- they must not be re-serialized differently anywhere.
  */
 static int build_event_body(const event_record_t *rec, const char *device_id,
                             char *out, size_t out_len)
 {
     return snprintf(out, out_len,
-        "{\"deviceId\":\"%s\",\"eventType\":\"%s\",\"timestamp\":%" PRId64
-        ",\"currentCount\":%" PRId32 ",\"countChange\":%" PRId32 "}",
+        "{\"device_id\":\"%s\",\"event\":\"%s\",\"timestamp\":%" PRId64
+        ",\"payload\":{\"currentCount\":%" PRId32 ",\"countChange\":%" PRId32 "}}",
         device_id, event_type_name(rec->type), rec->ts, rec->count, rec->change);
 }
 
@@ -148,7 +156,7 @@ static int build_event_body(const event_record_t *rec, const char *device_id,
 
 static esp_err_t push_https(const char *body, size_t body_len,
                             const char *device_id,
-                            const char *nonce_hex, int64_t ts,
+                            const char *nonce_dec, int64_t ts,
                             const char *sig_hex)
 {
     esp_http_client_config_t cfg = {
@@ -170,10 +178,12 @@ static esp_err_t push_https(const char *body, size_t body_len,
         return ESP_FAIL;
     }
 
-    /* B1 wire headers -- key is NEVER sent. */
+    /* B1 wire headers -- key is NEVER sent. x-nonce is the decimal monotonic
+     * counter; x-timestamp is unix seconds. Order/format matches the merged
+     * backend (smart-vial-backend/docs/DEVICE_AUTH.md). */
     esp_http_client_set_header(client, "Content-Type", "application/json");
     esp_http_client_set_header(client, "x-device-id", device_id);
-    esp_http_client_set_header(client, "x-nonce", nonce_hex);
+    esp_http_client_set_header(client, "x-nonce", nonce_dec);
     char ts_buf[24];
     snprintf(ts_buf, sizeof(ts_buf), "%" PRId64, ts);
     esp_http_client_set_header(client, "x-timestamp", ts_buf);
@@ -194,17 +204,17 @@ static esp_err_t push_https(const char *body, size_t body_len,
  * envelope fields around the body (see docs/WIRE_FORMAT.md). Reconstructed at
  * interface level. */
 static esp_err_t push_mqtts(const char *body, const char *device_id,
-                            const char *nonce_hex, int64_t ts,
+                            const char *nonce_dec, int64_t ts,
                             const char *sig_hex)
 {
     /* TODO(hardware): wire esp-mqtt client with mqtts:// + server cert
      * verification (esp_mqtt_client_config_t.broker.verification). The
      * envelope must carry x-device-id/x-nonce/x-timestamp/x-signature so the
-     * backend verifies the same HMAC. */
+     * backend verifies the same HMAC (decimal nonce, epoch-second timestamp). */
     ESP_LOGI(TAG, "Sending Pill Change data over mqtt...");
     char topic[64];
     snprintf(topic, sizeof(topic), BOARD_MQTT_TOPIC_EVENTS_FMT, device_id);
-    (void)body; (void)nonce_hex; (void)ts; (void)sig_hex; (void)topic;
+    (void)body; (void)nonce_dec; (void)ts; (void)sig_hex; (void)topic;
     return ESP_OK; /* placeholder: see TODO above */
 }
 
@@ -227,15 +237,19 @@ static esp_err_t send_one(const event_record_t *rec)
     int blen = build_event_body(rec, device_id, body, sizeof(body));
     if (blen <= 0) return ESP_FAIL;
 
-    uint8_t nonce[SPB_NONCE_LEN];
-    device_identity_random_nonce(nonce, sizeof(nonce));
-    char nonce_hex[2 * SPB_NONCE_LEN + 1];
-    device_identity_hex(nonce, sizeof(nonce), nonce_hex, sizeof(nonce_hex));
+    /* Monotonic decimal nonce, persisted in NVS (backend rejects nonce <= last
+     * seen). */
+    char nonce_dec[SPB_NONCE_DEC_LEN];
+    if (device_identity_next_nonce(nonce_dec, sizeof(nonce_dec), NULL) != ESP_OK) {
+        return ESP_FAIL;
+    }
 
     int64_t ts = rec->ts;
     uint8_t mac[SPB_HMAC_LEN];
-    if (device_identity_sign((const uint8_t *)body, (size_t)blen,
-                             nonce, sizeof(nonce), ts, mac) != ESP_OK) {
+    /* Sign deviceId\nnonce\ntimestamp\nbody -- order matches the merged
+     * backend verbatim (smart-vial-backend/utils/deviceAuth.js). */
+    if (device_identity_sign(device_id, nonce_dec, ts,
+                             (const uint8_t *)body, (size_t)blen, mac) != ESP_OK) {
         return ESP_FAIL;
     }
     char sig_hex[2 * SPB_HMAC_LEN + 1];
@@ -243,9 +257,9 @@ static esp_err_t send_one(const event_record_t *rec)
 
     if (s_proto == TELEMETRY_PROTO_HTTPS) {
         ESP_LOGI(TAG, "Sending Pill Change data over https...");
-        return push_https(body, (size_t)blen, device_id, nonce_hex, ts, sig_hex);
+        return push_https(body, (size_t)blen, device_id, nonce_dec, ts, sig_hex);
     }
-    return push_mqtts(body, device_id, nonce_hex, ts, sig_hex);
+    return push_mqtts(body, device_id, nonce_dec, ts, sig_hex);
 }
 
 esp_err_t telemetry_enqueue_event(const event_record_t *rec)

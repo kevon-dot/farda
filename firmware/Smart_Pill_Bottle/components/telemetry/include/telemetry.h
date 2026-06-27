@@ -2,10 +2,14 @@
  * telemetry.h - Signed network push over HTTPS / MQTTS (B1 + B3).
  *
  * B1: NEVER serialize the per-device key into the payload. Each event body is
- * signed with HMAC-SHA256 over (canonical_body || nonce || timestamp) using
- * the per-device secret, and the signature + nonce + timestamp + device id are
- * sent in HEADERS (HTTPS) or an envelope (MQTTS). The frozen contract lives in
- * docs/WIRE_FORMAT.md; the smart-vial-backend (A3) verifies the same HMAC.
+ * signed with HMAC-SHA256 over (device_id || "\n" || nonce || "\n" ||
+ * timestamp || "\n" || body) -- the EXACT order the merged backend uses
+ * (smart-vial-backend/utils/deviceAuth.js). nonce is a monotonic decimal
+ * counter; timestamp is unix seconds. The signature + nonce + timestamp +
+ * device id are sent in HEADERS (HTTPS) or an envelope (MQTTS). The frozen
+ * contract lives in docs/WIRE_FORMAT.md and matches
+ * smart-vial-backend/docs/DEVICE_AUTH.md; the backend (A3) verifies the same
+ * HMAC.
  *
  * B3: require https:// / mqtts:// only; reject plaintext; verify the server
  * certificate against an embedded CA bundle / pinned cert; fail closed.
@@ -43,10 +47,12 @@ esp_err_t telemetry_set_protocol(telemetry_proto_t proto);
 /*
  * Build the canonical event body (NO key inside) and enqueue a signed push.
  * Used by event_log_record. The body schema is the B1-safe replacement for the
- * vulnerable {"deviceId","authKey",...} form:
- *   {"deviceId":"<mac>","eventType":"pill_change","timestamp":<ts>,
- *    "currentCount":<n>,"countChange":<d>}
- * authKey is DELIBERATELY ABSENT; authenticity comes from the HMAC header.
+ * vulnerable {"deviceId","authKey",...} form, with field names matching the
+ * merged backend ingestion schema (smart-vial-backend/utils/eventValidation.js):
+ *   {"device_id":"<mac>","event":"<EVENT_NAME>","timestamp":<ts>,
+ *    "payload":{"currentCount":<n>,"countChange":<d>}}
+ * authKey is DELIBERATELY ABSENT; authenticity comes from the HMAC signature.
+ * body.device_id MUST equal the x-device-id header (backend DEVICE_ID_MISMATCH).
  */
 esp_err_t telemetry_enqueue_event(const event_record_t *rec);
 

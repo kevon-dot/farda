@@ -35,11 +35,22 @@ error:    E:<code>,<message>
 
 ```
 privileged:  [opcode:1][counter:4 LE][tag:32][params...]
-  tag = HMAC-SHA256(per_device_secret, opcode || counter(LE) || params)
+  tag = HMAC-SHA256(per_device_secret,
+                    "ble-cmd" || "\n" || decimal(counter) || "\n" || "0" || "\n"
+                    || (opcode || params))
   counter MUST strictly increase per link (replay rejected)
 
 bind/login:  [opcode:1][counter:4 LE][tag:32]
   proof-of-possession over the counter using the factory secret
+
+Note: this is the LOCAL BLE command-auth tag (firmware<->firmware over the
+encrypted GATT link). It reuses the same per-device secret and the same
+device_identity_sign() primitive as the network path, with the fixed
+domain-separation label "ble-cmd" as the deviceId field so a BLE tag can never
+be replayed as a network signature. The DEVICE->BACKEND network wire format
+(deviceId\nnonce\ntimestamp\nbody, decimal monotonic nonce) is a separate
+contract documented in docs/WIRE_FORMAT.md and matches the merged
+smart-vial-backend.
 
 success:  [opcode] ACK
 error:    E:<code>,<message>

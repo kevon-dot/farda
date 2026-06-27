@@ -8,6 +8,7 @@
 #include "device_identity.h"
 
 #include <string.h>
+#include <stdio.h>
 #include "esp_log.h"
 #include "esp_timer.h"
 
@@ -102,26 +103,25 @@ esp_err_t ble_auth_verify(ble_link_ctx_t *ctx,
         return ESP_ERR_INVALID_STATE; /* fail closed */
     }
 
-    /* 4. HMAC over opcode || counter(LE) || params, signed like a network
-     * event (reuse device_identity_sign with the command as the body and the
-     * counter as the nonce/timestamp surrogate). We build a small canonical
-     * buffer and sign with a zero nonce + counter-as-timestamp so the same
-     * primitive verifies it. */
-    uint8_t buf[1 + 4 + 256];
-    if (params_len > sizeof(buf) - 5) {
+    /* 4. HMAC over opcode || params, with the link command counter as the
+     * (decimal) nonce. This is the LOCAL BLE command-auth tag -- distinct from
+     * the network wire format -- but it reuses the same per-device secret and
+     * the same device_identity_sign() primitive. A fixed domain-separation
+     * label ("ble-cmd") as the device_id prevents any cross-protocol tag reuse
+     * with the network telemetry path. */
+    uint8_t buf[1 + 256];
+    if (params_len > sizeof(buf) - 1) {
         return ESP_ERR_INVALID_SIZE;
     }
     buf[0] = opcode;
-    buf[1] = (uint8_t)(counter & 0xFF);
-    buf[2] = (uint8_t)((counter >> 8) & 0xFF);
-    buf[3] = (uint8_t)((counter >> 16) & 0xFF);
-    buf[4] = (uint8_t)((counter >> 24) & 0xFF);
-    if (params_len) memcpy(buf + 5, params, params_len);
+    if (params_len) memcpy(buf + 1, params, params_len);
 
-    static const uint8_t kZeroNonce[SPB_NONCE_LEN] = {0};
+    char counter_dec[24];
+    snprintf(counter_dec, sizeof(counter_dec), "%u", (unsigned)counter);
+
     uint8_t expected[BLE_AUTH_TAG_LEN];
-    if (device_identity_sign(buf, 5 + params_len, kZeroNonce, sizeof(kZeroNonce),
-                             (int64_t)counter, expected) != ESP_OK) {
+    if (device_identity_sign("ble-cmd", counter_dec, 0,
+                             buf, 1 + params_len, expected) != ESP_OK) {
         return ESP_FAIL;
     }
 
