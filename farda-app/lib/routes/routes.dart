@@ -1,4 +1,3 @@
-import 'package:farda/screens/_screens.dart';
 import 'package:farda/screens/connect_onboard/screen_setup_vial.dart';
 import 'package:farda/screens/dashboard/calendar/screen_calendar.dart';
 import 'package:farda/screens/dashboard/calibration/screen_calibration.dart';
