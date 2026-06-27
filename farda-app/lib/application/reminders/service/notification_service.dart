@@ -117,6 +117,8 @@ class NotificationService {
       tz.TZDateTime.from(reminder.scheduledFor, tz.local),
       _details(),
       androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      uiLocalNotificationDateInterpretation:
+          UILocalNotificationDateInterpretation.absoluteTime,
       payload: reminder.doseId,
     );
     _deliveredAt[reminder.doseId] = reminder.scheduledFor;
@@ -208,6 +210,8 @@ class NotificationService {
       tz.TZDateTime.from(fireAt, tz.local),
       _details(),
       androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      uiLocalNotificationDateInterpretation:
+          UILocalNotificationDateInterpretation.absoluteTime,
       payload: doseId,
     );
     _deliveredAt[doseId] = fireAt;
