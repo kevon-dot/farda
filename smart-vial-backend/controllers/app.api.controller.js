@@ -4,6 +4,7 @@ const User = require("../models/User");
 const CaregiverGrant = require("../models/CaregiverGrant");
 const { computeUnclaimDeviceState, removeDeviceId } = require("../utils/deviceClaim");
 const { GRANT_STATUS } = require("../utils/caregiverAuthorization");
+const { validateIngestionEvent } = require("../utils/eventValidation");
 
 //save user to database
 const saveUser = async (req, res, next) => {
@@ -327,6 +328,123 @@ const deleteCaregiverAccessToDevice = async (req, res, next) => {
   } 
 };
 
+// ============================================
+// GTM-514 — user-bearer dose-event ingest relay
+// ============================================
+// The mobile app drains its BLE-buffered DoseLogEvents to the backend over the
+// USER's better-auth session (not the per-device HMAC the firmware uses). The
+// firmware ingest path authenticates the DEVICE; here the USER is authenticated
+// (req.user_id, set by verifyUserToken) and must OWN the target device. Both
+// paths coexist: this is an additional, separately-authenticated relay and does
+// not weaken or replace controllers/ingestion.controller.js.
+//
+// Wire body (one event per request, matching the app):
+//   { device_id, event, timestamp, sequence, idempotency_key, payload? }
+//   - event: type, case-insensitive, stored uppercase
+//   - timestamp: unix seconds (number)
+//   - sequence: client-side buffer ordinal (preserved on the stored event)
+//   - idempotency_key: client-computed stable hash for dedupe
+const ingestUserDeviceEvent = async (req, res, next) => {
+    try {
+        const user_id = req.user_id;
+        const { device_id } = req.params;
+        const body = req.body || {};
+
+        // The acting user is ALWAYS the session user — never trust a client
+        // user id. We also pin the validated event to the path device_id so a
+        // mismatched body.device_id can't redirect the write.
+        const idempotency_key =
+            typeof body.idempotency_key === "string" ? body.idempotency_key : null;
+        const sequence =
+            typeof body.sequence === "number" && Number.isFinite(body.sequence)
+                ? body.sequence
+                : null;
+
+        // Validate the event with the shared validator (#38). Feed it the path
+        // device_id and map the app's `idempotency_key` onto the validator's
+        // `event_id` field so the event-type + payload checks run identically to
+        // the firmware path. Malformed events are rejected with 400.
+        const validation = validateIngestionEvent({
+            device_id,
+            event: body.event,
+            timestamp: body.timestamp,
+            event_id: idempotency_key === null ? undefined : idempotency_key,
+            payload: body.payload,
+        });
+        if (!validation.ok) {
+            return res.status(400).json({ error: `Bad Request: ${validation.error}` });
+        }
+
+        const { event, timestamp, payload } = validation.value;
+
+        // Ownership: the device must exist AND be claimed by the session user.
+        // This is the auth difference from the firmware HMAC path — here the
+        // USER is authenticated and must own the device, else 403.
+        const device = await Device.findOne({ device_id });
+        if (!device) {
+            return res.status(404).json({ error: "Device not found" });
+        }
+        if (device.user_id !== user_id) {
+            return res
+                .status(403)
+                .json({ error: "Forbidden: device is not claimed by this user" });
+        }
+
+        // Idempotency: dedupe by the client-computed stable hash. If an Event
+        // with this key already exists, return 200 deduped with no second row.
+        if (idempotency_key) {
+            const existing = await Event.findOne({ idempotency_key });
+            if (existing) {
+                return res.status(200).json({ status: "success", deduped: true });
+            }
+        }
+
+        const newEvent = new Event({
+            device_id,
+            event_type: event,
+            device_timestamp: timestamp ? new Date(timestamp * 1000) : null,
+            server_timestamp: new Date(),
+            payload: payload || {},
+            idempotency_key,
+            sequence,
+            time_drift_seconds: timestamp ? Math.floor(Date.now() / 1000 - timestamp) : 0,
+        });
+
+        try {
+            await newEvent.save();
+        } catch (saveErr) {
+            // Concurrent relay of the same buffered event: the unique index on
+            // idempotency_key races us. Treat the duplicate as a successful dedupe.
+            if (saveErr && saveErr.code === 11000) {
+                return res.status(200).json({ status: "success", deduped: true });
+            }
+            throw saveErr;
+        }
+
+        // A successful user-relayed ingest is a successful sync — stamp the
+        // registry field (GTM-539) so fleet-health staleness reflects app syncs.
+        const now = new Date();
+        device.last_seen = now;
+        device.last_sync_at = now;
+        await device.save();
+
+        return res.status(200).json({
+            status: "success",
+            deduped: false,
+            event: {
+                device_id: newEvent.device_id,
+                event_type: newEvent.event_type,
+                idempotency_key: newEvent.idempotency_key,
+                sequence: newEvent.sequence,
+                device_timestamp: newEvent.device_timestamp,
+                server_timestamp: newEvent.server_timestamp,
+            },
+        });
+    } catch (err) {
+        return res.status(500).json({ error: err.message });
+    }
+};
+
 module.exports = {
     saveUser,
     claimDevice,
@@ -336,7 +454,8 @@ module.exports = {
     searchDeviceEventsByTimeRange,
     removeClaimedDevice,
     deleteDeviceEvents,
-    deleteCaregiverAccessToDevice
+    deleteCaregiverAccessToDevice,
+    ingestUserDeviceEvent
 }
 
 

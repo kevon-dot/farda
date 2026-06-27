@@ -10,7 +10,8 @@ const {
   searchDeviceEventsByTimeRange,
   removeClaimedDevice,
   deleteDeviceEvents,
-  deleteCaregiverAccessToDevice
+  deleteCaregiverAccessToDevice,
+  ingestUserDeviceEvent
 } = require("../controllers/app.api.controller");
 
 // Save user to database
@@ -24,6 +25,11 @@ router.get("/devices", verifyToken, getUserDevices);
 
 // Get single device events
 router.get("/devices/:device_id/events", verifyToken, getADeviceEvents);
+
+// GTM-514 — user-bearer dose-event ingest relay. The mobile app drains its
+// BLE-buffered events here over the user's better-auth session; the device must
+// be claimed by that session user. Coexists with the firmware HMAC ingest path.
+router.post("/devices/:device_id/events/ingest", verifyToken, ingestUserDeviceEvent);
 
 // Get all events from all user's devices
 router.get("/events/all", verifyToken, getAllDevicesEvents);

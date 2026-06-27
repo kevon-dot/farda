@@ -13,6 +13,15 @@ const EventSchema = new mongoose.Schema(
       index: true, // Allows null values while maintaining uniqueness for non-null values
     },
 
+    // Client-side buffer ordinal (GTM-514). When the mobile app relays its
+    // BLE-buffered DoseLogEvents it forwards each event's `sequence`; we persist
+    // it so ordering of app-relayed events is recoverable. Firmware-ingested
+    // events leave this null.
+    sequence: {
+      type: Number,
+      default: null,
+    },
+
     // ============================================
     // Device Information
     // ============================================
