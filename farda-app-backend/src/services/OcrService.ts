@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import env from "@src/common/constants/env";
 import OpenAI from "openai";
 import { type OcrResult, validateOcrResult } from "./ocrSchema";
+import { safeFetch, SsrfError } from "./safeFetch";
 
 // The extracted, VALIDATED prescription data is exactly the schema-derived
 // type. Persisting/returning anything that hasn't passed the schema is a bug.
@@ -201,12 +202,46 @@ export async function extractPrescriptionFromUrls(
 	}
 
 	try {
-		const imageContents = imageUrls.map((url) => ({
-			type: "image_url" as const,
-			image_url: {
-				url: url,
-			},
-		}));
+		// SSRF guard (#11): NEVER hand the raw user-supplied URL to OpenAI (which
+		// would fetch it from OpenAI's network) or fetch it naively. Each URL is
+		// fetched through the SSRF-safe helper (https-only, DNS + per-IP range
+		// checks, redirect re-validation, size cap + timeout). We then pass the
+		// fetched bytes to the model as a data URL, so the only thing reaching the
+		// model is content we validated and retrieved ourselves.
+		const imageContents: {
+			type: "image_url";
+			image_url: { url: string };
+		}[] = [];
+
+		for (const url of imageUrls) {
+			let fetched: Awaited<ReturnType<typeof safeFetch>>;
+			try {
+				fetched = await safeFetch(url);
+			} catch (err) {
+				if (err instanceof SsrfError) {
+					return { error: `Refused to fetch image URL: ${err.message}` };
+				}
+				return {
+					error: `Failed to fetch image URL: ${
+						err instanceof Error ? err.message : "unknown error"
+					}`,
+				};
+			}
+
+			const mime = (fetched.contentType ?? "").split(";")[0].trim();
+			if (!mime.startsWith("image/")) {
+				return {
+					error:
+						"Fetched URL did not return an image content-type and was rejected.",
+				};
+			}
+
+			const base64Image = fetched.body.toString("base64");
+			imageContents.push({
+				type: "image_url" as const,
+				image_url: { url: `data:${mime};base64,${base64Image}` },
+			});
+		}
 
 		if (!imageContents.length) {
 			return { error: "No valid image URLs provided" };
