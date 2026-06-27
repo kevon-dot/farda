@@ -35,6 +35,14 @@ export interface EnvConfig {
 	AUTH_RATE_LIMIT_MAX?: number;
 	OCR_RATE_LIMIT_WINDOW_MS?: number;
 	OCR_RATE_LIMIT_MAX?: number;
+	// SSRF-safe fetch (issue #11). Optional host allowlist (comma-separated
+	// hostnames) for server-side URL fetches (OCR-from-URL). When set, only the
+	// listed hosts are allowed in addition to the always-on private/internal
+	// range blocking. Size/timeout caps are also overridable; safeFetch applies
+	// safe defaults when unset.
+	SSRF_ALLOWED_HOSTS?: string;
+	SSRF_MAX_RESPONSE_BYTES?: number;
+	SSRF_FETCH_TIMEOUT_MS?: number;
 }
 
 // 3. Export individual constants
@@ -84,6 +92,17 @@ const OCR_RATE_LIMIT_WINDOW_MS = toOptionalNumber(
 );
 const OCR_RATE_LIMIT_MAX = toOptionalNumber(process.env.OCR_RATE_LIMIT_MAX);
 
+// SSRF-safe fetch (issue #11). Host allowlist is parsed lazily inside
+// safeFetch from this raw string; size/timeout fall back to safe defaults when
+// unset/invalid.
+const SSRF_ALLOWED_HOSTS = process.env.SSRF_ALLOWED_HOSTS;
+const SSRF_MAX_RESPONSE_BYTES = toOptionalNumber(
+	process.env.SSRF_MAX_RESPONSE_BYTES,
+);
+const SSRF_FETCH_TIMEOUT_MS = toOptionalNumber(
+	process.env.SSRF_FETCH_TIMEOUT_MS,
+);
+
 // 4. Grouped Export (The "How")
 const env: EnvConfig = {
 	HOST,
@@ -109,6 +128,9 @@ const env: EnvConfig = {
 	AUTH_RATE_LIMIT_MAX,
 	OCR_RATE_LIMIT_WINDOW_MS,
 	OCR_RATE_LIMIT_MAX,
+	SSRF_ALLOWED_HOSTS,
+	SSRF_MAX_RESPONSE_BYTES,
+	SSRF_FETCH_TIMEOUT_MS,
 };
 
 export default env;
