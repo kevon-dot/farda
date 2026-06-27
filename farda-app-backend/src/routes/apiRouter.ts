@@ -1,5 +1,6 @@
 import Paths from "@src/common/constants/Paths";
 import { isAuthenticated } from "@src/middleware/isAuthenticated";
+import { requireAdmin } from "@src/middleware/requireAdmin";
 import { Router } from "express";
 import CaregiverRoutes from "./CaregiverRoutes";
 import DeviceUserRoutes from "./DeviceUserRoutes";
@@ -14,18 +15,12 @@ import UserRoutes from "./UserRoutes";
 
 const apiRouter = Router();
 
-// ----------------------- Add UserRouter --------------------------------- //
-
-const userRouter = Router();
-
-userRouter.get(Paths.Users.Get, UserRoutes.getAll);
-userRouter.post(Paths.Users.Add, UserRoutes.add);
-userRouter.put(Paths.Users.Update, UserRoutes.update);
-userRouter.delete(Paths.Users.Delete, UserRoutes.delete);
-
-apiRouter.use(userRouter);
-
 // ----------------------- Add AuthRouter --------------------------------- //
+// PUBLIC routes (OTP / social login). These are intentionally mounted WITHOUT
+// the authentication guard since they are used to obtain a session in the
+// first place. Everything else below is deny-by-default: each router applies
+// `isAuthenticated` at the top so no route is reachable without a valid
+// session.
 
 const authRouter = Router();
 
@@ -35,9 +30,28 @@ authRouter.post(Paths.Auth.SocialLogin, PhoneAuthRoutes.socialLogin);
 
 apiRouter.use(authRouter);
 
+// ----------------------- Add UserRouter --------------------------------- //
+
+const userRouter = Router();
+
+// Deny-by-default: require a valid session for every user route.
+userRouter.use(isAuthenticated);
+
+// NOTE: GET /users/all previously dumped every user (PII leak / IDOR). It is
+// now admin-locked: only an explicit admin allowlist may call it.
+userRouter.get(Paths.Users.Get, requireAdmin, UserRoutes.getAll);
+userRouter.post(Paths.Users.Add, UserRoutes.add);
+userRouter.put(Paths.Users.Update, UserRoutes.update);
+userRouter.delete(Paths.Users.Delete, UserRoutes.delete);
+
+apiRouter.use(userRouter);
+
 // ----------------------- Add DeviceUserRouter --------------------------- //
 
 const deviceUserRouter = Router();
+
+// Deny-by-default: require a valid session for every device-user route.
+deviceUserRouter.use(isAuthenticated);
 
 deviceUserRouter.post(Paths.DeviceUser.Claim, DeviceUserRoutes.claim);
 deviceUserRouter.get(Paths.DeviceUser.GetDevices, DeviceUserRoutes.getDevices);
@@ -68,6 +82,9 @@ apiRouter.use(deviceUserRouter);
 
 const caregiverRouter = Router();
 
+// Deny-by-default: require a valid session for every caregiver route.
+caregiverRouter.use(isAuthenticated);
+
 caregiverRouter.post(Paths.Caregiver.Claim, CaregiverRoutes.claimDevice);
 caregiverRouter.delete(Paths.Caregiver.Remove, CaregiverRoutes.removeCaregiver);
 caregiverRouter.get(Paths.Caregiver.GetDevices, CaregiverRoutes.getDevices);
@@ -84,11 +101,12 @@ apiRouter.use(caregiverRouter);
 
 const prescriptionRouter = Router();
 
-prescriptionRouter.post(
-	Paths.Prescription.Create,
-	isAuthenticated,
-	createPrescription,
-);
+// Deny-by-default: every prescription / OCR route (all PHI) requires a valid
+// session. Mounted at the TOP so later middleware (rate-limiting, OCR
+// validation) can be added alongside per-route.
+prescriptionRouter.use(isAuthenticated);
+
+prescriptionRouter.post(Paths.Prescription.Create, createPrescription);
 // prescriptionRouter.get(Paths.Prescription.GetAll, PrescriptionRoutes.getAll);
 // prescriptionRouter.put(
 // 	Paths.Prescription.SetupVial,
