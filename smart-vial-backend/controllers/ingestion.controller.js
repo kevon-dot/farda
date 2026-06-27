@@ -2,9 +2,35 @@ const Device = require('../models/Device');
 const Event = require('../models/Event');
 const { validateIngestionEvent, validateDeviceId } = require('../utils/eventValidation');
 
+/**
+ * Resolve the battery reading from a telemetry body, mapping the wire field to
+ * the Device model field (#50).
+ *
+ * Devices/clients send `battery_percent`, but older payloads (and the original
+ * handler) used `battery`. We accept BOTH and normalize to the model's
+ * `battery_percent`, preferring `battery_percent` when both are present.
+ *
+ * @param {object} body - the raw telemetry req.body
+ * @returns {number|undefined} the battery percentage, or undefined if neither
+ *          field was sent (so callers can preserve the existing value / default).
+ */
+const resolveBatteryPercent = (body) => {
+    if (!body || typeof body !== 'object') return undefined;
+    if (body.battery_percent !== undefined && body.battery_percent !== null) {
+        return body.battery_percent;
+    }
+    if (body.battery !== undefined && body.battery !== null) {
+        return body.battery;
+    }
+    return undefined;
+};
+
 const updateTelemetry = async (req, res) => {
     try {
-        const { battery, firmware_version } = req.body;
+        const { firmware_version } = req.body;
+        // Clients/devices send `battery_percent`; accept the legacy `battery`
+        // too. Either way we store it on the model's `battery_percent` (#50).
+        const battery_percent = resolveBatteryPercent(req.body);
 
         // Strictly cast device_id to a string before it reaches Mongoose so
         // operator-injection values like { $ne: null } are rejected (#37).
@@ -21,7 +47,7 @@ const updateTelemetry = async (req, res) => {
             // Create new device if it doesn't exist
             device = new Device({
                 device_id,
-                battery_percent: battery || 100,
+                battery_percent: battery_percent !== undefined ? battery_percent : 100,
                 firmware_version: firmware_version || '1.0.0',
                 last_seen: new Date(),
                 claimed: false,
@@ -29,7 +55,7 @@ const updateTelemetry = async (req, res) => {
             });
         } else {
             // Update existing device
-            device.battery_percent = battery || device.battery_percent;
+            device.battery_percent = battery_percent !== undefined ? battery_percent : device.battery_percent;
             device.firmware_version = firmware_version || device.firmware_version;
             device.last_seen = new Date();
         }
@@ -107,5 +133,6 @@ const ingestEvent = async (req, res) => {
 
 module.exports = {
     updateTelemetry,
-    ingestEvent
+    ingestEvent,
+    resolveBatteryPercent
 };
