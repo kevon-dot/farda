@@ -15,31 +15,41 @@ Complete API documentation for Smart Vial Backend.
 5. [Error Responses](#error-responses)
 
 
-//////////////////////////////////////////////////////////
+---
 
 ## Authentication
 
-### User & Caregiver Authentication (JWT)
+### User & Caregiver Authentication (better-auth session)
 
-All user and caregiver endpoints require JWT Bearer token:
+All `/api/user/*` and `/api/caregiver/*` endpoints require a valid **better-auth**
+session. Send it as a session cookie or as a bearer token; it is validated by
+`middleware/verifyUserToken.js` against the shared PostgreSQL store (it is **not** a
+locally-verified JWT).
 
 ```http
-Authorization: Bearer <token>
+Authorization: Bearer <better_auth_session_token>
 ```
 
-**Token Structure**:
-```json
-{
-  "sub": "user_id",
-  "role": "user" | "caregiver",
- 
-  "iat": 1234567890,
-  "exp": 1234567890
-}
+On success the request carries `req.user_id`, `req.user_role`, `req.user`, and
+`req.session`. A missing/invalid/expired session returns **401**.
 
+### Device Authentication (per-device HMAC)
 
+All `/api/ingest/*` endpoints require per-device HMAC headers — there is **no shared
+API key**:
 
-//////////////////////////////////////////////////////////////
+```http
+x-device-id: DEVICE001
+x-nonce: 42
+x-timestamp: 1738483200
+x-signature: <lowercase hex HMAC-SHA256>
+```
+
+The signature is `HMAC_SHA256(device_secret, "x-device-id\nx-nonce\nx-timestamp\nraw_body")`.
+See **[Device Auth](DEVICE_AUTH.md)** for the complete contract and rejection rules.
+
+---
+
 ## User APIs
 
 Base path: `/api/user`
@@ -335,7 +345,7 @@ Authorization: Bearer <token>
 ```
 
 ---
-////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 ## Caregiver APIs
 
 Base path: `/api/caregiver`
@@ -535,9 +545,12 @@ ESP32 posts battery and firmware status.
 
 **Endpoint**: `POST /api/ingest/telemetry`
 
-**Headers**:
+**Headers** (per-device HMAC — see [Device Auth](DEVICE_AUTH.md)):
 ```http
-X-API-Key: your-strong-device-api-key
+x-device-id: DEVICE001
+x-nonce: 42
+x-timestamp: 1738483200
+x-signature: <lowercase hex HMAC-SHA256>
 Content-Type: application/json
 ```
 
@@ -545,7 +558,7 @@ Content-Type: application/json
 ```json
 {
   "device_id": "DEVICE001",
-  "battery": 85,
+  "battery_percent": 85,
   "firmware_version": "1.0.2"
 }
 ```
@@ -558,9 +571,10 @@ Content-Type: application/json
 ```
 
 **Notes**:
-- Creates device if doesn't exist
+- Send `battery_percent` (0–100). The legacy `battery` field is still accepted and
+  normalized to `battery_percent`, preferring `battery_percent` when both are present.
+- Creates device if it doesn't exist
 - Updates `last_seen` timestamp automatically
-- Battery should be 0-100
 
 ---
 
@@ -570,9 +584,12 @@ ESP32 posts interaction event (open/close/etc).
 
 **Endpoint**: `POST /api/ingest/event`
 
-**Headers**:
+**Headers** (per-device HMAC — see [Device Auth](DEVICE_AUTH.md)):
 ```http
-X-API-Key: your-strong-device-api-key
+x-device-id: DEVICE001
+x-nonce: 43
+x-timestamp: 1738483200
+x-signature: <lowercase hex HMAC-SHA256>
 Content-Type: application/json
 ```
 
@@ -590,7 +607,21 @@ Content-Type: application/json
 }
 ```
 
+**Fields**:
+- `device_id` (string, required) — must equal `x-device-id`.
+- `event` (string, required) — case-insensitive, stored uppercase. Must be one of the
+  allowed event types (otherwise **400**):
+  `OPEN`, `CLOSE`, `BATTERY`, `LOW_BATTERY`, `HEARTBEAT`, `BOOT`, `TILT`, `TAMPER`.
+- `event_id` (string, optional) — idempotency key.
+- `timestamp` (number, optional) — unix seconds.
+- `payload` (object, optional) — validated per `event_type` (zod). Known fields are
+  type-checked; unknown extra fields are allowed (passthrough). Examples:
+  `OPEN`/`CLOSE` → `{ duration, sensor_value }`; `BATTERY`/`LOW_BATTERY` →
+  `{ battery, battery_percent, firmware_version }`; `TILT`/`TAMPER` →
+  `{ sensor_value, angle }`.
 
+The device must also exist and be **claimed**, otherwise the event is rejected with
+**400** (`device not found` / `device not claimed by any user`).
 
 **Response** (200 OK):
 ```json
@@ -626,7 +657,9 @@ All errors follow this structure:
 | Code | Meaning | Common Causes |
 |------|---------|---------------|
 | 400 | Bad Request | Missing required fields, invalid data |
-| 401 | Unauthorized | Missing or invalid auth token/API key |
+| 401 | Unauthorized | Missing/invalid better-auth session, or device HMAC auth failure |
+| 413 | Payload Too Large | Request body exceeds the JSON body size limit |
+| 429 | Too Many Requests | Rate limit exceeded |
 | 403 | Forbidden | User doesn't own resource, role mismatch |
 | 404 | Not Found | Device/user/event doesn't exist |
 | 409 | Conflict | Device already claimed, duplicate entry |
@@ -634,17 +667,25 @@ All errors follow this structure:
 
 ### Example Error Responses
 
-**Missing Authentication**:
+**Missing/Invalid User Session** (user/caregiver routes):
 ```json
 {
-  "error": "Access Denied: No token provided"
+  "error": "Access Denied: Invalid or missing authentication"
 }
 ```
 
-**Invalid Token**:
+**Device Auth Failure** (ingestion routes — message is intentionally generic):
 ```json
 {
-  "error": "Invalid or expired token"
+  "success": false,
+  "error": "Authentication failed."
+}
+```
+
+**Rate Limited** (HTTP 429):
+```json
+{
+  "error": "Too many requests, please try again later."
 }
 ```
 
@@ -673,15 +714,22 @@ All errors follow this structure:
 
 ## Rate Limiting
 
-Current configuration (from config):
-- Window: 6000000ms (100 minutes)
-- Max requests: 100
+Rate limiting is **active** (`express-rate-limit`). Exceeding a limit returns HTTP
+**429** with a JSON body. Standardized `RateLimit-*` headers are sent
+(`standardHeaders: true`); the legacy `X-RateLimit-*` headers are disabled
+(`legacyHeaders: false`).
 
-**Rate limit headers**:
+| Limiter   | Scope                              | Default window | Default max | Env overrides |
+| --------- | ---------------------------------- | -------------- | ----------- | ------------- |
+| General   | All routes                         | 15 min         | 100 / IP    | `RATE_LIMIT_WINDOW_MS`, `RATE_LIMIT_MAX_REQUESTS` |
+| Ingestion | `/api/ingest/*`                    | 1 min          | 120 / IP    | `INGEST_RATE_LIMIT_WINDOW_MS`, `INGEST_RATE_LIMIT_MAX` |
+| Auth      | `/api/user/*`, `/api/caregiver/*`  | 15 min         | 100 / IP    | `AUTH_RATE_LIMIT_WINDOW_MS`, `AUTH_RATE_LIMIT_MAX` |
+
+**Standard headers** (example):
 ```http
-X-RateLimit-Limit: 100
-X-RateLimit-Remaining: 95
-X-RateLimit-Reset: 1738489200
+RateLimit-Limit: 100
+RateLimit-Remaining: 95
+RateLimit-Reset: 600
 ```
 
 ---
@@ -704,4 +752,4 @@ No versioning strategy currently implemented. Future: `/api/v2/...`
 
 ---
 
-**Last Updated**: February 3, 2026
+**Last Updated**: June 27, 2026

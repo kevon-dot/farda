@@ -8,17 +8,21 @@ Guide for setting up local development environment.
 
 ### Required Software
 
-- **Node.js**: >= 16.x (LTS recommended)
+- **Node.js**: LTS recommended
   - Download: https://nodejs.org/
   - Verify: `node --version`
 
-- **npm**: >= 8.x (comes with Node.js)
+- **npm** (or pnpm): comes with Node.js
   - Verify: `npm --version`
 
-- **MongoDB**: >= 5.x
+- **MongoDB**: device/event/telemetry store
   - Option A: MongoDB Atlas (cloud, free tier)
   - Option B: Local installation
-  - Verify: `mongo --version` or `mongod --version`
+  - Verify: `mongosh --version` or `mongod --version`
+
+- **PostgreSQL / better-auth**: shared identity store
+  - Use the same database the main app uses for better-auth (`DATABASE_URL`).
+  - Without it, authenticated user/caregiver endpoints cannot validate sessions.
 
 - **Git**: Latest version
   - Download: https://git-scm.com/
@@ -49,8 +53,8 @@ Features:
 
 Expected output:
 ```
-server running on port 5000
 MongoDB connected
+server running on port 5000
 ```
 
 ### Production Mode
@@ -71,30 +75,32 @@ Features:
 ```
 smart-vial-backend/
 ├── config/               # Configuration files
-│   ├── config.js        # Main config loader
-│   └── databaseConfig.js # MongoDB setup
+│   └── config.js        # Main config loader
 ├── controllers/          # Business logic
 │   ├── app.api.controller.js       # User endpoints
 │   ├── caregiver.controller.js     # Caregiver endpoints
-│   └── ingestion.controller.js     # Device ingestion
+│   ├── ingestion.controller.js     # Device ingestion
+│   └── saveUserController.js        # User save/provisioning
 ├── middleware/          # Express middleware
-│   ├── authDevice.js    # Device API key auth
-│   └── verifyUserToken.js # JWT verification
+│   ├── authDevice.js    # Per-device HMAC auth + replay protection
+│   ├── verifyUserToken.js # better-auth session validation (PostgreSQL)
+│   └── sanitize.js      # NoSQL operator-injection sanitization
 ├── models/              # MongoDB schemas
-│   ├── Device.js        # Device model
-│   ├── Event.js         # Event model
-│   └── User.js          # User model
+│   ├── Device.js        # Device model (+ encrypted credential)
+│   ├── Event.js         # Typed event model
+│   └── User.js          # Local role/claim mirror (better-auth user id)
 ├── routes/              # API route definitions
 │   ├── caregiverAPI.js  # /api/caregiver/*
 │   ├── ingestionAPI.js  # /api/ingest/*
 │   └── userAPI.js       # /api/user/*
 ├── utils/               # Helper utilities
-│   ├── generateTestToken.js # JWT token generator
-│   └── testJWT.js      # Token tester
+│   ├── deviceAuth.js    # Pure HMAC verification (wire contract)
+│   ├── deviceCredentials.js # AES-256-GCM device-secret encryption
+│   ├── deviceClaim.js   # Device claim helpers
+│   ├── eventValidation.js # zod event validation
+│   └── userProvisioning.js
 ├── docs/                # Documentation
 ├── .env                 # Environment variables (gitignored)
-├── .env.example         # Example environment file
-├── .gitignore          # Git ignore rules
 ├── package.json        # Dependencies
 ├── Server.js           # Entry point
 └── README.md           # Project overview
@@ -112,33 +118,35 @@ npm run dev
 
 Server runs on `http://localhost:5000`
 
-### 2. Generate Test Tokens
+### 2. Obtain a User Session
 
-```bash
-cd utils
-node generateTestToken.js
-```
-
-Copy the tokens for API testing.
+There is no local test-token generator anymore (the old `generateTestToken.js` /
+`testJWT.js` were removed with raw-JWT auth). To call authenticated user/caregiver
+endpoints, obtain a real **better-auth** session from the main app and send it as a
+session cookie or `Authorization: Bearer <session_token>`.
 
 ### 3. Test APIs
 
 Use Postman or curl:
 
 ```bash
-# Health check
-curl http://localhost:5000/
-
-# Test device ingestion
-curl -X POST http://localhost:5000/api/ingest/telemetry \
-  -H "X-API-Key: your-strong-device-api-key" \
-  -H "Content-Type: application/json" \
-  -d '{"device_id":"DEVICE001","battery":85}'
-
-# Test user API
-curl -H "Authorization: Bearer YOUR_TOKEN" \
+# Test user API (better-auth session)
+curl -H "Authorization: Bearer <better_auth_session_token>" \
   http://localhost:5000/api/user/devices
+
+# Test device ingestion (per-device HMAC headers — see docs/DEVICE_AUTH.md
+# for how to compute x-signature)
+curl -X POST http://localhost:5000/api/ingest/telemetry \
+  -H "x-device-id: DEVICE001" \
+  -H "x-nonce: 1" \
+  -H "x-timestamp: $(date +%s)" \
+  -H "x-signature: <lowercase hex HMAC-SHA256>" \
+  -H "Content-Type: application/json" \
+  -d '{"device_id":"DEVICE001","battery_percent":85}'
 ```
+
+> Note: there is no `GET /` health-check route; requesting `/` returns the default
+> 404 handler.
 
 ### 4. View Logs
 
@@ -230,16 +238,17 @@ router.get('/endpoint', newMiddleware, controller);
 
 ### Manual Testing
 
-Use Postman collection:
-1. Import `POSTMAN_TESTS.md`
-2. Set up environment variables
-3. Run requests
+Use Postman or curl (see the Postman material under `utils/postman-test/`). Set up a
+better-auth session for user endpoints and compute HMAC headers for device endpoints.
 
-### Unit Testing (Future)
+### Unit Testing
 
 ```bash
-npm test
+npm test   # runs the node:test suite (node --test)
 ```
+
+Pure modules like `utils/deviceAuth.js` and `utils/eventValidation.js` are designed to
+be unit-testable without a live database.
 
 
 ## Next Steps
@@ -252,4 +261,4 @@ npm test
 
 
 
-**Last Updated**: February 3, 2026
+**Last Updated**: June 27, 2026

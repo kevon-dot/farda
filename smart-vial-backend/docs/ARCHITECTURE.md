@@ -10,22 +10,28 @@ Smart Vial is an IoT medication adherence tracking system consisting of three ma
 
 ```
 ┌─────────────────┐         ┌──────────────────┐         ┌──────────────────┐
-│   ESP32 Smart   │         │   Cloud Backend  │         │   Mobile Apps    │
-│   Bottle Caps   │ HTTPS   │   (This System)  │  APIs   │  (User/Caregiver)│
-│                 ├────────►│                  ├────────►│                  │
+│   ESP32 Smart   │  HMAC   │   Cloud Backend  │  APIs   │   Mobile Apps    │
+│   Bottle Caps   │ ───────►│   (This System)  │ ───────►│  (User/Caregiver)│
+│                 │         │                  │         │                  │
 │  - Sensors      │         │  - REST APIs     │         │  - Patient View  │
 │  - WiFi         │         │  - Auth          │         │  - Caregiver View│
 │  - Battery      │         │  - Data Storage  │         │  - Dashboards    │
-└─────────────────┘         └──────────────────┘         └──────────────────┘
+└─────────────────┘         └────────┬─────────┘         └──────────────────┘
                                      │
-                                     ▼
-                            ┌──────────────────┐
-                            │   MongoDB Atlas  │
-                            │   - Devices      │
-                            │   - Events       │
-                            │   - Users        │
-                            └──────────────────┘
+                     ┌───────────────┴────────────────┐
+                     ▼                                ▼
+            ┌──────────────────┐            ┌──────────────────────┐
+            │   MongoDB        │            │   PostgreSQL         │
+            │   - Devices      │            │   - better-auth      │
+            │   - Events       │            │     identity/sessions│
+            │   - Telemetry    │            │   (shared w/ main app)│
+            └──────────────────┘            └──────────────────────┘
 ```
+
+**Dual data store**: device/event/telemetry data lives in **MongoDB**; user
+identity and sessions live in a **PostgreSQL** database shared with the main app
+and validated via **better-auth**. The Mongo `users` collection is only a local
+mirror of roles and device-claim lists keyed by the better-auth user id.
 
 ---
 
@@ -38,27 +44,35 @@ Smart Vial is an IoT medication adherence tracking system consisting of three ma
 │              Express Server                  │
 ├─────────────────────────────────────────────┤
 │                                             │
-│  ┌───────────┐  ┌───────────┐  ┌──────────┐│
-│  │  Routes   │  │Middleware │  │Controllers││
-│  │           │  │           │  │           ││
-│  │ userAPI   │  │ verifyJWT │  │ User APIs ││
-│  │caregiverAPI│─►│authDevice│─►│Caregiver  ││
-│  │ingestionAPI│  │CORS/etc  │  │Ingestion  ││
-│  └───────────┘  └───────────┘  └──────────┘│
+│  ┌───────────┐  ┌──────────────┐  ┌──────────┐│
+│  │  Routes   │  │ Middleware   │  │Controllers││
+│  │           │  │              │  │           ││
+│  │ userAPI   │  │ verifyUser   │  │ User APIs ││
+│  │caregiverAPI│─►│ Token (b-a)  │─►│Caregiver  ││
+│  │ingestionAPI│  │ authDevice   │  │Ingestion  ││
+│  │           │  │ sanitize     │  │           ││
+│  │           │  │ helmet/CORS/ │  │           ││
+│  │           │  │ rateLimit    │  │           ││
+│  └───────────┘  └──────────────┘  └──────────┘│
 │                                             │
 │  ┌─────────────────────────────────────────┐│
 │  │         Models (Mongoose ODM)           ││
 │  │                                         ││
-│  │  Device  │  Event  │  User              ││
+│  │  Device  │  Event  │  User (mirror)     ││
 │  └─────────────────────────────────────────┘│
-│                     │                       │
-└─────────────────────┼───────────────────────┘
-                      │
-                      ▼
-              ┌──────────────┐
-              │   MongoDB    │
-              └──────────────┘
+│              │                  │            │
+└──────────────┼──────────────────┼───────────┘
+               ▼                  ▼
+        ┌──────────────┐   ┌──────────────┐
+        │   MongoDB    │   │  PostgreSQL  │
+        │ device/event │   │ better-auth  │
+        └──────────────┘   └──────────────┘
 ```
+
+> `verifyUserToken` validates better-auth sessions against PostgreSQL; `authDevice`
+> enforces per-device HMAC over the request. The global middleware chain in
+> `Server.js` is: helmet → CORS allowlist → JSON body parsing (with raw-body capture)
+> → NoSQL sanitize → general rate limiter, then per-router ingestion/auth limiters.
 
 
 
@@ -108,8 +122,9 @@ Smart Vial is an IoT medication adherence tracking system consisting of three ma
 - Key fields: device_id, event_type, timestamps, idempotency_key
 - Indexes: device_id, server_timestamp, idempotency_key (unique, sparse)
 
-**users** (User Accounts) for faster search of devices 
-- Purpose: User profiles and role management
+**users** (local mirror of better-auth identity, in MongoDB)
+- Purpose: role and device-claim lookups; `user_id` is the better-auth user id
+  (the authoritative identity/session record lives in PostgreSQL, not here)
 - Key fields: user_id, user_roles, claim_device_ids, caregiving_device_ids
 - Indexes: user_id (unique), user_roles
 
@@ -130,16 +145,26 @@ Device (1) ──generates──► (N) Event
 ### Authentication Layers
 
 **Layer 1: Device Authentication**
-- Method: Shared API Key
-- Header: X-API-Key
-- Scope: /api/ingest/* endpoints
-- Validation: Simple string comparison
+- Method: **Per-device HMAC-SHA256** signing with replay protection
+- Headers: `x-device-id`, `x-nonce`, `x-timestamp`, `x-signature`
+- Scope: `/api/ingest/*` endpoints
+- Validation: device-specific secret (encrypted at rest, AES-256-GCM), monotonic
+  nonce, timestamp freshness window, constant-time HMAC compare
+  (`middleware/authDevice.js`, `utils/deviceAuth.js`; see [DEVICE_AUTH.md](DEVICE_AUTH.md))
 
 **Layer 2: User/Caregiver Authentication**
-- Method: JWT (JSON Web Tokens)
-- Header: Authorization: Bearer <token>
-- Scope: /api/user/* and /api/caregiver/* endpoints
-- Validation: Signature verification, expiration check
+- Method: **better-auth** session validation
+- Credential: session cookie or `Authorization: Bearer <session_token>`
+- Scope: `/api/user/*` and `/api/caregiver/*` endpoints
+- Validation: `auth.api.getSession()` against the shared **PostgreSQL** store
+  (`middleware/verifyUserToken.js`) — not a locally-decoded JWT
+
+**Cross-cutting hardening**
+- helmet security headers
+- CORS allowlist (`CORS_ORIGINS`)
+- Active rate limiting (express-rate-limit, 429, `RateLimit-*` headers)
+- NoSQL operator-injection sanitization (`middleware/sanitize.js`)
+- JSON body size limit + clean JSON error handling
 
 ### Authorization Model
 
@@ -162,9 +187,8 @@ Device (1) ──generates──► (N) Event
 
 ### Current Limitations
 
-1. **Single API Key**: All devices share same key
-2. **No caching**: All requests hit database
-3. **Single server**: No horizontal scaling
+1. **No caching**: All requests hit the database
+2. **Single server**: No horizontal scaling by default
 
 ### Future Improvements
 
@@ -195,20 +219,26 @@ Request → Redis Cache → MongoDB
 ## Technology Stack
 
 ### Runtime
-- **Node.js** v16+ - JavaScript runtime
-- **Express.js** - Web framework
+- **Node.js** - JavaScript runtime
+- **Express.js** (Express 5) - Web framework
 
-### Database
-- **MongoDB** - NoSQL database
-- **Mongoose** - ODM (Object Data Modeling)
+### Databases
+- **MongoDB** + **Mongoose** - device/event/telemetry store
+- **PostgreSQL** (via **pg**) - shared **better-auth** identity/session store
 
 ### Authentication
-- **jsonwebtoken** - JWT creation/validation
-- Custom API key middleware
+- **better-auth** - user/caregiver session validation against PostgreSQL
+- **crypto** (Node.js built-in) - per-device HMAC-SHA256 + AES-256-GCM secret encryption
+
+### Validation & Hardening
+- **zod** - event payload validation
+- **helmet** - security headers
+- **cors** - origin allowlist
+- **express-rate-limit** - rate limiting (429)
+- request sanitization middleware (NoSQL injection protection)
 
 ### Utilities
 - **dotenv** - Environment variable management
-- **crypto** (Node.js built-in) - For generating secrets
 
 ### Development
 - **nodemon** - Auto-restart during development
@@ -242,4 +272,4 @@ All requests pass through middleware chain before reaching controllers.
 
 
 
-**Last Updated**: February 3, 2026
+**Last Updated**: June 27, 2026
