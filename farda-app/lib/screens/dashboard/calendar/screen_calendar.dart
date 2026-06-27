@@ -348,8 +348,6 @@ class _ScreenCalendarState extends State<ScreenCalendar> {
               ) : doseList.isNotEmpty && index != -1 // Check if the list is not empty and index is valid
                   ? InkWell(
                     onTap: (){
-                      print("data tap");
-                      
                       //  showThoughtsDialog(context);
                      
                       data.selectDoes(doseList[index]);

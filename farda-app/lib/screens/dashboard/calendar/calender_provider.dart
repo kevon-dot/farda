@@ -24,7 +24,7 @@ class CalenderProvider extends ChangeNotifier {
           doseTimeModel =
               data.map((item) => DoseTimeModel.fromJson(item)).toList();
           notifyListeners();
-          debugPrint(doseTimeModel.toString());
+          debugPrint("getDoseTimeApi: loaded ${doseTimeModel.length} dose times.");
         }
       }
     } catch (e) {
@@ -41,13 +41,13 @@ class CalenderProvider extends ChangeNotifier {
 
         if (data.isNotEmpty) {
           moodModel = MoodModel.fromJson(data);
-          
+
           notifyListeners();
-          debugPrint(doseTimeModel.toString());
+          debugPrint("getMoodApi: mood loaded.");
         }
       }
     } catch (e) {
-      debugPrint("getDoseTimeApi error: $e");
+      debugPrint("getMoodApi error: $e");
     }
   }
 
@@ -60,7 +60,6 @@ class CalenderProvider extends ChangeNotifier {
 void selectDoes(DoseTimeModel model){
   selectedDoseModel = DoseTimeModel();
   selectedDoseModel = model;
-  print(selectedDoseModel.id);
   notifyListeners();
 }
 

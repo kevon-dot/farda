@@ -113,10 +113,10 @@ class _ScreenConnectOnboardState extends State<ScreenConnectOnboard> {
         String jsonStr = incomingDataBuffer.replaceFirst("SYNC_DATA", "");
         try {
           List<dynamic> logs = jsonDecode(jsonStr);
-          debugPrint("Parsed Logs: \$logs");
+          debugPrint("Parsed ${logs.length} sync log entries from device.");
           sendAckCommand(authKey32Bytes);
         } catch (e) {
-          debugPrint("JSON Parse Error: \$e");
+          debugPrint("Sync log JSON parse error.");
         }
       }
     });

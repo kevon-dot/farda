@@ -1,15 +1,15 @@
 import 'package:farda/app_const/app_urls.dart';
+import 'package:farda/application/authentication/storage/auth_storage.dart';
 import 'package:farda/utilities/api_service.dart';
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 class CalenderRepo {
   Future<dynamic> getDoseTime() async {
-    SharedPreferences preferences = await SharedPreferences.getInstance();
     try {
+      final token = await AuthStorage.getToken() ?? "";
       final response = await ApiService.getList(
         headers: {
-          "Authorization": "Bearer ${preferences.getString("access") ?? ""}",
+          "Authorization": "Bearer $token",
         },
         endpoint: AppUrls.getDoseTime,
       );
@@ -27,12 +27,11 @@ class CalenderRepo {
   }
 
   Future<dynamic> getMood() async {
-    SharedPreferences preferences = await SharedPreferences.getInstance();
-
     try {
+      final token = await AuthStorage.getToken() ?? "";
       final response = await ApiService.getList(
         headers: {
-          "Authorization": "Bearer ${preferences.getString("access") ?? ""}",
+          "Authorization": "Bearer $token",
         },
         endpoint: AppUrls.getMode,
       );
@@ -44,14 +43,13 @@ class CalenderRepo {
         return null;
       }
     } catch (e) {
-      debugPrint("getDoseTime error: $e");
+      debugPrint("getMood error: $e");
       return null;
     }
   }
 
   Future<dynamic> setMood(String date, String emoji) async {
-    SharedPreferences preferences = await SharedPreferences.getInstance();
-    final token = preferences.getString("access") ?? "";
+    final token = await AuthStorage.getToken() ?? "";
     try {
       final data = await ApiService.post(
         endpoint: AppUrls.setMood,
@@ -62,7 +60,7 @@ class CalenderRepo {
         return data;
       }
     } catch (e) {
-      print(e);
+      debugPrint("setMood error: $e");
     }
   }
 
@@ -73,8 +71,7 @@ class CalenderRepo {
   }
 
   Future<int> submitNote(String id, String note) async {
-    SharedPreferences preferences = await SharedPreferences.getInstance();
-    final token = preferences.getString("access") ?? "";
+    final token = await AuthStorage.getToken() ?? "";
     try {
       final data = await ApiService.postResponse(
         endpoint: AppUrls.setNotes,
@@ -84,13 +81,12 @@ class CalenderRepo {
       if (data != null) {
       return data.statusCode;
     } else {
-      debugPrint(data.toString());
       return data!.statusCode;
     }
     } catch (e) {
-      print(e);
+      debugPrint("submitNote error: $e");
       return 100;
-      
+
     }
   }
 }

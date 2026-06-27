@@ -57,8 +57,8 @@ class PrescriptionController {
 
   Future<void> handleSave(BuildContext context) async {
     final data = await provider.submitPrescriptionApi();
-    debugPrint(data.toString());
-    
+    debugPrint("submitPrescriptionApi success: $data");
+
     if (context.mounted) {
       if (data == true) {
         CustomSnackbar.show(

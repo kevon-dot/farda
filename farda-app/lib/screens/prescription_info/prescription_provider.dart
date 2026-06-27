@@ -175,7 +175,7 @@ Future<void> getMyPrescriptionApi() async {
             .map((item) => PrescriptionModelList.fromJson(item))
             .toList();
         notifyListeners(); // Notify listeners if the list has changed
-        debugPrint(prescriptionModelList.first.medicines?.first.qty.toString());  // Log the list for debugging
+        debugPrint("getMyPrescriptionApi: loaded ${prescriptionModelList.length} prescriptions.");
       }
     } else {
       // Handle non-200 status codes (if necessary)
