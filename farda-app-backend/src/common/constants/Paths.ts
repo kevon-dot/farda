@@ -49,6 +49,15 @@ const Paths = {
 		// GET refill-adherence metrics for the session user.
 		Metrics: "/refills/metrics",
 	},
+	// Enterprise analytics export (GTM-522). ADMIN-ONLY + session-gated. Serves
+	// ONLY the de-identified / analytic layers — NEVER raw PHI.
+	Analytics: {
+		_: "/analytics",
+		// GET the analytic-layer metric roll-ups (PHI-free, k-anonymity-guarded).
+		Metrics: "/analytics/metrics",
+		// GET an integrity report for the provenance ledger (hash-chain verify).
+		ProvenanceVerify: "/analytics/provenance/verify",
+	},
 	// Adherence-metrics computation engine (GTM-540 / GTM-502). Session-gated;
 	// derived on read from the user's Dose rows + Rx/Medicine inventory.
 	Metrics: {

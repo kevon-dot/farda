@@ -40,6 +40,7 @@ model User {
   pushTokens             PushToken[]
   reminderResponseEvents ReminderResponseEvent[]
   refillEvents           RefillEvent[]
+  provenanceEntries      ProvenanceLedgerEntry[]
 }
 
 model Prescription {
@@ -323,4 +324,194 @@ model Verification {
 
   @@unique([identifier, value])
   @@map("verifications")
+}
+
+/// ===========================================================================
+/// GTM-522 — 3-layer data store + de-identification + provenance ledger.
+///
+/// Three concentric layers separate identified PHI from the model-ready data
+/// the metrics engine + enterprise API consume:
+///
+///   1. SERVICE (identified) layer — the existing PHI tables above (User,
+///      Prescription, Medicine, Dose, ...). Source of truth. Stays as-is.
+///   2. DE-IDENTIFIED layer — `DeidentifiedSubject` + `DeidentifiedEvent`.
+///      HIPAA Safe-Harbor de-identified projections of identified rows, keyed
+///      by a one-way salted pseudonym. The reverse mapping (pseudonym -> real
+///      user) is NEVER stored in this layer.
+///   3. ANALYTIC layer — `AnalyticMetric`. The aggregated, model-ready store
+///      the metrics engine + enterprise API read. PHI-free.
+///
+/// Every create/transform/access/export across these layers is recorded in the
+/// append-only, hash-chained `ProvenanceLedgerEntry` (mirrors AuditLog).
+///
+/// Models are appended at the END of the schema (GTM-522) so a parallel
+/// dose-event change merges cleanly.
+/// ===========================================================================
+
+/// DE-IDENTIFIED layer: a pseudonymous subject. The `subjectKey` is a one-way,
+/// salted SHA-256 token derived from the identified user id (see
+/// src/services/DeidentificationService.ts). It is STABLE (same user + same
+/// salt -> same key) so de-identified events can be correlated WITHOUT ever
+/// storing the real user id.
+///
+/// PHI-safety: this table holds NO identifier (no name/email/phone/dates/geo).
+/// There is intentionally NO column linking back to `User` — re-identification
+/// is impossible from this layer alone, satisfying HIPAA Safe-Harbor.
+model DeidentifiedSubject {
+  id String @id @default(cuid())
+
+  /// One-way salted pseudonym = sha256(salt + identifiedUserId). Unique so the
+  /// de-id transform is idempotent (re-projecting the same user upserts here).
+  subjectKey String @unique
+
+  /// Coarse, non-identifying cohort attributes ONLY (HIPAA Safe-Harbor):
+  /// e.g. an age BAND ("30-39", or "90+" capping the >89 rule), a broad region
+  /// code, never an exact age/DOB/ZIP. All optional + low-cardinality.
+  ageBand String?
+  region  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  events DeidentifiedEvent[]
+
+  @@index([subjectKey])
+}
+
+/// DE-IDENTIFIED layer: a single de-identified event/metric row projected from
+/// an identified event (a dose, reminder response, refill, ...). Dates are
+/// SHIFTED/relative (dayOffset from a per-subject epoch), never absolute, per
+/// Safe-Harbor. Free-text PHI (mood/note/medication names) is NEVER projected.
+model DeidentifiedEvent {
+  id String @id @default(cuid())
+
+  /// FK to the pseudonymous subject (the only "who"; no real user id exists).
+  subjectId String
+
+  /// Structured event class only: "DOSE_TAKEN" | "DOSE_MISSED" |
+  /// "REFILL_REQUESTED" | ... — never free text.
+  eventType String
+
+  /// Relative day index from the subject's de-id epoch (date-shifted). Absolute
+  /// timestamps are deliberately dropped so no exact date survives.
+  dayOffset Int
+
+  /// Coarse hour bucket [0,23] of the local event time, if retained. Optional;
+  /// exact minute/second precision is dropped.
+  hourBucket Int?
+
+  /// A single numeric measure for the event (e.g. minutesLate, adherence flag
+  /// 0/1). Non-identifying. Free-text is never stored here.
+  value Float?
+
+  /// Non-PHI structured context only (coarse buckets/flags). NEVER PHI values.
+  metadata Json?
+
+  createdAt DateTime @default(now())
+
+  subject DeidentifiedSubject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+
+  @@index([subjectId])
+  @@index([eventType])
+  @@index([dayOffset])
+}
+
+/// ANALYTIC layer: the de-identified, model-ready aggregate store the metrics
+/// engine + enterprise API read from. Rows are rolled-up metrics over the
+/// de-identified layer (e.g. cohort adherence per period). PHI-free by
+/// construction — there is no subject/user FK, only an optional coarse cohort
+/// label and a numeric value over a period.
+model AnalyticMetric {
+  id String @id @default(cuid())
+
+  /// Metric name, e.g. "adherence_rate" | "refill_completion_rate".
+  metric String
+
+  /// Optional coarse cohort label (e.g. region or ageBand). Low-cardinality,
+  /// non-identifying. Null = global/all-subjects.
+  cohort String?
+
+  /// Period bucket the metric is computed over, e.g. "2026-W26" (ISO week) or
+  /// "2026-06". A relative/bucketed string, never a per-subject exact date.
+  period String
+
+  /// The aggregate value (rate, count, average). Numeric only.
+  value Float
+
+  /// Number of de-identified subjects/events contributing (k-anonymity guard:
+  /// the enterprise API can suppress rows below a small-cell threshold).
+  sampleSize Int @default(0)
+
+  /// Non-PHI structured context only. NEVER PHI.
+  metadata Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([metric, cohort, period])
+  @@index([metric])
+  @@index([period])
+}
+
+/// PROVENANCE LEDGER: tamper-evident, append-only record of who/what/when for
+/// every record creation / transform / access / export across the three data
+/// layers (GTM-522). Mirrors the AuditLog SHA-256 hash chain exactly:
+/// `hash = sha256(prevHash + canonical(entry))`. Any after-the-fact edit or
+/// deletion breaks the chain and is detectable (see ProvenanceService).
+///
+/// APPEND-ONLY: there is intentionally NO `updatedAt`. Application code must
+/// NEVER UPDATE or DELETE rows here.
+///
+/// PHI-safety: this row must NEVER contain PHI values — only layer names,
+/// operation types, opaque record ids / pseudonyms and non-PHI metadata. The
+/// ledger must not itself become a PHI leak.
+model ProvenanceLedgerEntry {
+  id String @id @default(cuid())
+
+  /// The acting session user / system actor. Nullable so background transforms
+  /// (de-id / aggregate projections) can be recorded with no human actor.
+  actorUserId String?
+
+  /// CREATE | TRANSFORM | ACCESS | EXPORT.
+  operation String
+
+  /// The data layer this entry concerns: IDENTIFIED | DEIDENTIFIED | ANALYTIC.
+  layer String
+
+  /// For TRANSFORM rows: the layer the data was projected FROM (e.g. IDENTIFIED
+  /// -> DEIDENTIFIED). Null for non-transform operations.
+  sourceLayer String?
+
+  /// Resource type within the layer, e.g. "Dose" | "DeidentifiedEvent" |
+  /// "AnalyticMetric".
+  resourceType String
+
+  /// Opaque id of the record (a cuid or a PSEUDONYM for the de-id layer). NEVER
+  /// a raw identifier value.
+  resourceId String?
+
+  ip        String?
+  userAgent String?
+
+  /// Non-PHI structured context only (counts, period, route). NEVER PHI values.
+  metadata Json?
+
+  /// `hash` of the previous row, forming the tamper-evident chain. Null for the
+  /// very first row.
+  prevHash String?
+
+  /// sha256(prevHash + canonical(entry)) for this row.
+  hash String
+
+  createdAt DateTime @default(now())
+
+  /// FK is nullable + ON DELETE SET NULL: deleting a user must NOT delete or
+  /// cascade-destroy provenance history (the ledger outlives the actor).
+  actor User? @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([actorUserId])
+  @@index([operation])
+  @@index([layer])
+  @@index([resourceType])
+  @@index([createdAt])
 }
