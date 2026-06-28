@@ -6,8 +6,17 @@ const { computeUnclaimDeviceState, removeDeviceId } = require("../utils/deviceCl
 const { GRANT_STATUS } = require("../utils/caregiverAuthorization");
 const { validateIngestionEvent } = require("../utils/eventValidation");
 const DoseEvent = require("../models/DoseEvent");
+const EmaResponse = require("../models/EmaResponse");
+const PillCountCheckpoint = require("../models/PillCountCheckpoint");
 const { validateDoseEventMicrostructure } = require("../utils/doseEventValidation");
 const { scoreDoseEventConfidence } = require("../utils/confidenceScoring");
+const {
+  GROUND_TRUTH,
+  normalizeSelfReport,
+  computeGroundTruthMetrics,
+  shouldSampleForEma,
+  DEFAULT_EMA_SAMPLE_RATE,
+} = require("../utils/groundTruthMetrics");
 
 //save user to database
 const saveUser = async (req, res, next) => {
@@ -573,6 +582,19 @@ const ingestDoseEventMicrostructure = async (req, res, next) => {
             scoringVersion: scored.scoringVersion,
         });
 
+        // GTM-521 — server-side EMA sub-sampling decision. Only a fraction of
+        // detected doses should trigger a self-report prompt (avoid survey
+        // fatigue / preserve label quality). The SERVER owns the rate so a chatty
+        // client can't ask on every dose; the decision is deterministic on the
+        // dose's idempotency key (stable across retries) and surfaced as a
+        // PHI-free flag the app uses to decide whether to show the prompt.
+        const emaSampleRate =
+            typeof req.query?.ema_rate === "number"
+                ? req.query.ema_rate
+                : DEFAULT_EMA_SAMPLE_RATE;
+        const emaSeed = normalized.idempotency_key || normalized.client_dose_id || String(doseEvent._id);
+        const promptForEma = shouldSampleForEma(emaSampleRate, emaSeed);
+
         return res.status(201).json({
             status: "success",
             deduped: false,
@@ -588,6 +610,306 @@ const ingestDoseEventMicrostructure = async (req, res, next) => {
                 confidenceFactors: doseEvent.confidenceFactors,
                 scoringVersion: doseEvent.scoringVersion,
             },
+            // GTM-521 — whether the app should prompt an EMA self-report for this
+            // dose (server-decided sub-sample). PHI-free boolean + the rate used.
+            ema_prompt: {
+                prompt: promptForEma,
+                sample_rate: emaSampleRate,
+                dose_event_id: String(doseEvent._id),
+            },
+        });
+    } catch (err) {
+        return res.status(500).json({ error: err.message });
+    }
+};
+
+// ============================================
+// GTM-521 — Ground-truth validation substream
+// ============================================
+// EMA self-reports + manual pill-count checkpoints are the SUPERVISED LABEL we
+// validate device dose-detection against. All three handlers below are
+// deny-by-default authenticated (verifyUserToken on the route), IDOR-guarded (the
+// subject is the SESSION user, the device is bound from the path param and must
+// be OWNED by that user — never a client-asserted id), and audited PHI-free (ids
+// + counts + codes only, never any free text or patient data).
+
+// Resolve + assert ownership of the path device for the session user. Returns the
+// device on success, or null after writing the 404/403 response (so callers just
+// `if (!device) return;`). Centralizes the IDOR guard used by all GTM-521 writes.
+async function resolveOwnedDevice(req, res) {
+    const { device_id } = req.params;
+    const device = await Device.findOne({ device_id });
+    if (!device) {
+        res.status(404).json({ error: "Device not found" });
+        return null;
+    }
+    if (device.user_id !== req.user_id) {
+        res.status(403).json({ error: "Forbidden: device is not claimed by this user" });
+        return null;
+    }
+    return device;
+}
+
+// ---- Record an EMA self-report -------------------------------------------
+// Wire body:
+//   { self_reported_taken: "taken"|"not_taken"|"unsure" (or yes/no/unsure),
+//     dose_event_id?, idempotency_key?, prompted_at?, sampling? }
+const recordEmaResponse = async (req, res, next) => {
+    try {
+        const user_id = req.user_id;
+        const { device_id } = req.params;
+        const body = req.body || {};
+
+        // The self-report is the label: normalize to the constrained enum. An
+        // unrecognized answer is a 400 — we never guess a label.
+        const label = normalizeSelfReport(body.self_reported_taken);
+        if (label === null) {
+            return res.status(400).json({
+                error: "Bad Request: self_reported_taken must be one of taken/not_taken/unsure",
+            });
+        }
+
+        // IDOR guard: device must exist AND be owned by the session user.
+        const device = await resolveOwnedDevice(req, res);
+        if (!device) return;
+
+        const idempotency_key =
+            typeof body.idempotency_key === "string" ? body.idempotency_key : null;
+
+        // Idempotency: dedupe by the client-computed stable key.
+        if (idempotency_key) {
+            const existing = await EmaResponse.findOne({ idempotency_key });
+            if (existing) {
+                return res.status(200).json({ status: "success", deduped: true });
+            }
+        }
+
+        // Optional dose_event_id link: accept only an opaque string; never trust a
+        // user/device id from the body — those are bound server-side.
+        const dose_event_id =
+            typeof body.dose_event_id === "string" ? body.dose_event_id : null;
+        const prompted_at =
+            typeof body.prompted_at === "number"
+                ? new Date(body.prompted_at)
+                : body.prompted_at
+                ? new Date(body.prompted_at)
+                : null;
+        const sampling =
+            body.sampling && typeof body.sampling === "object"
+                ? {
+                      reason:
+                          typeof body.sampling.reason === "string"
+                              ? body.sampling.reason
+                              : null,
+                      rate:
+                          typeof body.sampling.rate === "number"
+                              ? body.sampling.rate
+                              : null,
+                  }
+                : {};
+
+        const ema = new EmaResponse({
+            user_id,
+            device_id,
+            dose_event_id,
+            self_reported_taken: label,
+            prompted_at,
+            responded_at: new Date(),
+            sampling,
+            idempotency_key,
+        });
+
+        try {
+            await ema.save();
+        } catch (saveErr) {
+            if (saveErr && saveErr.code === 11000) {
+                return res.status(200).json({ status: "success", deduped: true });
+            }
+            throw saveErr;
+        }
+
+        // PHI-free audit line: ids + the (non-PHI) label code only.
+        console.log("EMA self-report recorded", {
+            user_id,
+            device_id,
+            dose_event_id,
+            self_reported_taken: label,
+        });
+
+        return res.status(201).json({
+            status: "success",
+            deduped: false,
+            ema_response: {
+                id: ema._id,
+                device_id: ema.device_id,
+                self_reported_taken: ema.self_reported_taken,
+                responded_at: ema.responded_at,
+            },
+        });
+    } catch (err) {
+        return res.status(500).json({ error: err.message });
+    }
+};
+
+// ---- Record a manual pill-count checkpoint -------------------------------
+// Wire body: { manual_count, device_inferred_count, checked_at?, idempotency_key? }
+const recordPillCountCheckpoint = async (req, res, next) => {
+    try {
+        const user_id = req.user_id;
+        const { device_id } = req.params;
+        const body = req.body || {};
+
+        const manual_count = Number(body.manual_count);
+        const device_inferred_count = Number(body.device_inferred_count);
+        if (
+            !Number.isInteger(manual_count) ||
+            manual_count < 0 ||
+            !Number.isInteger(device_inferred_count) ||
+            device_inferred_count < 0
+        ) {
+            return res.status(400).json({
+                error: "Bad Request: manual_count and device_inferred_count must be non-negative integers",
+            });
+        }
+
+        const device = await resolveOwnedDevice(req, res);
+        if (!device) return;
+
+        const idempotency_key =
+            typeof body.idempotency_key === "string" ? body.idempotency_key : null;
+        if (idempotency_key) {
+            const existing = await PillCountCheckpoint.findOne({ idempotency_key });
+            if (existing) {
+                return res.status(200).json({ status: "success", deduped: true });
+            }
+        }
+
+        const checked_at =
+            typeof body.checked_at === "number"
+                ? new Date(body.checked_at)
+                : body.checked_at
+                ? new Date(body.checked_at)
+                : new Date();
+
+        const checkpoint = new PillCountCheckpoint({
+            user_id,
+            device_id,
+            manual_count,
+            device_inferred_count,
+            checked_at,
+            idempotency_key,
+        });
+
+        try {
+            await checkpoint.save();
+        } catch (saveErr) {
+            if (saveErr && saveErr.code === 11000) {
+                return res.status(200).json({ status: "success", deduped: true });
+            }
+            throw saveErr;
+        }
+
+        // PHI-free audit line: ids + integer counts only.
+        console.log("Pill-count checkpoint recorded", {
+            user_id,
+            device_id,
+            manual_count,
+            device_inferred_count,
+            discrepancy: checkpoint.discrepancy,
+        });
+
+        return res.status(201).json({
+            status: "success",
+            deduped: false,
+            checkpoint: {
+                id: checkpoint._id,
+                device_id: checkpoint.device_id,
+                manual_count: checkpoint.manual_count,
+                device_inferred_count: checkpoint.device_inferred_count,
+                discrepancy: checkpoint.discrepancy,
+                checked_at: checkpoint.checked_at,
+            },
+        });
+    } catch (err) {
+        return res.status(500).json({ error: err.message });
+    }
+};
+
+// ---- Read computed sensitivity / specificity over a window ----------------
+// Self (subject-scoped): the caller validates THEIR OWN device. The subject is
+// the session user; the device is the path param and must be owned by them. The
+// EMA self-report is the ground truth; a DoseEvent is the device prediction.
+//
+//   - Each EMA response with a usable label (taken/not_taken) is one sample.
+//   - `detected` is TRUE when that response is linked to a DoseEvent
+//     (dose_event_id) OR a DoseEvent for this device falls within `windowMs` of
+//     the response time — i.e. the device thought a dose happened around then.
+//   - The pair (detected, self-report) feeds the confusion matrix
+//     (utils/groundTruthMetrics.js) → sens/spec/PPV/NPV.
+//
+// Query: ?start_time=&end_time=&window_ms=  (all optional)
+const PAIR_WINDOW_MS = 15 * 60 * 1000; // ±15 min default pairing window
+const getDoseDetectionMetrics = async (req, res, next) => {
+    try {
+        const user_id = req.user_id;
+        const { device_id } = req.params;
+
+        const device = await resolveOwnedDevice(req, res);
+        if (!device) return;
+
+        const { start_time, end_time } = req.query;
+        const windowMs =
+            req.query.window_ms && Number.isFinite(Number(req.query.window_ms))
+                ? Math.max(0, Number(req.query.window_ms))
+                : PAIR_WINDOW_MS;
+
+        const respondedFilter = {};
+        if (start_time) respondedFilter.$gte = new Date(start_time);
+        if (end_time) respondedFilter.$lte = new Date(end_time);
+
+        const emaQuery = { user_id, device_id };
+        if (Object.keys(respondedFilter).length) emaQuery.responded_at = respondedFilter;
+
+        const responses = await EmaResponse.find(emaQuery).sort({ responded_at: -1 });
+
+        // Pull this device's detected dose events over the (slightly padded)
+        // window so a response near the edge can still pair to a detection.
+        const doseFilter = { user_id, device_id };
+        if (start_time || end_time) {
+            doseFilter.recordedAt = {};
+            if (start_time) doseFilter.recordedAt.$gte = new Date(new Date(start_time).getTime() - windowMs);
+            if (end_time) doseFilter.recordedAt.$lte = new Date(new Date(end_time).getTime() + windowMs);
+        }
+        const doseEvents = await DoseEvent.find(doseFilter);
+        const detectedIds = new Set(
+            doseEvents.map((d) => String(d._id)).filter(Boolean)
+        );
+        const detectedTimes = doseEvents
+            .map((d) => (d.recordedAt ? new Date(d.recordedAt).getTime() : null))
+            .filter((t) => t !== null);
+
+        const samples = responses.map((r) => {
+            let detected = false;
+            if (r.dose_event_id && detectedIds.has(String(r.dose_event_id))) {
+                detected = true;
+            } else if (r.responded_at) {
+                const t = new Date(r.responded_at).getTime();
+                detected = detectedTimes.some((dt) => Math.abs(dt - t) <= windowMs);
+            }
+            return { detected, ground_truth: r.self_reported_taken };
+        });
+
+        const metrics = computeGroundTruthMetrics(samples);
+
+        return res.status(200).json({
+            status: "success",
+            device_id,
+            window: {
+                start_time: start_time || null,
+                end_time: end_time || null,
+                pairing_window_ms: windowMs,
+            },
+            metrics,
         });
     } catch (err) {
         return res.status(500).json({ error: err.message });
@@ -605,7 +927,10 @@ module.exports = {
     deleteDeviceEvents,
     deleteCaregiverAccessToDevice,
     ingestUserDeviceEvent,
-    ingestDoseEventMicrostructure
+    ingestDoseEventMicrostructure,
+    recordEmaResponse,
+    recordPillCountCheckpoint,
+    getDoseDetectionMetrics
 }
 
 

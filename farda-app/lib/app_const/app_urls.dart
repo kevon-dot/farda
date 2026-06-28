@@ -129,4 +129,18 @@ class VialUrls {
   /// fail transiently and stay safely buffered in [DoseSyncQueue].
   static String ingestDeviceEvent(String deviceId) =>
       "api/user/devices/${Uri.encodeComponent(deviceId)}/events/ingest";
+
+  // --- Ground-truth validation (GTM-521: EMA + pill-count) -------------------
+
+  /// POST `{ self_reported_taken, dose_event_id?, idempotency_key? }` — record
+  /// ONE EMA self-report ("did you just take your dose?" yes/no/unsure) against a
+  /// detected dose. The Vial backend (verifyUserToken + device-claim check)
+  /// derives the subject from the session and dedupes on `idempotency_key`.
+  static String emaResponses(String deviceId) =>
+      "api/user/devices/${Uri.encodeComponent(deviceId)}/ema-responses";
+
+  /// POST `{ manual_count, device_inferred_count, idempotency_key? }` — record a
+  /// manual pill-count checkpoint (hand-count vs device-inferred remaining).
+  static String pillCountCheckpoints(String deviceId) =>
+      "api/user/devices/${Uri.encodeComponent(deviceId)}/pill-count-checkpoints";
 }
