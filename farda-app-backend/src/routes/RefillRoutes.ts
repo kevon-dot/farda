@@ -4,6 +4,7 @@ import {
 	assertSameUser,
 } from "@src/common/utils/authorization";
 import { RouteError } from "@src/common/utils/route-errors";
+import { logErr } from "@src/common/utils/safeLogger";
 import { prisma } from "@src/lib/prisma";
 import { type AuditAction, recordAccess } from "@src/services/AuditService";
 import {
@@ -172,7 +173,7 @@ const RefillRoutes = {
 			if (error instanceof RouteError) {
 				return res.status(error.status).json({ error: error.message });
 			}
-			console.error("Error in getRefills:", error);
+			logErr("Error in getRefills", error);
 			const message =
 				error instanceof Error ? error.message : "Failed to fetch refills";
 			return res
@@ -236,7 +237,7 @@ const RefillRoutes = {
 			if (error instanceof RouteError) {
 				return res.status(error.status).json({ error: error.message });
 			}
-			console.error("Error in logEvent:", error);
+			logErr("Error in logEvent", error);
 			const message =
 				error instanceof Error ? error.message : "Failed to log refill event";
 			return res
@@ -295,7 +296,7 @@ const RefillRoutes = {
 			if (error instanceof RouteError) {
 				return res.status(error.status).json({ error: error.message });
 			}
-			console.error("Error in getMetrics:", error);
+			logErr("Error in getMetrics", error);
 			const message =
 				error instanceof Error ? error.message : "Failed to fetch metrics";
 			return res

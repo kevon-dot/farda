@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { logErr } from "@src/common/utils/safeLogger";
 import { prisma } from "@src/lib/prisma";
 
 /******************************************************************************
@@ -117,7 +118,7 @@ export async function recordAccess(input: RecordAccessInput): Promise<void> {
 		});
 	} catch (error) {
 		// Fail-open: never break the main request because auditing failed.
-		console.error("AuditService.recordAccess failed", {
+		logErr("AuditService.recordAccess failed", {
 			action: input.action,
 			resourceType: input.resourceType,
 			resourceId: input.resourceId ?? null,

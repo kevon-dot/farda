@@ -4,6 +4,7 @@ import {
 	assertSameUser,
 } from "@src/common/utils/authorization";
 import { RouteError } from "@src/common/utils/route-errors";
+import { logErr } from "@src/common/utils/safeLogger";
 import { prisma } from "@src/lib/prisma";
 import { type AuditAction, recordAccess } from "@src/services/AuditService";
 import type { Request, Response } from "express";
@@ -181,7 +182,7 @@ const ReminderRoutes = {
 			if (error instanceof RouteError) {
 				return res.status(error.status).json({ error: error.message });
 			}
-			console.error("Error in getSchedule:", error);
+			logErr("Error in getSchedule", error);
 			const message =
 				error instanceof Error ? error.message : "Failed to fetch schedule";
 			return res
@@ -245,7 +246,7 @@ const ReminderRoutes = {
 			if (error instanceof RouteError) {
 				return res.status(error.status).json({ error: error.message });
 			}
-			console.error("Error in logEvent:", error);
+			logErr("Error in logEvent", error);
 			const message =
 				error instanceof Error ? error.message : "Failed to log event";
 			return res
@@ -299,7 +300,7 @@ const ReminderRoutes = {
 			if (error instanceof RouteError) {
 				return res.status(error.status).json({ error: error.message });
 			}
-			console.error("Error in updatePreferences:", error);
+			logErr("Error in updatePreferences", error);
 			const message =
 				error instanceof Error ? error.message : "Failed to update preferences";
 			return res
@@ -355,7 +356,7 @@ const ReminderRoutes = {
 			if (error instanceof RouteError) {
 				return res.status(error.status).json({ error: error.message });
 			}
-			console.error("Error in registerPushToken:", error);
+			logErr("Error in registerPushToken", error);
 			const message =
 				error instanceof Error ? error.message : "Failed to register token";
 			return res

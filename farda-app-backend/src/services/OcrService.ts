@@ -1,8 +1,9 @@
 import * as fs from "node:fs";
 import env from "@src/common/constants/env";
+import { logErr } from "@src/common/utils/safeLogger";
 import OpenAI from "openai";
 import { type OcrResult, validateOcrResult } from "./ocrSchema";
-import { safeFetch, SsrfError } from "./safeFetch";
+import { SsrfError, safeFetch } from "./safeFetch";
 
 // The extracted, VALIDATED prescription data is exactly the schema-derived
 // type. Persisting/returning anything that hasn't passed the schema is a bug.
@@ -18,7 +19,7 @@ function getOpenAIClient(): OpenAI | null {
 				apiKey: env.OPENAI_API_KEY,
 			});
 		} catch (err) {
-			console.error("Failed to initialize OpenAI client:", err);
+			logErr("Failed to initialize OpenAI client", err);
 			return null;
 		}
 	}
@@ -43,7 +44,7 @@ function logInvalidOcrOutput(error: unknown, rawSnippet: string): void {
 	const isProd = env.NODE_ENV === "production";
 	if (isProd) {
 		// PHI-aware: do NOT emit the raw model output. Length + error only.
-		console.error(
+		logErr(
 			"OCR output failed schema validation (raw output withheld in production).",
 			{
 				rawLength: rawSnippet.length,
@@ -51,8 +52,9 @@ function logInvalidOcrOutput(error: unknown, rawSnippet: string): void {
 			},
 		);
 	} else {
-		// In non-prod, include a bounded snippet to aid debugging.
-		console.error("OCR output failed schema validation.", {
+		// In non-prod, include a bounded snippet to aid debugging. Routed through
+		// the redactor so any emails/tokens in the snippet are still scrubbed.
+		logErr("OCR output failed schema validation.", {
 			validationError: error,
 			rawSnippet: rawSnippet.slice(0, 1000),
 		});
@@ -182,7 +184,7 @@ export async function extractPrescriptionFromFiles(
 
 		return parseAndValidateOcrResponse(responseText);
 	} catch (error: any) {
-		console.error("OCR Extraction Error:", error);
+		logErr("OCR Extraction Error", error);
 
 		return {
 			error: `OCR processing failed: ${error.message || "Unknown error"}`,
@@ -273,7 +275,7 @@ export async function extractPrescriptionFromUrls(
 
 		return parseAndValidateOcrResponse(responseText);
 	} catch (error: any) {
-		console.error("OCR Extraction Error:", error);
+		logErr("OCR Extraction Error", error);
 
 		return {
 			error: `OCR processing failed: ${error.message || "Unknown error"}`,

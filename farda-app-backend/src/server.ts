@@ -1,6 +1,8 @@
 import {
 	createCorsMiddleware,
 	errorHandler,
+	MORGAN_FORMAT,
+	morganPathToken,
 	parseCorsOrigins,
 } from "@src/common/utils/http-security";
 import { authRateLimiter, maybeLimiter } from "@src/middleware/rateLimiters";
@@ -50,9 +52,15 @@ app.all(`${Paths._}/auth/*splat`, toNodeHandler(auth));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Show routes called in console during development
+// Show routes called in console during development.
+//
+// PHI-safety (GTM-512): use the PHI-free MORGAN_FORMAT (method, path WITHOUT
+// query, status, size, timing) and a custom `:path` token that strips the query
+// string, so request bodies/headers/query params never reach the access log.
+morgan.token("path", (req) => morganPathToken(req as { url?: string }));
+
 if (env.NODE_ENV === "development") {
-	app.use(morgan("dev"));
+	app.use(morgan(MORGAN_FORMAT));
 }
 
 // Add APIs, must be after middleware
