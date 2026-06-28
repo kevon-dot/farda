@@ -4,6 +4,7 @@ import { maybeLimiter, ocrRateLimiter } from "@src/middleware/rateLimiters";
 import { requireAdmin } from "@src/middleware/requireAdmin";
 import { Router } from "express";
 import AnalyticsRoutes from "./AnalyticsRoutes";
+import ConsentRoutes from "./ConsentRoutes";
 import MetricsRoutes from "./MetricsRoutes";
 import OcrRoutes from "./OcrRoutes";
 import { createPrescription } from "./PrescriptionRoutes";
@@ -157,6 +158,21 @@ metricsRouter.use(isAuthenticated);
 metricsRouter.get(Paths.Metrics.Adherence, MetricsRoutes.getAdherence);
 
 apiRouter.use(metricsRouter);
+
+// ----------------------- Add ConsentRouter ------------------------------ //
+// In-product tiered consent capture (GTM-523). Deny-by-default: session-gated.
+// IDOR-guarded to req.user.id — the acting user is ALWAYS the session user,
+// never a client-supplied id. Consent is the source-of-truth the provenance
+// ledger + data pipeline read to stamp + gate every record; each change writes
+// an AuditLog entry AND a ProvenanceLedgerEntry (inside ConsentService).
+const consentRouter = Router();
+consentRouter.use(isAuthenticated);
+
+consentRouter.post(Paths.Consent.Record, ConsentRoutes.recordConsent);
+consentRouter.get(Paths.Consent.History, ConsentRoutes.getHistory);
+consentRouter.get(Paths.Consent.Current, ConsentRoutes.getCurrent);
+
+apiRouter.use(consentRouter);
 
 /******************************************************************************
                                 Export

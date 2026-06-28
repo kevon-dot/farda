@@ -66,6 +66,18 @@ const Paths = {
 		// (optional ?start=&end=&prescriptionId=). IDOR-guarded to req.user.id.
 		Adherence: "/metrics/adherence",
 	},
+	// In-product tiered consent capture (GTM-523). Session-gated + IDOR-guarded to
+	// req.user.id. The source-of-truth the provenance ledger + data pipeline read
+	// to stamp + gate every record. All changes audited + written to provenance.
+	Consent: {
+		_: "/consent",
+		// POST record / update the session user's consent (append-only history).
+		Record: "/consent",
+		// GET the session user's CURRENT (latest non-revoked) consent.
+		Current: "/consent",
+		// GET the session user's full append-only consent history.
+		History: "/consent/history",
+	},
 };
 
 export default Paths;

@@ -41,6 +41,7 @@ model User {
   reminderResponseEvents ReminderResponseEvent[]
   refillEvents           RefillEvent[]
   provenanceEntries      ProvenanceLedgerEntry[]
+  consents               Consent[]
 }
 
 model Prescription {
@@ -514,4 +515,71 @@ model ProvenanceLedgerEntry {
   @@index([layer])
   @@index([resourceType])
   @@index([createdAt])
+}
+
+/// Ordered consent TIER (GTM-523). Each tier is a SUPERSET of the permissions of
+/// every tier below it: NONE < CARE_TEAM < RESEARCH < COMMERCIAL_AI_TRAINING.
+/// A user whose current consent is at tier T permits any use requiring tier <= T
+/// (see ConsentService.isPermitted). The numeric ordering lives in application
+/// code (CONSENT_TIER_RANK); this enum only constrains the persisted value.
+enum ConsentTier {
+  /// No consent for any secondary use — data stays in the identified care layer.
+  NONE
+  /// Care-team / clinical use (lowest non-empty tier).
+  CARE_TEAM
+  /// De-identified research use (e.g. IRB studies).
+  RESEARCH
+  /// Commercial AI-training use (broadest; superset of all lower tiers).
+  COMMERCIAL_AI_TRAINING
+}
+
+/// In-product tiered consent capture (GTM-523).
+///
+/// APPEND-ONLY consent history: every consent change writes a NEW row; existing
+/// rows are NEVER mutated. The "current" consent for a user is the latest
+/// (by grantedAt, then id) row that has not been revoked (`revokedAt IS NULL`).
+/// Revoking writes a row with `revokedAt` set so the history is fully auditable.
+///
+/// This model is the SOURCE OF TRUTH for the consent tier + version that the
+/// provenance ledger (ProvenanceLedgerEntry) records per entry and that the data
+/// pipeline (DataPipelineService) stamps onto every de-identified / analytic row.
+///
+/// Every write also emits an AuditLog entry AND a ProvenanceLedgerEntry (see
+/// ConsentService) so consent decisions are tamper-evident like all PHI access.
+model Consent {
+  id     String @id @default(cuid())
+  userId String
+
+  /// The granted tier (ordered superset; see ConsentTier).
+  tier ConsentTier
+
+  /// The consent-DOCUMENT version the user agreed to (e.g. "v1.2"). Stamped onto
+  /// provenance/analytic rows so a downstream use can be tied to the exact terms.
+  version String
+
+  /// The specific scopes / purposes consented to (free-form, NON-PHI labels only,
+  /// e.g. ["analytics","research"]). JSON array; null = tier defaults apply.
+  scopes Json?
+
+  /// Optional human-readable purpose label (NON-PHI), e.g. "Oncology study #42".
+  purpose String?
+
+  /// When this consent was granted. The latest non-revoked row by grantedAt is
+  /// the user's CURRENT consent.
+  grantedAt DateTime @default(now())
+
+  /// Set when this consent row is revoked. A non-null value excludes the row from
+  /// "current consent" resolution. The row itself is retained (append-only).
+  revokedAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  /// FK to the identified User. ON DELETE CASCADE: a user's consent history is
+  /// their own PHI-adjacent data and is removed with the user (unlike the audit /
+  /// provenance ledgers, which outlive the actor by design).
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, grantedAt])
+  @@index([tier])
 }
