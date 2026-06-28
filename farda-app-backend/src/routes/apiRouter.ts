@@ -1,7 +1,9 @@
 import Paths from "@src/common/constants/Paths";
 import { isAuthenticated } from "@src/middleware/isAuthenticated";
 import { maybeLimiter, ocrRateLimiter } from "@src/middleware/rateLimiters";
+import { requireAdmin } from "@src/middleware/requireAdmin";
 import { Router } from "express";
+import AnalyticsRoutes from "./AnalyticsRoutes";
 import OcrRoutes from "./OcrRoutes";
 import { createPrescription } from "./PrescriptionRoutes";
 import RefillRoutes from "./RefillRoutes";
@@ -124,6 +126,24 @@ refillRouter.post(Paths.Refills.Events, RefillRoutes.logEvent);
 refillRouter.get(Paths.Refills.Metrics, RefillRoutes.getMetrics);
 
 apiRouter.use(refillRouter);
+
+// ----------------------- Add AnalyticsRouter ---------------------------- //
+// Enterprise analytics export (GTM-522). DENY-BY-DEFAULT and ADMIN-ONLY: the
+// router applies `isAuthenticated` THEN `requireAdmin` so only an allowlisted
+// admin (ADMIN_USER_IDS) can reach it. It serves ONLY the de-identified /
+// analytic layers (PHI-free, k-anonymity-guarded) — raw PHI is NEVER exposed.
+// Every access is audited + written to the provenance ledger.
+const analyticsRouter = Router();
+analyticsRouter.use(isAuthenticated);
+analyticsRouter.use(requireAdmin);
+
+analyticsRouter.get(Paths.Analytics.Metrics, AnalyticsRoutes.getMetrics);
+analyticsRouter.get(
+	Paths.Analytics.ProvenanceVerify,
+	AnalyticsRoutes.verifyProvenance,
+);
+
+apiRouter.use(analyticsRouter);
 
 /******************************************************************************
                                 Export

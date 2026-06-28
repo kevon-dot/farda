@@ -47,6 +47,12 @@ export interface EnvConfig {
 	SSRF_ALLOWED_HOSTS?: string;
 	SSRF_MAX_RESPONSE_BYTES?: number;
 	SSRF_FETCH_TIMEOUT_MS?: number;
+	// De-identification (GTM-522). One-way salt used to derive the stable
+	// pseudonymous subject key (sha256(salt + identifiedUserId)). MUST come from
+	// env and be kept secret — it is the ONLY thing standing between the de-id
+	// layer and re-identification, and is never stored in the de-id layer. A
+	// missing salt makes the transform refuse to run (fail-closed).
+	DEID_SALT?: string;
 }
 
 // 3. Export individual constants
@@ -110,6 +116,10 @@ const SSRF_FETCH_TIMEOUT_MS = toOptionalNumber(
 	process.env.SSRF_FETCH_TIMEOUT_MS,
 );
 
+// De-identification salt (GTM-522). Read from env only — never hardcode. The
+// de-id transform fails closed when this is unset (see DeidentificationService).
+const DEID_SALT = process.env.DEID_SALT;
+
 // 4. Grouped Export (The "How")
 const env: EnvConfig = {
 	HOST,
@@ -139,6 +149,7 @@ const env: EnvConfig = {
 	SSRF_ALLOWED_HOSTS,
 	SSRF_MAX_RESPONSE_BYTES,
 	SSRF_FETCH_TIMEOUT_MS,
+	DEID_SALT,
 };
 
 export default env;
