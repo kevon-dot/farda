@@ -7,6 +7,7 @@ const { GRANT_STATUS } = require("../utils/caregiverAuthorization");
 const { validateIngestionEvent } = require("../utils/eventValidation");
 const DoseEvent = require("../models/DoseEvent");
 const { validateDoseEventMicrostructure } = require("../utils/doseEventValidation");
+const { scoreDoseEventConfidence } = require("../utils/confidenceScoring");
 
 //save user to database
 const saveUser = async (req, res, next) => {
@@ -485,6 +486,16 @@ const ingestDoseEventMicrostructure = async (req, res, next) => {
         }
         const normalized = validation.value;
 
+        // 1b. GTM-520 — compute the calibrated dose CONFIDENCE from the
+        //     server-normalized stages. Pure + deterministic; turns the validated
+        //     microstructure into a measured-integrity scalar in [0,1] plus a
+        //     factor breakdown. Persisted below so the device-event relay can
+        //     forward `confidence` to the Main API adherence engine (GTM-540),
+        //     which reads it (defaulting to 1.0) for its confidence-weighted
+        //     metric. (Future: pass per-device calibrated pill mass via the
+        //     second config arg once hardware calibration lands.)
+        const scored = scoreDoseEventConfidence(normalized);
+
         // 2. Ownership (IDOR guard): the device must exist AND be claimed by the
         //    session user. device_id is the path param, never a client-asserted
         //    body field, so the write can't be redirected to another subject.
@@ -519,6 +530,15 @@ const ingestDoseEventMicrostructure = async (req, res, next) => {
             schema_version: normalized.schema_version,
             stages: normalized.stages,
             token_sequence: normalized.token_sequence,
+            // GTM-520 — persist the calibrated confidence + breakdown + version.
+            confidence: scored.confidence,
+            confidenceLevel: scored.confidenceLevel,
+            confidenceFactors: {
+                factors: scored.factors,
+                contributing: scored.contributing,
+                penalizing: scored.penalizing,
+            },
+            scoringVersion: scored.scoringVersion,
             recordedAt: new Date(),
         });
 
@@ -547,6 +567,10 @@ const ingestDoseEventMicrostructure = async (req, res, next) => {
             idempotency_key: normalized.idempotency_key,
             schema_version: normalized.schema_version,
             stage_count: normalized.stages.length,
+            // GTM-520: score + band are non-PHI integrity signals, safe to audit.
+            confidence: scored.confidence,
+            confidenceLevel: scored.confidenceLevel,
+            scoringVersion: scored.scoringVersion,
         });
 
         return res.status(201).json({
@@ -558,6 +582,11 @@ const ingestDoseEventMicrostructure = async (req, res, next) => {
                 schema_version: doseEvent.schema_version,
                 recordedAt: doseEvent.recordedAt,
                 token_sequence: doseEvent.token_sequence,
+                // GTM-520 — surface the measured-integrity score on the response.
+                confidence: doseEvent.confidence,
+                confidenceLevel: doseEvent.confidenceLevel,
+                confidenceFactors: doseEvent.confidenceFactors,
+                scoringVersion: doseEvent.scoringVersion,
             },
         });
     } catch (err) {

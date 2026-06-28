@@ -300,6 +300,84 @@ test("a client-supplied user id in the body is ignored; session user_id is bound
 });
 
 // ============================================
+// GTM-520 — confidence is computed at ingest and persisted on the DoseEvent
+// ============================================
+
+test("ingest persists confidence + factor breakdown + scoringVersion; high for a clean dose", async () => {
+  await withStubbedController(
+    { devices: [{ device_id: "D1", user_id: "owner_1", claimed: true }] },
+    async ({ controller, created }) => {
+      const res = makeRes();
+      await controller.ingestDoseEventMicrostructure(
+        { params: { device_id: "D1" }, user_id: "owner_1", body: validBody() },
+        res
+      );
+      assert.strictEqual(res.statusCode, 201);
+      const ev = created[0];
+      // Persisted on the document.
+      assert.ok(typeof ev.confidence === "number" && ev.confidence >= 0 && ev.confidence <= 1);
+      assert.strictEqual(ev.confidenceLevel, "high");
+      assert.strictEqual(typeof ev.scoringVersion, "number");
+      // Factor breakdown persisted (the strongest factor is present + asserted).
+      assert.ok(ev.confidenceFactors && ev.confidenceFactors.factors);
+      assert.ok(ev.confidenceFactors.factors.weightDelta);
+      assert.ok(Array.isArray(ev.confidenceFactors.contributing));
+      assert.ok(Array.isArray(ev.confidenceFactors.penalizing));
+      // Echoed back on the response for the relay / clients.
+      assert.strictEqual(res.body.dose_event.confidence, ev.confidence);
+      assert.strictEqual(res.body.dose_event.confidenceLevel, "high");
+      assert.strictEqual(res.body.dose_event.scoringVersion, ev.scoringVersion);
+    }
+  );
+});
+
+test("ingest scores a weight-mismatch (phantom) dose LOW", async () => {
+  await withStubbedController(
+    { devices: [{ device_id: "D1", user_id: "owner_1", claimed: true }] },
+    async ({ controller, created }) => {
+      // Near-zero removed mass: weigh-before ≈ weigh-after, delta ~ 0.
+      const s = fullStages();
+      s.find((x) => x.type === DOSE_STAGE.WEIGH_BEFORE).payload = { weight_mg: 5000 };
+      s.find((x) => x.type === DOSE_STAGE.WEIGH_AFTER).payload = { weight_mg: 4999 };
+      s.find((x) => x.type === DOSE_STAGE.WEIGHT_DELTA).payload = { delta_mg: -1 };
+      const res = makeRes();
+      await controller.ingestDoseEventMicrostructure(
+        { params: { device_id: "D1" }, user_id: "owner_1", body: validBody({ stages: s }) },
+        res
+      );
+      assert.strictEqual(res.statusCode, 201);
+      assert.strictEqual(created[0].confidenceLevel, "low");
+      assert.ok(created[0].confidenceFactors.penalizing.includes("weightDelta"));
+    }
+  );
+});
+
+test("idempotent retry preserves the persisted confidence (exactly one DoseEvent)", async () => {
+  await withStubbedController(
+    { devices: [{ device_id: "D1", user_id: "owner_1", claimed: true }] },
+    async ({ controller, created }) => {
+      const req = { params: { device_id: "D1" }, user_id: "owner_1", body: validBody() };
+
+      const res1 = makeRes();
+      await controller.ingestDoseEventMicrostructure(req, res1);
+      assert.strictEqual(res1.statusCode, 201);
+      const firstConfidence = created[0].confidence;
+      const firstVersion = created[0].scoringVersion;
+
+      const res2 = makeRes();
+      await controller.ingestDoseEventMicrostructure(req, res2);
+      assert.strictEqual(res2.statusCode, 200);
+      assert.strictEqual(res2.body.deduped, true);
+
+      // No second write; the original score is untouched.
+      assert.strictEqual(created.length, 1);
+      assert.strictEqual(created[0].confidence, firstConfidence);
+      assert.strictEqual(created[0].scoringVersion, firstVersion);
+    }
+  );
+});
+
+// ============================================
 // Auth required: verifyUserToken guards the route (deny-by-default)
 // ============================================
 test("missing session: verifyUserToken returns 401 before the capture runs", async () => {

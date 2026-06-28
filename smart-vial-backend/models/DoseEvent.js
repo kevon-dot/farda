@@ -112,6 +112,43 @@ const DoseEventSchema = new mongoose.Schema(
     },
 
     // ============================================
+    // GTM-520 — Dose confidence score (measured integrity)
+    // ============================================
+    // Calibrated confidence in [0,1] that this microstructure is internally
+    // consistent enough to trust as a real dose signal. Computed by
+    // utils/confidenceScoring.js at ingest from the (already-validated) stages.
+    // CROSS-SERVICE SEAM → GTM-540: the Main API adherence-metrics engine reads
+    // an optional per-event `confidence` (defaulting to 1.0) for its
+    // confidence-weighted metric. This is the field the device-event relay
+    // forwards there; persisting a real value here makes that metric meaningful
+    // with NO change required on the Main API side.
+    confidence: {
+      type: Number,
+      min: 0,
+      max: 1,
+      default: null,
+    },
+    // Human/queryable banding of `confidence` (high/medium/low).
+    confidenceLevel: {
+      type: String,
+      enum: ["high", "medium", "low", null],
+      default: null,
+    },
+    // Transparent per-factor breakdown (sub-score, weight, detail) + the
+    // contributing/penalizing factor lists. Mixed: the scorer owns the shape and
+    // versions it via `scoringVersion`. PHI-free (numbers/codes only).
+    confidenceFactors: {
+      type: mongoose.Schema.Types.Mixed,
+      default: null,
+    },
+    // Pins the scoring algorithm (factors/weights/banding) that produced
+    // `confidence`, so a stored score is always traceable / re-derivable.
+    scoringVersion: {
+      type: Number,
+      default: null,
+    },
+
+    // ============================================
     // Server-authoritative timestamp
     // ============================================
     // Canonical record time, stamped by the server on ingest. The device
