@@ -12,7 +12,10 @@ const {
   deleteDeviceEvents,
   deleteCaregiverAccessToDevice,
   ingestUserDeviceEvent,
-  ingestDoseEventMicrostructure
+  ingestDoseEventMicrostructure,
+  recordEmaResponse,
+  recordPillCountCheckpoint,
+  getDoseDetectionMetrics
 } = require("../controllers/app.api.controller");
 
 // Save user to database
@@ -40,6 +43,30 @@ router.post(
   "/devices/:device_id/dose-events/ingest",
   verifyToken,
   ingestDoseEventMicrostructure
+);
+
+// GTM-521 — ground-truth validation substream. Self-report EMA + manual
+// pill-count checkpoints are the supervised LABEL we validate device
+// dose-detection against. All deny-by-default (verifyToken) + IDOR-guarded (the
+// device must be claimed by the session user); subject ids are server-derived.
+//
+// Record an EMA self-report ("did you just take your dose?" yes/no/unsure).
+router.post(
+  "/devices/:device_id/ema-responses",
+  verifyToken,
+  recordEmaResponse
+);
+// Record a manual pill-count checkpoint (manual vs device-inferred remaining).
+router.post(
+  "/devices/:device_id/pill-count-checkpoints",
+  verifyToken,
+  recordPillCountCheckpoint
+);
+// Read computed dose-detection sensitivity/specificity over a window (self).
+router.get(
+  "/devices/:device_id/dose-detection-metrics",
+  verifyToken,
+  getDoseDetectionMetrics
 );
 
 // Get all events from all user's devices

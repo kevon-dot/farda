@@ -144,6 +144,30 @@ class DeviceRepo {
     }
   }
 
+  /// Records ONE EMA self-report ("did you just take your dose?") against a
+  /// detected dose, on a server-decided sub-sample (GTM-521 ground-truth
+  /// validation). [body] is [EmaResponse.toBody] — `{ self_reported_taken,
+  /// dose_event_id?, idempotency_key }`. `auth: true` attaches the shared
+  /// better-auth bearer; the backend derives the subject from the session,
+  /// verifies the user claims [deviceId], and dedupes on `idempotency_key`.
+  /// Returns the raw response (`null` ⇒ transport failure).
+  Future<http.Response?> recordEmaResponse(
+    String deviceId,
+    Map<String, dynamic> body,
+  ) async {
+    try {
+      return await ApiService.postResponse(
+        baseUrl: vialBaseUrl,
+        endpoint: VialUrls.emaResponses(deviceId),
+        body: body,
+        auth: true,
+      );
+    } catch (e) {
+      Log.e("DeviceRepo.recordEmaResponse error", error: e);
+      return null;
+    }
+  }
+
   /// Deletes all events for a device the current user owns.
   Future<http.Response?> deleteDeviceEvents(String deviceId) async {
     try {
