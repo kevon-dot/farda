@@ -11,7 +11,8 @@ const {
   removeClaimedDevice,
   deleteDeviceEvents,
   deleteCaregiverAccessToDevice,
-  ingestUserDeviceEvent
+  ingestUserDeviceEvent,
+  ingestDoseEventMicrostructure
 } = require("../controllers/app.api.controller");
 
 // Save user to database
@@ -30,6 +31,16 @@ router.get("/devices/:device_id/events", verifyToken, getADeviceEvents);
 // BLE-buffered events here over the user's better-auth session; the device must
 // be claimed by that session user. Coexists with the firmware HMAC ingest path.
 router.post("/devices/:device_id/events/ingest", verifyToken, ingestUserDeviceEvent);
+
+// GTM-519 — dose-event microstructure capture. Records one full dose interaction
+// (reminder → unlock → cap open → weigh → cap close → sync) as a typed, ordered,
+// tokenization-ready, PHI-free DoseEvent. Server-authoritative ordering; the
+// device must be claimed by the session user (IDOR-guarded).
+router.post(
+  "/devices/:device_id/dose-events/ingest",
+  verifyToken,
+  ingestDoseEventMicrostructure
+);
 
 // Get all events from all user's devices
 router.get("/events/all", verifyToken, getAllDevicesEvents);
