@@ -5,6 +5,7 @@ import { requireAdmin } from "@src/middleware/requireAdmin";
 import { Router } from "express";
 import AnalyticsRoutes from "./AnalyticsRoutes";
 import ConsentRoutes from "./ConsentRoutes";
+import DataRightsRoutes from "./DataRightsRoutes";
 import MetricsRoutes from "./MetricsRoutes";
 import OcrRoutes from "./OcrRoutes";
 import { createPrescription } from "./PrescriptionRoutes";
@@ -173,6 +174,33 @@ consentRouter.get(Paths.Consent.History, ConsentRoutes.getHistory);
 consentRouter.get(Paths.Consent.Current, ConsentRoutes.getCurrent);
 
 apiRouter.use(consentRouter);
+
+// ----------------------- Add DataRightsRouter --------------------------- //
+// Data-subject rights — export & deletion (GTM-542). Deny-by-default:
+// session-gated. IDOR-guarded to req.user.id — the acting user is ALWAYS the
+// session user, never a client-supplied id. Deletion erases the IDENTIFIED
+// (service) layer only AND revokes consent so the GTM-523 gate fail-closes
+// future projection; already-projected de-identified / analytic rows are NOT
+// recalled ("can't recall de-identified"). Each action writes an AuditLog entry
+// AND a ProvenanceLedgerEntry (inside DataRetentionService).
+const dataRightsRouter = Router();
+dataRightsRouter.use(isAuthenticated);
+
+dataRightsRouter.post(
+	Paths.DataRights.ExportRequest,
+	DataRightsRoutes.requestExport,
+);
+dataRightsRouter.get(Paths.DataRights.ExportStatus, DataRightsRoutes.getExport);
+dataRightsRouter.post(
+	Paths.DataRights.DeletionRequest,
+	DataRightsRoutes.requestDeletion,
+);
+dataRightsRouter.get(
+	Paths.DataRights.DeletionStatus,
+	DataRightsRoutes.getDeletion,
+);
+
+apiRouter.use(dataRightsRouter);
 
 /******************************************************************************
                                 Export

@@ -78,6 +78,22 @@ const Paths = {
 		// GET the session user's full append-only consent history.
 		History: "/consent/history",
 	},
+	// Data-subject rights — export & deletion (GTM-542). Session-gated +
+	// IDOR-guarded to req.user.id. Deletion erases the IDENTIFIED layer only and
+	// revokes consent to stop FUTURE projection; de-identified / analytic rows are
+	// NOT recalled. Every action audited + written to the provenance ledger.
+	DataRights: {
+		_: "/data",
+		// POST request a portable export of the session user's identified-layer data.
+		ExportRequest: "/data/export",
+		// GET the session user's latest export request status.
+		ExportStatus: "/data/export",
+		// POST request erasure of the session user's identified-layer data (also
+		// revokes consent).
+		DeletionRequest: "/data/deletion",
+		// GET the session user's latest deletion request status.
+		DeletionStatus: "/data/deletion",
+	},
 };
 
 export default Paths;
