@@ -49,6 +49,14 @@ const Paths = {
 		// GET refill-adherence metrics for the session user.
 		Metrics: "/refills/metrics",
 	},
+	// Adherence-metrics computation engine (GTM-540 / GTM-502). Session-gated;
+	// derived on read from the user's Dose rows + Rx/Medicine inventory.
+	Metrics: {
+		_: "/metrics",
+		// GET the 9 adherence metrics for the authenticated user over a date range
+		// (optional ?start=&end=&prescriptionId=). IDOR-guarded to req.user.id.
+		Adherence: "/metrics/adherence",
+	},
 };
 
 export default Paths;
