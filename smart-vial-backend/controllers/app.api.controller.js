@@ -5,6 +5,8 @@ const CaregiverGrant = require("../models/CaregiverGrant");
 const { computeUnclaimDeviceState, removeDeviceId } = require("../utils/deviceClaim");
 const { GRANT_STATUS } = require("../utils/caregiverAuthorization");
 const { validateIngestionEvent } = require("../utils/eventValidation");
+const DoseEvent = require("../models/DoseEvent");
+const { validateDoseEventMicrostructure } = require("../utils/doseEventValidation");
 
 //save user to database
 const saveUser = async (req, res, next) => {
@@ -445,6 +447,124 @@ const ingestUserDeviceEvent = async (req, res, next) => {
     }
 };
 
+// ============================================
+// GTM-519 — Dose-event microstructure capture (server-authoritative)
+// ============================================
+// Records ONE full dose interaction's lifecycle as a typed, ordered,
+// tokenization-ready, condition-agnostic DoseEvent. This is the canonical,
+// server-authoritative record built on top of the same user-bearer relay used
+// by GTM-514: the acting subject is the SESSION user (req.user_id), the device
+// is bound from the path param and must be OWNED by that user (IDOR-guarded), the
+// server assigns stage ordering + the canonical recordedAt (client ordering is
+// never trusted), and malformed / out-of-order / incomplete / PHI-bearing
+// sequences are rejected by the shared validator (defense-in-depth: the model
+// re-validates on save).
+//
+// Audit: a PHI-FREE structured line is emitted (subject + device by id, stage
+// count, schema version, idempotency key) — never any payload or patient data.
+// The persisted DoseEvent (ids/codes/numbers only) is itself the durable trail.
+//
+// Wire body:
+//   { client_dose_id, idempotency_key, stages: [{ type, timestamp, payload? }] }
+const ingestDoseEventMicrostructure = async (req, res, next) => {
+    try {
+        const user_id = req.user_id;
+        const { device_id } = req.params;
+        const body = req.body || {};
+
+        // 1. Validate + server-authoritatively normalize the microstructure:
+        //    strict per-stage payloads, no-PHI guard, completeness, and ordering
+        //    are all decided here from device timestamps — not the client array.
+        const validation = validateDoseEventMicrostructure({
+            client_dose_id: body.client_dose_id,
+            idempotency_key: body.idempotency_key,
+            stages: Array.isArray(body.stages) ? body.stages : body.stages,
+        });
+        if (!validation.ok) {
+            return res.status(400).json({ error: `Bad Request: ${validation.error}` });
+        }
+        const normalized = validation.value;
+
+        // 2. Ownership (IDOR guard): the device must exist AND be claimed by the
+        //    session user. device_id is the path param, never a client-asserted
+        //    body field, so the write can't be redirected to another subject.
+        const device = await Device.findOne({ device_id });
+        if (!device) {
+            return res.status(404).json({ error: "Device not found" });
+        }
+        if (device.user_id !== user_id) {
+            return res
+                .status(403)
+                .json({ error: "Forbidden: device is not claimed by this user" });
+        }
+
+        // 3. Idempotency: dedupe by the client-computed stable key.
+        if (normalized.idempotency_key) {
+            const existing = await DoseEvent.findOne({
+                idempotency_key: normalized.idempotency_key,
+            });
+            if (existing) {
+                return res.status(200).json({ status: "success", deduped: true });
+            }
+        }
+
+        // 4. Persist. The SERVER sets recordedAt (canonical time) and binds the
+        //    subject ids; stage order/tokens come from the validator. The model
+        //    pre-validate hook re-runs the full check as defense-in-depth.
+        const doseEvent = new DoseEvent({
+            device_id,
+            user_id,
+            client_dose_id: normalized.client_dose_id,
+            idempotency_key: normalized.idempotency_key,
+            schema_version: normalized.schema_version,
+            stages: normalized.stages,
+            token_sequence: normalized.token_sequence,
+            recordedAt: new Date(),
+        });
+
+        try {
+            await doseEvent.save();
+        } catch (saveErr) {
+            // Concurrent relay of the same dose: the unique idempotency_key index
+            // races us. Treat the duplicate as a successful dedupe.
+            if (saveErr && saveErr.code === 11000) {
+                return res.status(200).json({ status: "success", deduped: true });
+            }
+            throw saveErr;
+        }
+
+        // A successful capture is a successful sync — stamp the registry fields
+        // (GTM-539) so fleet-health staleness reflects app dose syncs.
+        const now = new Date();
+        device.last_seen = now;
+        device.last_sync_at = now;
+        await device.save();
+
+        // PHI-free audit line: ids + counts + version only, never any payload.
+        console.log("DoseEvent microstructure recorded", {
+            user_id,
+            device_id,
+            idempotency_key: normalized.idempotency_key,
+            schema_version: normalized.schema_version,
+            stage_count: normalized.stages.length,
+        });
+
+        return res.status(201).json({
+            status: "success",
+            deduped: false,
+            dose_event: {
+                id: doseEvent._id,
+                device_id: doseEvent.device_id,
+                schema_version: doseEvent.schema_version,
+                recordedAt: doseEvent.recordedAt,
+                token_sequence: doseEvent.token_sequence,
+            },
+        });
+    } catch (err) {
+        return res.status(500).json({ error: err.message });
+    }
+};
+
 module.exports = {
     saveUser,
     claimDevice,
@@ -455,7 +575,8 @@ module.exports = {
     removeClaimedDevice,
     deleteDeviceEvents,
     deleteCaregiverAccessToDevice,
-    ingestUserDeviceEvent
+    ingestUserDeviceEvent,
+    ingestDoseEventMicrostructure
 }
 
 

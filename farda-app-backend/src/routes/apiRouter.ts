@@ -4,6 +4,7 @@ import { maybeLimiter, ocrRateLimiter } from "@src/middleware/rateLimiters";
 import { requireAdmin } from "@src/middleware/requireAdmin";
 import { Router } from "express";
 import AnalyticsRoutes from "./AnalyticsRoutes";
+import MetricsRoutes from "./MetricsRoutes";
 import OcrRoutes from "./OcrRoutes";
 import { createPrescription } from "./PrescriptionRoutes";
 import RefillRoutes from "./RefillRoutes";
@@ -144,6 +145,18 @@ analyticsRouter.get(
 );
 
 apiRouter.use(analyticsRouter);
+
+// ----------------------- Add MetricsRouter ------------------------------ //
+// Adherence-metrics computation engine (GTM-540 / GTM-502). Deny-by-default:
+// session-gated. GET /metrics/adherence computes the 9 adherence metrics on read
+// (pure AdherenceMetricsService math over the user's Dose rows + Rx/Medicine
+// inventory). IDOR-guarded to req.user.id — never trusts a client userId.
+const metricsRouter = Router();
+metricsRouter.use(isAuthenticated);
+
+metricsRouter.get(Paths.Metrics.Adherence, MetricsRoutes.getAdherence);
+
+apiRouter.use(metricsRouter);
 
 /******************************************************************************
                                 Export

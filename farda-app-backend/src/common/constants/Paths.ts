@@ -58,6 +58,14 @@ const Paths = {
 		// GET an integrity report for the provenance ledger (hash-chain verify).
 		ProvenanceVerify: "/analytics/provenance/verify",
 	},
+	// Adherence-metrics computation engine (GTM-540 / GTM-502). Session-gated;
+	// derived on read from the user's Dose rows + Rx/Medicine inventory.
+	Metrics: {
+		_: "/metrics",
+		// GET the 9 adherence metrics for the authenticated user over a date range
+		// (optional ?start=&end=&prescriptionId=). IDOR-guarded to req.user.id.
+		Adherence: "/metrics/adherence",
+	},
 };
 
 export default Paths;

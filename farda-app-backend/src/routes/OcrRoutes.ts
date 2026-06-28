@@ -6,6 +6,7 @@ import {
 	assertSameUser,
 } from "@src/common/utils/authorization";
 import { RouteError } from "@src/common/utils/route-errors";
+import { logErr, logWarn } from "@src/common/utils/safeLogger";
 import { prisma } from "@src/lib/prisma";
 import { type AuditAction, recordAccess } from "@src/services/AuditService";
 import {
@@ -158,7 +159,7 @@ const OcrRoutes = {
 
 				return res.status(HttpStatusCodes.OK).json(extracted);
 			} catch (error: unknown) {
-				console.error("Error in extractFromImages:", error);
+				logErr("Error in extractFromImages", error);
 				const message =
 					error instanceof Error
 						? error.message
@@ -174,7 +175,7 @@ const OcrRoutes = {
 							fs.unlinkSync(filePath);
 						}
 					} catch (err) {
-						console.warn(`Could not delete temp file: ${filePath}`, err);
+						logWarn(`Could not delete temp file: ${filePath}`, err);
 					}
 				}
 			}
@@ -200,7 +201,7 @@ const OcrRoutes = {
 
 			return res.status(HttpStatusCodes.OK).json(extracted);
 		} catch (error: unknown) {
-			console.error("Error in extractFromUrls:", error);
+			logErr("Error in extractFromUrls", error);
 			const message =
 				error instanceof Error
 					? error.message
@@ -256,7 +257,7 @@ const OcrRoutes = {
 						}
 					}
 				} catch {
-					console.warn(`Could not parse date: ${data.date_filled}`);
+					logWarn("Could not parse date", { date_filled: data.date_filled });
 				}
 			}
 
@@ -368,7 +369,7 @@ const OcrRoutes = {
 			if (error instanceof RouteError) {
 				return res.status(error.status).json({ error: error.message });
 			}
-			console.error("Error in savePrescription:", error);
+			logErr("Error in savePrescription", error);
 			const message =
 				error instanceof Error ? error.message : "Failed to save prescription";
 			return res.status(HttpStatusCodes.INTERNAL_SERVER_ERROR).json({
@@ -411,7 +412,7 @@ const OcrRoutes = {
 			if (error instanceof RouteError) {
 				return res.status(error.status).json({ error: error.message });
 			}
-			console.error("Error in getUserPrescriptions:", error);
+			logErr("Error in getUserPrescriptions", error);
 			const message =
 				error instanceof Error ? error.message : "Failed to fetch prescription";
 			return res.status(HttpStatusCodes.INTERNAL_SERVER_ERROR).json({
@@ -449,7 +450,7 @@ const OcrRoutes = {
 			if (error instanceof RouteError) {
 				return res.status(error.status).json({ error: error.message });
 			}
-			console.error("Error in getUserDoses:", error);
+			logErr("Error in getUserDoses", error);
 			const message =
 				error instanceof Error ? error.message : "Failed to fetch doses";
 			return res.status(HttpStatusCodes.INTERNAL_SERVER_ERROR).json({
@@ -506,7 +507,7 @@ const OcrRoutes = {
 			if (error instanceof RouteError) {
 				return res.status(error.status).json({ error: error.message });
 			}
-			console.error("Error in recordDoseMood:", error);
+			logErr("Error in recordDoseMood", error);
 			const message =
 				error instanceof Error ? error.message : "Failed to record mood";
 			return res.status(HttpStatusCodes.INTERNAL_SERVER_ERROR).json({

@@ -1,7 +1,7 @@
 import HttpStatusCodes from "@src/common/constants/HttpStatusCodes";
 import { RouteError } from "@src/common/utils/route-errors";
+import { logErr, logWarn } from "@src/common/utils/safeLogger";
 import type { NextFunction, Request, RequestHandler, Response } from "express";
-import logger from "jet-logger";
 
 /******************************************************************************
                                 Types
@@ -21,6 +21,26 @@ interface SanitizedErrorBody {
  * failures. We never expose `error.message` or stack traces for these (#32).
  */
 export const GENERIC_ERROR_MESSAGE = "An unexpected error occurred.";
+
+/**
+ * PHI-safe morgan log format (GTM-512). The default `dev`/`combined` formats log
+ * `:url`, which includes the query string and can carry PHI (e.g. ?phone=,
+ * ?email=). This format logs a PHI-free token set only — method, the
+ * PATH-WITHOUT-QUERY (`:path`, see {@link morganPathToken}), status, response
+ * size and timing. It never logs the request body, headers, or the raw `:url`.
+ */
+export const MORGAN_FORMAT =
+	":method :path :status :res[content-length] - :response-time ms";
+
+/**
+ * Custom morgan `:path` token: the request URL with the query string stripped,
+ * so PHI carried in query params is never written to the access log.
+ */
+export function morganPathToken(req: { url?: string }): string {
+	const url = req.url ?? "";
+	const queryIndex = url.indexOf("?");
+	return queryIndex === -1 ? url : url.slice(0, queryIndex);
+}
 
 /**
  * Parse a comma/space separated list of allowed CORS origins from an env value.
@@ -105,13 +125,14 @@ export function errorHandler(
 
 	if (err instanceof RouteError) {
 		// Known, client-safe error. Log non-PHI metadata only (status + name).
-		logger.warn(`RouteError ${err.status}: ${err.name}`);
+		logWarn(`RouteError ${err.status}: ${err.name}`);
 		res.status(err.status).json(buildRouteErrorBody(err));
 		return;
 	}
 
-	// Unexpected error: log full detail server-side, return sanitized response.
-	logger.err(err, true);
+	// Unexpected error: log redacted detail server-side (an unexpected error can
+	// carry PHI in its message/stack or hung-off props), return sanitized response.
+	logErr(err);
 	res.status(HttpStatusCodes.INTERNAL_SERVER_ERROR).json({
 		error: GENERIC_ERROR_MESSAGE,
 	});
