@@ -1,5 +1,6 @@
 import env from "@src/common/constants/env";
 import { parseCorsOrigins } from "@src/common/utils/http-security";
+import { logErr, logInfo } from "@src/common/utils/safeLogger";
 import { prisma } from "@src/lib/prisma";
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
@@ -43,13 +44,10 @@ export const auth = betterAuth({
 				// Send OTP via Twilio Verify
 				try {
 					await sendSmsOTP(phoneNumber, code);
-					console.log(`OTP sent to ${phoneNumber}`);
+					// PHI-safe: never log the phone number or OTP code in clear text.
+					logInfo("OTP sent", { phoneNumber, code });
 				} catch (error: any) {
-					console.error(
-						`Failed to send OTP to ${phoneNumber}:`,
-						error.message || error,
-					);
-					console.error("Error details:", error);
+					logErr("Failed to send OTP", { phoneNumber, error });
 				}
 			},
 			// Verify OTP using Twilio Verify service
@@ -58,10 +56,8 @@ export const auth = betterAuth({
 					const result = await verifyTwilioOTP(phoneNumber, code);
 					return result.status === "approved";
 				} catch (error: any) {
-					console.error(
-						`Failed to verify OTP for ${phoneNumber}:`,
-						error.message || error,
-					);
+					// PHI-safe: never log the phone number or OTP code in clear text.
+					logErr("Failed to verify OTP", { phoneNumber, error });
 					return false;
 				}
 			},
