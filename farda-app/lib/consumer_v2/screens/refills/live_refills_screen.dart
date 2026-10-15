@@ -250,44 +250,6 @@ class _SupplyCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Your refill journey', style: FardaConsumerType.title),
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 8,
-                  children: [
-                    for (var index = 0; index < steps.length; index++)
-                      _JourneyPill(
-                        label: steps[index],
-                        complete: stage != null && index <= stage.index,
-                        current: stage != null && index == stage.index,
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 14),
-                Text(
-                  switch (stage) {
-                    null => 'No refill plan recorded.',
-                    RefillStage.planning => 'You recorded a refill plan.',
-                    RefillStage.contacted => 'You reported contacting your pharmacy.',
-                    RefillStage.ready => 'You reported that your pharmacy said it is ready.',
-                    RefillStage.received => 'You reported receiving your refill.',
-                  },
-                  style: FardaConsumerType.body,
-                ),
-                if (inventory?.plannedFor != null) ...[
-                  const SizedBox(height: 5),
-                  Text('Plan date · ${DateFormat.yMMMd().format(inventory!.plannedFor!.toLocal())}',
-                      style: FardaConsumerType.caption),
-                ],
-                if (stage == RefillStage.received) ...[
-                  const SizedBox(height: 6),
-                  Text(inventory!.receiptReconciled
-                      ? 'Your received supply was reconciled with your count.'
-                      : 'Received supply has not been added to your count.',
-                      style: FardaConsumerType.caption),
-                ],
-                const SizedBox(height: 20),
                 if (refillEnabled && onUpdateRefill != null) ...[
                   SizedBox(width: double.infinity, child: FilledButton(
                     style: FilledButton.styleFrom(
@@ -345,6 +307,44 @@ class _SupplyCard extends StatelessWidget {
                 ] else if (!refillEnabled) ...[
                   const SizedBox(height: 5),
                   const Text('Refill updates are unavailable for this account.',
+                      style: FardaConsumerType.caption),
+                ],
+                const SizedBox(height: 20),
+                const Text('Your refill journey', style: FardaConsumerType.title),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 8,
+                  children: [
+                    for (var index = 0; index < steps.length; index++)
+                      _JourneyPill(
+                        label: steps[index],
+                        complete: stage != null && index <= stage.index,
+                        current: stage != null && index == stage.index,
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                Text(
+                  switch (stage) {
+                    null => 'No refill plan recorded.',
+                    RefillStage.planning => 'You recorded a refill plan.',
+                    RefillStage.contacted => 'You reported contacting your pharmacy.',
+                    RefillStage.ready => 'You reported that your pharmacy said it is ready.',
+                    RefillStage.received => 'You reported receiving your refill.',
+                  },
+                  style: FardaConsumerType.body,
+                ),
+                if (inventory?.plannedFor != null) ...[
+                  const SizedBox(height: 5),
+                  Text('Plan date · ${DateFormat.yMMMd().format(inventory!.plannedFor!.toLocal())}',
+                      style: FardaConsumerType.caption),
+                ],
+                if (stage == RefillStage.received) ...[
+                  const SizedBox(height: 6),
+                  Text(inventory!.receiptReconciled
+                      ? 'Your received supply was reconciled with your count.'
+                      : 'Received supply has not been added to your count.',
                       style: FardaConsumerType.caption),
                 ],
                 const SizedBox(height: 9),

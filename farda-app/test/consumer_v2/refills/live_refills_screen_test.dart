@@ -233,6 +233,8 @@ void main() {
     expect(find.text('12 at last count'), findsOneWidget);
     expect(find.text('You reported contacting your pharmacy.'), findsOneWidget);
     expect(find.text('I was told it is ready'), findsOneWidget);
-    expect(tester.takeException(), isNull);
+    final layoutError = tester.takeException();
+    expect(layoutError, isNull,
+        reason: layoutError is FlutterError ? layoutError.toStringDeep() : null);
   });
 }

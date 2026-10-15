@@ -26,7 +26,7 @@ The standalone design widgets do not place calls, schedule notifications, contac
 
 The authenticated `/consumer/v2` routes load one owned snapshot through `ConsumerApiRepository`. Today shows each occurrence for the selected day; taken, skipped, and snoozed actions wait for server confirmation, and a selected entry can open the existing correction form. Calendar renders fetched routine and refill-plan events. Refills now supports account-backed planning, user-reported progress, count edits, and receipt reconciliation, including an explicit choice about whether the received quantity is already counted. You displays saved routine and reminder preferences and saves supported channel toggles and quiet hours after server confirmation and explicit call consent. Vial, Circle, native-surface and privacy previews remain labeled local demonstrations. Empty accounts and failed loads do not fall back to sample medication. The standalone Figma widgets still support injected sample state for design tests. No live provider or hardware work is implied by this UI integration.
 
-The follow-up UI pass is recorded in [UX_AUDIT.md](UX_AUDIT.md): shorter copy and stronger action hierarchy; distinct neutral 3D companion states on Today; a compact Calendar hero and contextual event legend; a navy supply hero and step controls in Refills; and a navy companion hero with clear local-preview labels in You. The implementation uses shared navy/ivory control styling with restrained warm accents. The editable Figma file is the prior handoff baseline and needs a visual sync to these refinements before final visual sign-off.
+The follow-up UI pass is recorded in [UX_AUDIT.md](UX_AUDIT.md): shorter copy and stronger action hierarchy; distinct neutral 3D companion states on Today; a compact Calendar hero and contextual event legend; a navy supply hero and step controls in Refills; and a navy companion hero with clear local-preview labels in You. The implementation uses shared navy/ivory control styling with restrained warm accents. The four main editable Figma frames were updated and screenshot checked for navy heroes, companion contrast, concise copy, and action hierarchy. Figma keeps editable vector companions, while Flutter uses the repository's 3D sprite. Secondary Figma states and distinct Today state frames still need alignment when those flows are refined.
 
 ## Invariants the production services must preserve
 
@@ -68,7 +68,7 @@ Finish supported account flows while keeping presentation callbacks explicit.
 - Wire Routine label review to the existing prescription flow without treating OCR output as approved instructions.
 - Connect the Vial screen to the existing BLE setup/calibration flow; keep movement observational.
 - Extend You preferences and Circle grants only through authenticated APIs with explicit consent; reminder toggles and quiet hours are persisted, while Circle is still a preview.
-- Sync the new character, chip, button, and copy treatments to the editable Figma frames; visually review narrow/large-text layouts and reduce any remaining repeated explanations.
+- Visually review narrow/large-text layouts and sync the new character states and secondary flows to the remaining editable Figma frames.
 
 ### P1 — notifications and scheduling
 
