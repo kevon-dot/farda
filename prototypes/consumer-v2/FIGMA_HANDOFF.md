@@ -44,6 +44,10 @@ Calls and Live Activities refer to the same routine occurrence. The reminder rhy
 | refillHandoff | `2:54` | [Open screen](https://www.figma.com/design/BeSPZ5VOwOOlrwKFTpMA4K?node-id=2-54) |
 | calendarRefill | `2:57` | [Open screen](https://www.figma.com/design/BeSPZ5VOwOOlrwKFTpMA4K?node-id=2-57) |
 | snoozed | `11:333` | [Open screen](https://www.figma.com/design/BeSPZ5VOwOOlrwKFTpMA4K?node-id=11-333) |
+| calendarMonth | `60:265` | [Open screen](https://www.figma.com/design/BeSPZ5VOwOOlrwKFTpMA4K?node-id=60-265) |
+| calendarSaved | `60:474` | [Open screen](https://www.figma.com/design/BeSPZ5VOwOOlrwKFTpMA4K?node-id=60-474) |
+| calendarEmpty | `60:683` | [Open screen](https://www.figma.com/design/BeSPZ5VOwOOlrwKFTpMA4K?node-id=60-683) |
+| calendarSnoozed | `60:892` | [Open screen](https://www.figma.com/design/BeSPZ5VOwOOlrwKFTpMA4K?node-id=60-892) |
 
 ## Code proof and source mapping
 

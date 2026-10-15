@@ -81,6 +81,7 @@ class _FardaConsumerShellState extends State<FardaConsumerShell> {
 
   List<ConsumerCalendarEvent> _calendarEvents(ConsumerSnapshot snapshot) {
     final events = <ConsumerCalendarEvent>[];
+    final now = widget.controller?.clock() ?? DateTime.now();
     for (final occurrence in snapshot.occurrences) {
       if (occurrence.status == OccurrenceStatus.cancelled) continue;
       final local = occurrence.scheduledFor.toLocal();
@@ -88,9 +89,12 @@ class _FardaConsumerShellState extends State<FardaConsumerShell> {
           snapshot.prescription(occurrence.prescriptionId)?.name ??
           'Your routine';
       final status = switch (occurrence.status) {
-        OccurrenceStatus.taken ||
-        OccurrenceStatus.skipped => ConsumerCalendarEventStatus.recorded,
-        OccurrenceStatus.unconfirmed when local.isBefore(DateTime.now()) =>
+        OccurrenceStatus.taken => ConsumerCalendarEventStatus.recorded,
+        OccurrenceStatus.skipped => ConsumerCalendarEventStatus.skipped,
+        OccurrenceStatus.unconfirmed
+            when occurrence.snoozedUntil?.isAfter(now) == true =>
+          ConsumerCalendarEventStatus.snoozed,
+        OccurrenceStatus.unconfirmed when local.isBefore(now) =>
           ConsumerCalendarEventStatus.unconfirmed,
         _ => ConsumerCalendarEventStatus.pending,
       };
@@ -100,19 +104,25 @@ class _FardaConsumerShellState extends State<FardaConsumerShell> {
           date: local,
           type: ConsumerCalendarEventType.routine,
           status: status,
+          routineName: name,
           eyebrow: '$name · ${DateFormat.jm().format(local)}',
           title: switch (occurrence.status) {
             OccurrenceStatus.taken => 'Recorded as taken',
             OccurrenceStatus.skipped => 'Recorded as skipped',
+            _ when status == ConsumerCalendarEventStatus.snoozed =>
+              'Reminder snoozed',
             _ => 'Not yet confirmed',
           },
           actionLabel:
-              status == ConsumerCalendarEventStatus.recorded
+              status == ConsumerCalendarEventStatus.recorded ||
+                      status == ConsumerCalendarEventStatus.skipped
                   ? 'Review entry'
                   : 'Add an entry',
           description: switch (occurrence.status) {
             OccurrenceStatus.taken => 'You recorded this dose as taken.',
             OccurrenceStatus.skipped => 'You recorded this dose as skipped.',
+            _ when status == ConsumerCalendarEventStatus.snoozed =>
+              'Until ${DateFormat.jm().format(occurrence.snoozedUntil!.toLocal())} · No dose confirmed.',
             _ => 'No dose has been confirmed.',
           },
         ),

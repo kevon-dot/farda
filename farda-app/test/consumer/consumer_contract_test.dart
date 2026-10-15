@@ -39,7 +39,7 @@ void main() {
     () async {
       final midnight = DateTime(2026, 10, 1, 0, 10);
       final due = DateTime(2026, 9, 30, 23, 50);
-      final ranges = <Duration>[];
+      final ranges = <({DateTime from, DateTime to})>[];
       final repository = ConsumerApiRepository(
         baseUrl: 'https://example.test/api',
         tokenProvider: () async => 'token',
@@ -47,7 +47,7 @@ void main() {
           if (request.url.path.endsWith('/doses')) {
             final start = DateTime.parse(request.url.queryParameters['from']!);
             final end = DateTime.parse(request.url.queryParameters['to']!);
-            ranges.add(end.difference(start));
+            ranges.add((from: start.toLocal(), to: end.toLocal()));
             return http.Response(
               jsonEncode({
                 'data':
@@ -77,8 +77,52 @@ void main() {
       final controller = ConsumerController(repository, now: () => midnight);
       await controller.load();
       expect(controller.snapshot!.occurrences.single.id, 'midnight-entry');
-      expect(ranges.length, 2);
-      expect(ranges.every((r) => r.inDays <= 31), isTrue);
+      expect(ranges, [
+        (from: DateTime(2026, 9, 28), to: DateTime(2026, 11, 2)),
+      ]);
+      controller.dispose();
+    },
+  );
+
+  test(
+    'visible month fetch includes six complete weeks and stays bounded',
+    () async {
+      final ranges = <({DateTime from, DateTime to})>[];
+      final repository = ConsumerApiRepository(
+        baseUrl: 'https://example.test/api',
+        tokenProvider: () async => 'token',
+        client: MockClient((request) async {
+          if (request.url.path.endsWith('/doses')) {
+            ranges.add((
+              from:
+                  DateTime.parse(
+                    request.url.queryParameters['from']!,
+                  ).toLocal(),
+              to: DateTime.parse(request.url.queryParameters['to']!).toLocal(),
+            ));
+            return http.Response('{"data":[]}', 200);
+          }
+          if (request.url.path.endsWith('/prescriptions')) {
+            return http.Response('{"data":[]}', 200);
+          }
+          if (request.url.path.endsWith('/refills')) {
+            return http.Response('{"refills":[]}', 200);
+          }
+          return http.Response('{"preferences":{},"capabilities":{}}', 200);
+        }),
+      );
+      final controller = ConsumerController(repository, now: () => now)
+        ..visibleMonth = DateTime(2026, 3);
+
+      await controller.load();
+
+      expect(
+        ranges,
+        unorderedEquals([
+          (from: DateTime(2026, 2, 23), to: DateTime(2026, 4, 6)),
+          (from: DateTime(2026, 10, 14), to: DateTime(2026, 10, 17)),
+        ]),
+      );
       controller.dispose();
     },
   );

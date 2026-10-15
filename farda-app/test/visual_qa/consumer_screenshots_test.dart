@@ -16,11 +16,14 @@ class _VisualFixtureRepository extends ConsumerDemoRepository {
   _VisualFixtureRepository({
     this.singleRoutine = false,
     this.receivedRefill = false,
-  });
+    OccurrenceStatus morningStatus = OccurrenceStatus.unconfirmed,
+    DateTime? morningSnoozedUntil,
+  }) : _morningStatus = morningStatus,
+       _morningSnoozedUntil = morningSnoozedUntil;
 
   final bool singleRoutine;
   final bool receivedRefill;
-  OccurrenceStatus _morningStatus = OccurrenceStatus.unconfirmed;
+  OccurrenceStatus _morningStatus;
   DateTime? _morningRecordedAt;
   DateTime? _morningSnoozedUntil;
 
@@ -130,6 +133,8 @@ Future<void> _pumpVisualFrame(
   int tab = 0,
   bool singleRoutine = false,
   bool receivedRefill = false,
+  OccurrenceStatus morningStatus = OccurrenceStatus.unconfirmed,
+  DateTime? morningSnoozedUntil,
 }) async {
   if (_exportVisuals) debugDisableShadows = false;
   final fonts = FontLoader('Outfit');
@@ -172,6 +177,8 @@ Future<void> _pumpVisualFrame(
         repository: _VisualFixtureRepository(
           singleRoutine: singleRoutine,
           receivedRefill: receivedRefill,
+          morningStatus: morningStatus,
+          morningSnoozedUntil: morningSnoozedUntil,
         ),
       ),
     ),
@@ -291,23 +298,56 @@ void main() {
     await _checkFrame(tester, '390-today-snoozed-receipt');
   });
 
-  testWidgets('390 calendar lower month', (tester) async {
+  testWidgets('390 calendar expanded month', (tester) async {
     await _pumpVisualFrame(tester, size: const Size(390, 844), tab: 1);
+    await tester.tap(find.byKey(const Key('calendar-month-toggle')));
+    await tester.pumpAndSettle();
     await tester.drag(find.byType(Scrollable).first, const Offset(0, -460));
     await tester.pumpAndSettle();
     await _checkFrame(tester, '390-calendar-scrolled');
   });
 
-  testWidgets('320 calendar lower month', (tester) async {
+  testWidgets('320 calendar expanded month', (tester) async {
     await _pumpVisualFrame(
       tester,
       size: const Size(320, 844),
       textScale: 1.3,
       tab: 1,
     );
+    await tester.tap(find.byKey(const Key('calendar-month-toggle')));
+    await tester.pumpAndSettle();
     await tester.drag(find.byType(Scrollable).first, const Offset(0, -520));
     await tester.pumpAndSettle();
     await _checkFrame(tester, '320-calendar-scrolled');
+  });
+
+  testWidgets('390 calendar all entries saved', (tester) async {
+    await _pumpVisualFrame(
+      tester,
+      size: const Size(390, 844),
+      tab: 1,
+      singleRoutine: true,
+      morningStatus: OccurrenceStatus.taken,
+    );
+    await _checkFrame(tester, '390-calendar-recorded');
+  });
+
+  testWidgets('390 calendar reminder snoozed', (tester) async {
+    await _pumpVisualFrame(
+      tester,
+      size: const Size(390, 844),
+      tab: 1,
+      singleRoutine: true,
+      morningSnoozedUntil: DateTime.now().add(const Duration(minutes: 15)),
+    );
+    await _checkFrame(tester, '390-calendar-snoozed');
+  });
+
+  testWidgets('390 calendar quiet day', (tester) async {
+    await _pumpVisualFrame(tester, size: const Size(390, 844), tab: 1);
+    await tester.tap(find.byTooltip('Next week'));
+    await tester.pumpAndSettle();
+    await _checkFrame(tester, '390-calendar-empty');
   });
 
   for (final destination in <({String name, Key key})>[
@@ -371,15 +411,21 @@ void main() {
     await _pumpVisualFrame(tester, size: const Size(390, 844), tab: 1);
     final now = DateTime.now();
     final planned = DateTime(now.year, now.month, now.day + 5);
+    await tester.tap(find.byKey(const Key('calendar-month-toggle')));
+    await tester.pumpAndSettle();
     if (planned.month != now.month || planned.year != now.year) {
-      await tester.tap(find.byTooltip('Next month'));
+      await tester.tap(find.byTooltip('Next month').first);
       await tester.pumpAndSettle();
     }
-    final day = find.text('${planned.day}').last;
+    final day = find.byKey(
+      Key('calendar-month-day-${planned.toIso8601String().substring(0, 10)}'),
+    );
     await tester.ensureVisible(day);
     await tester.tap(day);
     await tester.pumpAndSettle();
     await tester.drag(find.byType(Scrollable).first, const Offset(0, 550));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('calendar-month-toggle')));
     await tester.pumpAndSettle();
     await _checkFrame(tester, '390-calendar-refill-day');
   });

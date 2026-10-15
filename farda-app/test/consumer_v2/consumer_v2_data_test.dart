@@ -308,4 +308,54 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.textContaining('Snoozed · unconfirmed'), findsOneWidget);
   });
+
+  testWidgets(
+    'calendar distinguishes skipped and snoozed records and routes exact IDs',
+    (tester) async {
+      final repository =
+          _MultipleRecordsRepository()
+            ..status = OccurrenceStatus.skipped
+            ..eveningSnoozedUntil = DateTime.now().add(
+              const Duration(hours: 1),
+            );
+      await pumpEntry(tester, repository);
+
+      await tester.tap(find.text('Calendar'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Evening reviewed routine'), findsOneWidget);
+      expect(find.text('My reviewed routine'), findsOneWidget);
+      expect(find.textContaining('Snoozed'), findsOneWidget);
+      expect(find.textContaining('Skipped · recorded by you'), findsOneWidget);
+
+      await tester.ensureVisible(find.text('Add an entry'));
+      await tester.tap(find.text('Add an entry'));
+      await tester.pumpAndSettle();
+      expect(find.text('Your check-in.'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(BottomSheet),
+          matching: find.text('Evening reviewed routine'),
+        ),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.byTooltip('Close'));
+      await tester.pumpAndSettle();
+      final skippedCard = find.bySemanticsLabel(
+        RegExp(r'My reviewed routine.*Skipped'),
+      );
+      await tester.ensureVisible(skippedCard);
+      await tester.tap(skippedCard);
+      await tester.pumpAndSettle();
+      expect(find.text('Let’s correct that.'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(BottomSheet),
+          matching: find.text('My reviewed routine'),
+        ),
+        findsOneWidget,
+      );
+    },
+  );
 }

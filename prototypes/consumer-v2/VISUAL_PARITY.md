@@ -19,7 +19,8 @@ These are rendered application widgets, not HTML facsimiles. They establish a vi
 | Figma reference | Flutter implementation | Comparison scope |
 | --- | --- | --- |
 | Today `2:9` | Today screen and routine card | Exact Wave artwork, navy scene, date rail, primary/secondary actions; one/multiple routines |
-| Calendar `2:12` | Calendar screen | Hero, selected-day card above month, seven columns, soft filters, real entry action |
+| Calendar `2:12` | Calendar screen | Expressive welcome, seven day capsules, week navigation, expandable month, primary entry and compact upcoming cards |
+| Calendar month `60:265`, saved `60:474`, empty `60:683`, snoozed `60:892` | Calendar state views | State-aware hero and card tones, recorded versus snoozed distinction, contextual empty action |
 | Refills `2:15` | Live and preview refill station | Exact vial and scene, supply estimate, planning action, self-managed journey |
 | You `2:18` | You overview | Exact Quiet artwork; 138/244/134px reference cards; settings and preview badges |
 | Routine `2:22`, Reminders `2:25`, Vial `2:28`, Circle `2:31` | You secondary pages | Rendered hierarchy, controls and small-screen reflow |
@@ -30,6 +31,9 @@ These are rendered application widgets, not HTML facsimiles. They establish a vi
 
 ## Functional adaptations
 
+- Calendar defaults to the selected week; the month toggle preserves the selected date. Visible week/month arrows and Today provide direct navigation. Actual unresolved entries precede saved records in the daily agenda, with chronological order inside each group.
+- Calendar distinguishes a self-reported taken entry, a self-reported skipped entry, an active snoozed reminder, and a scheduled or unconfirmed occurrence. A neutral scheduled marker means a real record exists, not that a dose was taken. Refill cards retain the visible no-order caveat.
+- Snapshot reads include full Monday–Sunday weeks around month edges (at most 42 days), plus a separate short current-day window when viewing distant history. Week navigation uses local calendar-date construction across daylight-saving transitions.
 - Authenticated screens preserve actual medication identity, number of routines, supply, status, capabilities and dates. Multiple routines make Today and Calendar longer than the single-record design frame; all content remains scrollable.
 - An unavailable provider stays unavailable. UI fidelity never substitutes invented capability, delivery, pharmacy status or successful writes.
 - The confirmed receipt appears only after an accepted save. Snoozing leaves the dose unconfirmed. A Back to today control returns to the routine list.
@@ -40,10 +44,11 @@ These are rendered application widgets, not HTML facsimiles. They establish a vi
 
 ## Verification results
 
-- Full Flutter suite: 173 tests passed.
+- Full Flutter suite after the Calendar redesign: 176 tests passed.
 - Flutter analysis: no errors or warnings; 47 informational lints remain in the application.
 - Existing HTML prototype suite: 27 tests passed.
-- Visual harness: 28 scenarios passed, plus 5 fixed-date Today goldens; 33 PNG review artifacts.
+- Visual harness: 31 scenarios passed, plus 5 fixed-date Today goldens; 36 PNG review artifacts. Nine Calendar captures were refreshed for week/month, narrow text scaling, saved, snoozed, empty and refill states.
+- Astra reviewed the final Calendar default/saved/empty/snoozed renders against the updated native frames and signed off on the visual direction. The main scene responds to the actual selected-day state; a taken entry uses mint, while snoozed/skipped entries remain distinct.
 - Independent code review closed canonical receipt timestamps, preview-only privacy copy, the vial's three-step completion, visible refill caveats and accessible filter activation.
 - `git diff --check` passed. Remote CI is checked separately on the published PR head.
 
