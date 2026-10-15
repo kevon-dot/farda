@@ -20,7 +20,11 @@ The production Flutter project now has a consumer-v2 implementation under `farda
 - A pure-Dart reminder-occurrence state machine covering the 8:50 heads-up, 9:00 due state, and optional 9:10 call. It enforces consent, verification, quiet hours, one call attempt, idempotency, and explicit confirmation.
 - Widget/domain tests for the shell, Today, Calendar, Refills, and reminders.
 
-The frontend is deliberately honest about its boundary. It does not place calls, schedule notifications, contact a pharmacy, send invitations, connect a vial, start a Live Activity, or persist a dose. Those actions remain local previews until the integrations below are implemented.
+The standalone design widgets do not place calls, schedule notifications, contact a pharmacy, send invitations, connect a vial, or start a Live Activity. Their sample actions are local previews unless a repository is injected at the authenticated route boundary. The integration status below supersedes the original persistence boundary for Today and Calendar.
+
+### Integration progress (October 15, 2026)
+
+The authenticated `/consumer/v2/today` and `/consumer/v2/calendar` routes now load the same owned snapshot through `ConsumerApiRepository`. Taken, skipped, and snoozed actions on Today wait for the server before changing the visible status. Empty accounts and failed loads do not fall back to sample medication. Calendar renders the fetched routine and refill-plan events. Correction and routine creation still open the established account experience at `/dashboard`; `/consumer/v2/refills` and `/consumer/v2/you` use its authenticated screens while their Figma presentations await data binding. The standalone Figma widgets still support injected sample state for design tests. No live provider or hardware work is implied by this UI integration.
 
 ## Invariants the production services must preserve
 

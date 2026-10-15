@@ -13,6 +13,7 @@ class FardaTodayRoutineCard extends StatelessWidget {
     required this.onSnooze,
     required this.onMoreOptions,
     required this.onCorrectEntry,
+    this.neutralCopy = false,
   });
 
   static const logDoseButtonKey = Key('today_log_dose_button');
@@ -27,10 +28,12 @@ class FardaTodayRoutineCard extends StatelessWidget {
   final VoidCallback onSnooze;
   final VoidCallback onMoreOptions;
   final VoidCallback onCorrectEntry;
+  final bool neutralCopy;
 
   @override
   Widget build(BuildContext context) {
-    final copy = _RoutineCopy.forState(status, isSnoozed, timeLabel);
+    final copy = _RoutineCopy.forState(status, isSnoozed, timeLabel,
+        neutralCopy: neutralCopy);
     final isPending = status == TodayDoseStatus.pending;
 
     return Semantics(
@@ -54,7 +57,7 @@ class FardaTodayRoutineCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'YOUR MORNING · $timeLabel',
+              '${neutralCopy ? 'YOUR ROUTINE' : 'YOUR MORNING'} · $timeLabel',
               style: _fardaTodayText(
                 size: 10,
                 lineHeight: 14,
@@ -230,11 +233,14 @@ class _RoutineCopy {
     TodayDoseStatus status,
     bool isSnoozed,
     String timeLabel,
+    {bool neutralCopy = false}
   ) {
     if (status == TodayDoseStatus.confirmed) {
       return _RoutineCopy(
         headline: 'A little more\nroom for your day.',
-        support: 'Your morning entry is saved.\nYou can always make a correction.',
+        support: neutralCopy
+            ? 'Your entry is saved.\nYou can always make a correction.'
+            : 'Your morning entry is saved.\nYou can always make a correction.',
         statusLine: 'You confirmed · $timeLabel',
       );
     }
