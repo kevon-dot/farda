@@ -68,3 +68,8 @@ The CI/BOT environment also prevents the Flutter tool's automatic cloud metadata
 ## Remaining release validation
 
 Keep native notification/call/Live Activity delivery, BLE hardware behavior, signing and physical-device accessibility separate from this visual review. The operating system controls carrier-call presentation. Production target, provider configuration, database backup/migration rehearsal and live deployment evidence remain release work, not evidence supplied by these captures.
+
+
+## Prescription onboarding and refill assistant — October 15
+
+Astra added 16 editable Figma states in section 68:406. The implemented Flutter flow was rendered at 390px and 320px with 1.3 text scale: 16 onboarding images, 6 label capture/coverage images and 6 refill assistant/modal images. Native controls, scroll behavior and spacing differ from Figma representation; workflow/copy/visual structure were compared, without a pixel-identical claim. The capture fixture is a synthetic label, not physical-camera or OCR validation. See PRESCRIPTION_ONBOARDING_HANDOFF.md and FIGMA_STATE.json for the full mapping. Full Flutter suite: 233 passing.

@@ -157,7 +157,7 @@ void main() {
     tester,
   ) async {
     await pumpEntry(tester, _RecordsRepository(hasOccurrence: false));
-    expect(find.text('No routine on this day'), findsOneWidget);
+    expect(find.text('Add medication'), findsOneWidget);
     expect(find.byKey(FardaTodayRoutineCard.logDoseButtonKey), findsNothing);
 
     await tester.tap(find.text('Refills'));

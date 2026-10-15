@@ -12,6 +12,10 @@ Astra refined the native Figma scenes and Flutter now shares their exact exporte
 
 The user approved a more expressive Calendar on October 15: week-first navigation, expandable month, a state-aware companion, an obvious Today shortcut and a quieter daily timeline. Astra updated the matching editable Figma frames, including four supporting states, and signed off on the final Flutter renders. Saved-as-skipped and snoozed entries remain distinct from taken entries. Calendar fetches complete weeks around month edges so adjacent-month dates do not appear empty merely because their records were omitted. The full Flutter suite passes 176 tests and nine Calendar captures were refreshed. Replacement CI and build-branch merge are tracked on PR #111; release deployment remains separate.
 
+### Approved prescription onboarding and refill assistant
+
+Implemented October 15: dedicated camera viewfinder; up to four overlapping photos for one long/curved label; enlarged photo review, retake/remove and user-confirmed text coverage; authenticated multi-image OCR with safe manual fallback. Manual entry uses small steps with intact directions and explicit label review. Daily reminders are optional; no daily reminders creates no schedule. Today, Refills and Your routine expose direct Add medication entry points. Refill requests are editable and copyable, with no pharmacy submission claim. Astra added 16 matching editable Figma states; 28 new Flutter screenshots cover 390px and 320px/1.3 text. All 233 Flutter tests passed. See [the focused handoff](../prototypes/consumer-v2/PRESCRIPTION_ONBOARDING_HANDOFF.md). Device camera/OCR evaluation and pharmacy partner integration remain release work.
+
 ## The product to build
 
 Keep the lowercase Farda wordmark, Outfit typography, soft surfaces and reassuring voice. Move to rich navy and make the app feel like a useful daily companion: **Today, an interactive Calendar, a Refill station, and Your space**.

@@ -211,6 +211,7 @@ class FardaRoutinePage extends StatelessWidget {
     this.timeZoneLabel = 'Los Angeles time',
     this.scheduleLabel = 'Morning routine',
     this.directions,
+    this.onAddPrescription,
   });
 
   final String profileLabel;
@@ -229,6 +230,7 @@ class FardaRoutinePage extends StatelessWidget {
   final String timeZoneLabel;
   final String scheduleLabel;
   final String? directions;
+  final VoidCallback? onAddPrescription;
 
   @override
   Widget build(BuildContext context) {
@@ -247,13 +249,16 @@ class FardaRoutinePage extends StatelessWidget {
         if (liveRecords && !hasRoutine) ...[
           const FardaYouNotice(
             text:
-                'No routine is saved for this account yet. Add one in account settings.',
+                'No medication is saved yet. Start with your prescription label.',
           ),
           const SizedBox(height: 12),
           FardaYouSecondaryButton(
-            label: 'Open account settings',
+            label:
+                onAddPrescription == null
+                    ? 'Open account settings'
+                    : 'Add medication',
             icon: Icons.add_rounded,
-            onPressed: onEditRoutine,
+            onPressed: onAddPrescription ?? onEditRoutine,
           ),
         ] else ...[
           FardaYouCard(
@@ -415,6 +420,14 @@ class FardaRoutinePage extends StatelessWidget {
           const SizedBox(height: 16),
           const FardaYouNotice(
             text: 'Check scanned directions against your label or pharmacy.',
+          ),
+        ],
+        if (liveRecords && hasRoutine && onAddPrescription != null) ...[
+          const SizedBox(height: 16),
+          FardaYouSecondaryButton(
+            label: 'Add medication',
+            icon: Icons.add_rounded,
+            onPressed: onAddPrescription!,
           ),
         ],
         if (showCompanion) ...[

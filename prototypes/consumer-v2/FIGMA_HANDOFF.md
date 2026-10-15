@@ -12,7 +12,7 @@ The tool returned React/Tailwind reference code even with Flutter/Dart supplied 
 
 ## What is in the design
 
-- 17 native, editable 390 × 844 screens; 456 text nodes; 96 component instances.
+- 37 native, editable 390 × 844 screens, including the Calendar and prescription onboarding follow-ups. Original design counts below are historical.
 - 34 variables across primitive and semantic collections, plus 7 Outfit text styles.
 - Button, calendar-day, switch, and companion component variants.
 - 117 cross-screen navigation connections, plus On/Off switch interactions.
@@ -48,6 +48,29 @@ Calls and Live Activities refer to the same routine occurrence. The reminder rhy
 | calendarSaved | `60:474` | [Open screen](https://www.figma.com/design/BeSPZ5VOwOOlrwKFTpMA4K?node-id=60-474) |
 | calendarEmpty | `60:683` | [Open screen](https://www.figma.com/design/BeSPZ5VOwOOlrwKFTpMA4K?node-id=60-683) |
 | calendarSnoozed | `60:892` | [Open screen](https://www.figma.com/design/BeSPZ5VOwOOlrwKFTpMA4K?node-id=60-892) |
+
+## Prescription onboarding and refill assistant (October 15)
+
+Astra added 16 editable states in [section 68:406](https://www.figma.com/design/BeSPZ5VOwOOlrwKFTpMA4K?node-id=68-406), compared with actual Flutter renders. See [the implementation handoff](PRESCRIPTION_ONBOARDING_HANDOFF.md) for behavior, tests and device limits.
+
+| Screen | Node |
+| --- | --- |
+| prescriptionWelcome | `68:407` |
+| labelCapture | `68:432` |
+| labelPhotos | `68:451` |
+| labelReview | `68:475` |
+| prescriptionManual | `68:501` |
+| prescriptionReminders | `68:527` |
+| prescriptionConfirmation | `68:548` |
+| refillAssistant | `68:570` |
+| refillRequest | `68:596` |
+| prescriptionDirections | `69:469` |
+| prescriptionPharmacy | `69:473` |
+| prescriptionSaved | `69:477` |
+| prescriptionNoReminders | `69:481` |
+| labelIntroduction | `69:485` |
+| prescriptionNoRemindersConfirmation | `71:482` |
+| prescriptionNoRemindersSaved | `71:497` |
 
 ## Code proof and source mapping
 

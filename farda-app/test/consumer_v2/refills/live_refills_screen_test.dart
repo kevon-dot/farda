@@ -57,6 +57,95 @@ void main() {
     },
   );
 
+  testWidgets('empty account exposes direct medication onboarding', (
+    tester,
+  ) async {
+    var added = 0;
+    var tools = 0;
+    await pump(
+      tester,
+      FardaRefillsScreen(
+        snapshot: _snapshot(),
+        onAddPrescription: () => added++,
+        onOpenRefillTools: () => tools++,
+      ),
+    );
+    await tester.tap(find.text('Add medication'));
+    await tester.pumpAndSettle();
+    expect(added, 1);
+    expect(tools, 0);
+    expect(find.text('Open account tools'), findsNothing);
+  });
+
+  testWidgets(
+    'preparing a request stays available without refill write capability',
+    (tester) async {
+      var openedTools = false;
+      await pump(
+        tester,
+        FardaRefillsScreen(
+          snapshot: _snapshot(prescriptions: const [_rx]),
+          onOpenRefillTools: () => openedTools = true,
+        ),
+      );
+      await reveal(tester, find.text('Prepare refill'));
+      await tester.tap(find.text('Prepare refill'));
+      await tester.pumpAndSettle();
+      expect(find.text('Known pharmacy'), findsOneWidget);
+      expect(find.text('Rx RX9876'), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.text('Review refill request'),
+        180,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.tap(find.text('Review refill request'));
+      await tester.pumpAndSettle();
+      expect(find.text('Your refill request'), findsOneWidget);
+      expect(find.text('Save my refill plan'), findsNothing);
+      expect(openedTools, false);
+    },
+  );
+
+  testWidgets(
+    'a saved plan can prepare a request without resetting its stage',
+    (tester) async {
+      var writes = 0;
+      await pump(
+        tester,
+        FardaRefillsScreen(
+          snapshot: _snapshot(
+            prescriptions: const [_rx],
+            inventory: const [
+              ConsumerInventory(
+                prescriptionId: 'rx-42',
+                refillId: 'refill-1',
+                stage: RefillStage.contacted,
+              ),
+            ],
+            refillsEnabled: true,
+          ),
+          onUpdateRefill: (_, __, {startNew = false}) async {
+            writes++;
+            return null;
+          },
+        ),
+      );
+      await reveal(tester, find.text('Prepare refill request'));
+      await tester.tap(find.text('Prepare refill request'));
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.text('Review refill request'),
+        180,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.tap(find.text('Review refill request'));
+      await tester.pumpAndSettle();
+      expect(find.text('Your refill request'), findsOneWidget);
+      expect(find.text('Save my refill plan'), findsNothing);
+      expect(writes, 0);
+    },
+  );
+
   testWidgets('unknown and stale supply do not invent a days-left estimate', (
     tester,
   ) async {
@@ -198,13 +287,18 @@ void main() {
         },
       ),
     );
-    await reveal(tester, find.text('Plan my refill'));
-    await tester.tap(find.text('Plan my refill'));
+    await reveal(tester, find.text('Prepare refill'));
+    await tester.tap(find.text('Prepare refill'));
     await tester.pumpAndSettle();
     expect(find.text('Let’s get\nyou ready.'), findsOneWidget);
     expect(
       find.textContaining('No refill order is submitted.'),
       findsOneWidget,
+    );
+    await tester.scrollUntilVisible(
+      find.text('Save my refill plan'),
+      180,
+      scrollable: find.byType(Scrollable).first,
     );
     await tester.tap(find.text('Save my refill plan'));
     await tester.pumpAndSettle();
@@ -212,6 +306,11 @@ void main() {
     expect(find.text('The server did not save this plan.'), findsOneWidget);
     expect(find.text('Let’s get\nyou ready.'), findsOneWidget);
     fail = false;
+    await tester.scrollUntilVisible(
+      find.text('Save my refill plan'),
+      180,
+      scrollable: find.byType(Scrollable).first,
+    );
     await tester.tap(find.text('Save my refill plan'));
     await tester.pumpAndSettle();
     expect(writes, [RefillStage.planning, RefillStage.planning]);

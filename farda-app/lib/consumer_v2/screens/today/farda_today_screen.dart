@@ -22,6 +22,8 @@ class FardaTodayScreen extends StatefulWidget {
     this.morningTimeLabel = '9:00 AM',
     this.medicationLabel = 'Morning routine',
     this.hasRoutine = true,
+    this.hasPrescriptions = true,
+    this.onAddPrescription,
     this.liveRecords = false,
     this.routines = const [],
     this.showBottomNavigation = true,
@@ -63,6 +65,8 @@ class FardaTodayScreen extends StatefulWidget {
   final String morningTimeLabel;
   final String medicationLabel;
   final bool hasRoutine;
+  final bool hasPrescriptions;
+  final VoidCallback? onAddPrescription;
   final bool liveRecords;
   final List<TodayRoutineRecord> routines;
   final bool showBottomNavigation;
@@ -995,9 +999,18 @@ class _FardaTodayScreenState extends State<FardaTodayScreen> {
                     else
                       _NavigationCard(
                         icon: Icons.add_circle_outline,
-                        title: 'No routine on this day',
-                        detail: 'Add or review a routine in your account.',
-                        onTap: widget.onReviewRoutineTap,
+                        title:
+                            widget.hasPrescriptions
+                                ? 'No routine on this day'
+                                : 'Add medication',
+                        detail:
+                            widget.hasPrescriptions
+                                ? 'Review your saved medication and reminders.'
+                                : 'Scan your label or enter it in a few small steps.',
+                        onTap:
+                            widget.hasPrescriptions
+                                ? widget.onReviewRoutineTap
+                                : widget.onAddPrescription,
                       ),
                     if (widget.liveRecords && widget.hasRoutine) ...[
                       const SizedBox(height: 16),

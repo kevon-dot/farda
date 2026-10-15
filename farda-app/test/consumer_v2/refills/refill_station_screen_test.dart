@@ -22,16 +22,23 @@ void main() {
       expect(find.text('Refill, with less rush.'), findsOneWidget);
       expect(find.text('6'), findsOneWidget);
       expect(find.text('Daily medication'), findsOneWidget);
-      expect(find.text('Plan my refill'), findsOneWidget);
+      expect(find.text('Prepare refill'), findsOneWidget);
       expect(tester.takeException(), isNull);
 
-      await tester.tap(find.text('Plan my refill'));
+      await tester.tap(find.text('Prepare refill'));
       await tester.pumpAndSettle();
       expect(find.text('Let’s get\nyou ready.'), findsOneWidget);
-      expect(find.textContaining('No refill order is submitted.'), findsOneWidget);
+      expect(
+        find.textContaining('No refill order is submitted.'),
+        findsOneWidget,
+      );
       expect(controller.state.stage, RefillJourneyStage.planAhead);
 
-      await tester.ensureVisible(find.text('Prepare pharmacy handoff'));
+      await tester.scrollUntilVisible(
+        find.text('Prepare pharmacy handoff'),
+        180,
+        scrollable: find.byType(Scrollable).first,
+      );
       await tester.tap(find.text('Prepare pharmacy handoff'));
       await tester.pumpAndSettle();
       expect(controller.state.stage, RefillJourneyStage.handoffPrepared);
@@ -58,10 +65,10 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(find.text('Plan my refill'), findsOneWidget);
+    expect(find.text('Prepare refill'), findsOneWidget);
     expect(tester.takeException(), isNull);
-    await tester.ensureVisible(find.text('Plan my refill'));
-    await tester.tap(find.text('Plan my refill'));
+    await tester.ensureVisible(find.text('Prepare refill'));
+    await tester.tap(find.text('Prepare refill'));
     await tester.pumpAndSettle();
     expect(find.text('Let’s get\nyou ready.'), findsOneWidget);
     await tester.scrollUntilVisible(
@@ -69,7 +76,10 @@ void main() {
       180,
       scrollable: find.byType(Scrollable).last,
     );
-    expect(find.textContaining('No refill order is submitted.'), findsOneWidget);
+    expect(
+      find.textContaining('No refill order is submitted.'),
+      findsOneWidget,
+    );
     expect(tester.takeException(), isNull);
   });
 }

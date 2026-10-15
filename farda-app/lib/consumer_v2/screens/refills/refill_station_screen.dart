@@ -204,7 +204,7 @@ class _RefillStationScreenState extends State<RefillStationScreen> {
                                   ? null
                                   : _handleJourneyAction,
                           label: switch (state.stage) {
-                            RefillJourneyStage.planAhead => 'Plan my refill',
+                            RefillJourneyStage.planAhead => 'Prepare refill',
                             RefillJourneyStage.handoffPrepared =>
                               'I contacted my pharmacy',
                             RefillJourneyStage.pharmacyContacted =>

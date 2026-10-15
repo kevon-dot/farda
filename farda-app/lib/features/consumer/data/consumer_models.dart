@@ -193,6 +193,7 @@ class ConsumerPrescriptionDraft {
     required this.times,
     required this.startDate,
     this.durationDays = 30,
+    this.remindersEnabled = true,
     this.pharmacy,
     this.rxNumber,
     this.clientRequestId = '',
@@ -206,6 +207,7 @@ class ConsumerPrescriptionDraft {
   final List<String> times;
   final DateTime startDate;
   final int durationDays;
+  final bool remindersEnabled;
   final String clientRequestId;
   String? get validationError {
     if (clientRequestId.length < 8 || clientRequestId.length > 100) {
@@ -217,7 +219,20 @@ class ConsumerPrescriptionDraft {
     if (directions.trim().isEmpty) {
       return 'Check the label or pharmacy for the directions.';
     }
+    if (name.trim().length > 200) {
+      return 'Medication name must be 200 characters or fewer.';
+    }
+    if (directions.trim().length > 2000) {
+      return 'Directions exceed the 2,000-character limit. Your full text is preserved; review before saving.';
+    }
+    if ((pharmacy?.trim().length ?? 0) > 200) {
+      return 'Pharmacy name must be 200 characters or fewer.';
+    }
+    if ((rxNumber?.trim().length ?? 0) > 100) {
+      return 'Prescription number must be 100 characters or fewer.';
+    }
     if (!labelReviewed) return 'Review the label before saving a routine.';
+    if (!remindersEnabled) return null;
     if (times.isEmpty ||
         times.length > 4 ||
         times.any((t) => !RegExp(r'^(?:[01]\d|2[0-3]):[0-5]\d$').hasMatch(t))) {
@@ -240,14 +255,15 @@ class ConsumerPrescriptionDraft {
     'labelReviewed': labelReviewed,
     'pharmacyOrDoctorName': pharmacy?.trim(),
     'rxNumber': rxNumber?.trim(),
-    'schedule': {
-      'recurrence': 'daily',
-      'times': times,
-      'timezone': timeZone,
-      'startDate':
-          '${startDate.year.toString().padLeft(4, '0')}-${startDate.month.toString().padLeft(2, '0')}-${startDate.day.toString().padLeft(2, '0')}',
-      'durationDays': durationDays,
-    },
+    if (remindersEnabled)
+      'schedule': {
+        'recurrence': 'daily',
+        'times': times,
+        'timezone': timeZone,
+        'startDate':
+            '${startDate.year.toString().padLeft(4, '0')}-${startDate.month.toString().padLeft(2, '0')}-${startDate.day.toString().padLeft(2, '0')}',
+        'durationDays': durationDays,
+      },
   };
 }
 

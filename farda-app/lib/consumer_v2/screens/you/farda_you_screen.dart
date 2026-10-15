@@ -23,6 +23,7 @@ class FardaYouScreen extends StatefulWidget {
     this.onNativePreviewChanged,
     this.controller,
     this.onOpenAccount,
+    this.onAddPrescription,
   });
 
   final FardaYouDestination initialDestination;
@@ -38,6 +39,7 @@ class FardaYouScreen extends StatefulWidget {
   final ValueChanged<bool>? onNativePreviewChanged;
   final ConsumerController? controller;
   final VoidCallback? onOpenAccount;
+  final VoidCallback? onAddPrescription;
 
   @override
   State<FardaYouScreen> createState() => _FardaYouScreenState();
@@ -1018,6 +1020,7 @@ class _FardaYouScreenState extends State<FardaYouScreen> {
         directions: prescription?.directions,
         onBack: _back,
         onEditRoutine: _editRoutine,
+        onAddPrescription: widget.onAddPrescription,
         onReviewLabel: _reviewLabel,
         onOpenReminders: () => _open(FardaYouDestination.reminders),
       ),

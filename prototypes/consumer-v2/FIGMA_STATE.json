@@ -25,11 +25,28 @@
     "calendarMonth": "60:265",
     "calendarSaved": "60:474",
     "calendarEmpty": "60:683",
-    "calendarSnoozed": "60:892"
+    "calendarSnoozed": "60:892",
+    "prescriptionWelcome": "68:407",
+    "labelCapture": "68:432",
+    "labelPhotos": "68:451",
+    "labelReview": "68:475",
+    "prescriptionManual": "68:501",
+    "prescriptionReminders": "68:527",
+    "prescriptionConfirmation": "68:548",
+    "refillAssistant": "68:570",
+    "refillRequest": "68:596",
+    "prescriptionDirections": "69:469",
+    "prescriptionPharmacy": "69:473",
+    "prescriptionSaved": "69:477",
+    "prescriptionNoReminders": "69:481",
+    "labelIntroduction": "69:485",
+    "prescriptionNoRemindersConfirmation": "71:482",
+    "prescriptionNoRemindersSaved": "71:497"
   },
   "sections": {
     "main": "9:225",
-    "flow": "9:226"
+    "flow": "9:226",
+    "prescriptionOnboarding": "68:406"
   },
   "componentsBoard": "2:58",
   "assetsNoteBoard": "2:60",
@@ -43,7 +60,8 @@
     "visual-review",
     "design-context-readback",
     "native-svg-export-to-flutter",
-    "calendar-week-first-redesign"
+    "calendar-week-first-redesign",
+    "guided-prescription-onboarding-and-refill-assistant"
   ],
   "limitations": [
     "Raster upload endpoint rejected source PNGs; editable native vectors used for the Figma companion and vial.",
@@ -76,10 +94,11 @@
   },
   "verification": {
     "date": "2026-10-15",
-    "screenCount": 21,
+    "screenCount": 37,
     "targetStack": "Flutter / Dart",
     "flutterCompile": "Flutter 3.47.7 compilation and rendered widget checks available; see VISUAL_PARITY.md for final results.",
     "visualRecord": "VISUAL_PARITY.md",
-    "prototypePlayer": "Not exercised; original connections audited via API."
+    "prototypePlayer": "Not exercised; original connections audited via API.",
+    "prescriptionFlow": "Astra compared actual Flutter390 and320 large-text renders; editable16-state flow; not pixel-identical native controls."
   }
 }
