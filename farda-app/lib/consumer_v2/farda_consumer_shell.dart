@@ -257,6 +257,23 @@ class _FardaConsumerShellState extends State<FardaConsumerShell> {
                     : (id, quantity) => controller.mutate(
                           () => controller.repository.updateInventory(id, quantity),
                         ),
+                onUpdateRefill: controller == null
+                    ? null
+                    : (id, stage, {startNew = false}) => controller.mutate(
+                          () => controller.repository.updateRefill(
+                            id, stage, startNew: startNew,
+                          ),
+                        ),
+                onReconcileReceipt: controller == null
+                    ? null
+                    : (id, {required quantity, required alreadyIncluded}) =>
+                        controller.mutate(
+                          () => controller.repository.reconcileReceipt(
+                            id,
+                            quantity: quantity,
+                            alreadyIncluded: alreadyIncluded,
+                          ),
+                        ),
                 onOpenRefillTools: widget.onOpenRefillTools,
               ),
               FardaYouScreen(

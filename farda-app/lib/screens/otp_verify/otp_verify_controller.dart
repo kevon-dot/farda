@@ -40,7 +40,7 @@ class OtpVerifyController {
         context, 
         message: "OTP verified successfully."
       );
-      context.go(CustomRoutePaths.dashboard);
+      context.go(CustomRoutePaths.signedInHome);
     } else {
       CustomSnackbar.show(
         context, 

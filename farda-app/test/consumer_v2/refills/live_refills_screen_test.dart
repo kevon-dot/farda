@@ -7,10 +7,12 @@ ConsumerSnapshot _snapshot({
   List<ConsumerPrescription> prescriptions = const [],
   List<ConsumerInventory> inventory = const [],
   bool inventoryEnabled = false,
+  bool refillsEnabled = false,
 }) => ConsumerSnapshot(
   prescriptions: prescriptions,
   inventory: inventory,
-  capabilities: ConsumerCapabilities(inventoryEnabled: inventoryEnabled),
+  capabilities: ConsumerCapabilities(
+    inventoryEnabled: inventoryEnabled, refillsEnabled: refillsEnabled),
   fetchedAt: DateTime(2026, 10, 15),
 );
 
@@ -104,5 +106,124 @@ void main() {
     final button = tester.widget<OutlinedButton>(
         find.widgetWithText(OutlinedButton, 'Update my count'));
     expect(button.onPressed, isNull);
+  });
+
+  testWidgets('plan is reported only after accepted write', (tester) async {
+    final writes = <RefillStage>[];
+    var fail = true;
+    await pump(tester, FardaRefillsScreen(
+      snapshot: _snapshot(prescriptions: const [_rx], refillsEnabled: true),
+      onUpdateRefill: (id, stage, {startNew = false}) async {
+        expect(id, 'rx-42');
+        expect(startNew, false);
+        writes.add(stage);
+        return fail ? 'The server did not save this plan.' : null;
+      },
+    ));
+    await tester.ensureVisible(find.text('Plan my refill'));
+    await tester.tap(find.text('Plan my refill'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('does not contact your pharmacy'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('live-refill-confirm-stage')));
+    await tester.pumpAndSettle();
+    expect(writes, [RefillStage.planning]);
+    expect(find.text('The server did not save this plan.'), findsOneWidget);
+    expect(find.text('No refill plan recorded.'), findsOneWidget);
+    fail = false;
+    await tester.tap(find.byKey(const Key('live-refill-confirm-stage')));
+    await tester.pumpAndSettle();
+    expect(writes, [RefillStage.planning, RefillStage.planning]);
+    expect(find.text('Your refill update was saved.'), findsOneWidget);
+  });
+
+  testWidgets('receipt requires count, quantity, and explicit inclusion choice',
+      (tester) async {
+    final receipts = <(int, bool)>[];
+    var fail = true;
+    Future<String?> reconcile(String id,
+        {required int quantity, required bool alreadyIncluded}) async {
+      expect(id, 'rx-42');
+      receipts.add((quantity, alreadyIncluded));
+      return fail ? 'Supply changed. Refresh before retrying.' : null;
+    }
+    final received = ConsumerInventory(
+      prescriptionId: 'rx-42', refillId: 'refill-1',
+      stage: RefillStage.received, quantity: 12,
+    );
+    await pump(tester, FardaRefillsScreen(
+      snapshot: _snapshot(prescriptions: const [_rx],
+        inventory: [received], refillsEnabled: true),
+      onUpdateRefill: (_, __, {startNew = false}) async => null,
+      onReconcileReceipt: reconcile,
+    ));
+    await tester.ensureVisible(find.text('Reconcile my refill'));
+    await tester.tap(find.text('Reconcile my refill'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('live-refill-confirm-receipt')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('actual quantity received'), findsOneWidget);
+    expect(receipts, isEmpty);
+    await tester.enterText(find.byKey(const Key('live-refill-receipt-quantity')), '5');
+    await tester.tap(find.byKey(const Key('live-refill-confirm-receipt')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Choose whether'), findsOneWidget);
+    expect(receipts, isEmpty);
+    await tester.tap(find.byKey(const Key('live-refill-receipt-add')));
+    await tester.pumpAndSettle();
+    expect(find.text('Count after reconciliation: 17'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('live-refill-confirm-receipt')));
+    await tester.pumpAndSettle();
+    expect(receipts, [(5, false)]);
+    expect(find.text('Supply changed. Refresh before retrying.'), findsOneWidget);
+    fail = false;
+    await tester.tap(find.byKey(const Key('live-refill-confirm-receipt')));
+    await tester.pumpAndSettle();
+    expect(receipts, [(5, false), (5, false)]);
+    expect(find.text('Your receipt and count were reconciled.'), findsOneWidget);
+  });
+
+  testWidgets('unknown count blocks receipt reconciliation', (tester) async {
+    await pump(tester, FardaRefillsScreen(
+      snapshot: _snapshot(prescriptions: const [_rx],
+        inventory: const [ConsumerInventory(prescriptionId: 'rx-42',
+          refillId: 'refill-1', stage: RefillStage.received)],
+        refillsEnabled: true),
+      onUpdateRefill: (_, __, {startNew = false}) async => null,
+      onReconcileReceipt: (_, {required quantity, required alreadyIncluded}) async => null,
+    ));
+    await tester.ensureVisible(find.text('Reconcile my refill'));
+    await tester.tap(find.text('Reconcile my refill'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Save a current supply count'), findsOneWidget);
+    expect(find.byKey(const Key('live-refill-confirm-receipt')), findsNothing);
+  });
+
+  testWidgets('narrow view keeps the reported journey and action readable',
+      (tester) async {
+    tester.view.physicalSize = const Size(320, 700);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(MaterialApp(
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(context).copyWith(
+          textScaler: const TextScaler.linear(1.2)),
+        child: child!,
+      ),
+      home: FardaRefillsScreen(
+          snapshot: _snapshot(prescriptions: const [_rx],
+            inventory: const [ConsumerInventory(
+              prescriptionId: 'rx-42', refillId: 'refill-1',
+              stage: RefillStage.contacted, quantity: 12)],
+            refillsEnabled: true),
+          onUpdateRefill: (_, __, {startNew = false}) async => null,
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('I was told it is ready'));
+    expect(find.text('12 at last count'), findsOneWidget);
+    expect(find.text('You reported contacting your pharmacy.'), findsOneWidget);
+    expect(find.text('I was told it is ready'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 }

@@ -17,10 +17,10 @@ class _ScreenOnboardState extends State<ScreenOnboard> {
   Future<void> getInitialRoute() async {
     final session = await AuthStorage.readSession();
     if (!mounted) return;
-    String? isLoggedIn = session?.userId;
+    String? isLoggedIn = session?.token;
 
     if (isLoggedIn != null && isLoggedIn.isNotEmpty) {
-      context.go(CustomRoutePaths.dashboard);
+      context.go(CustomRoutePaths.signedInHome);
     } else {
       context.go(CustomRoutePaths.onboard);
     }

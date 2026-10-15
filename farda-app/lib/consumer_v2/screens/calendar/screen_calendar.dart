@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../../design_system/farda_consumer_tokens.dart';
 import 'calendar_models.dart';
 
 typedef ConsumerCalendarEventCallback = void Function(
@@ -11,9 +12,9 @@ typedef ConsumerCalendarEventCallback = void Function(
 
 /// The consumer-v2 calendar translated from the Figma handoff (node 2:12).
 ///
-/// State is intentionally local. Initial values, records, and every outward
-/// action are injectable so a route/controller can connect the screen later
-/// without this presentation layer making network or persistence calls.
+/// Date selection stays local while records and outward actions are injectable.
+/// The authenticated route supplies real events; this presentation layer never
+/// infers a saved dose from a reminder or device signal.
 class FardaCalendarScreen extends StatefulWidget {
   const FardaCalendarScreen({
     super.key,
@@ -168,7 +169,7 @@ class _FardaCalendarScreenState extends State<FardaCalendarScreen> {
                     const SizedBox(height: 24),
                   ],
                   const _PageIntroduction(),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 18),
                   _CalendarCard(
                     visibleMonth: _visibleMonth,
                     selectedDate: _selectedDate,
@@ -184,15 +185,23 @@ class _FardaCalendarScreenState extends State<FardaCalendarScreen> {
                     onFilterSelected: _selectFilter,
                     onTodayPressed: _returnToToday,
                   ),
-                  const SizedBox(height: 20),
-                  _SelectedDayAgenda(
-                    selectedDate: _selectedDate,
-                    filter: _filter,
-                    events: _events,
-                    onEventAction: widget.onEventAction,
+                  const SizedBox(height: 16),
+                  AnimatedSwitcher(
+                    duration: MediaQuery.disableAnimationsOf(context)
+                        ? Duration.zero
+                        : const Duration(milliseconds: 190),
+                    transitionBuilder: (child, animation) => FadeTransition(
+                      opacity: animation,
+                      child: child,
+                    ),
+                    child: _SelectedDayAgenda(
+                      key: ValueKey('${_selectedDate.toIso8601String()}-${_filter.name}'),
+                      selectedDate: _selectedDate,
+                      filter: _filter,
+                      events: _events,
+                      onEventAction: widget.onEventAction,
+                    ),
                   ),
-                  const SizedBox(height: 24),
-                  const _FriendlyCalendarNote(),
                 ],
               ),
             ),
@@ -271,41 +280,78 @@ class _PageIntroduction extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Semantics(
-      header: true,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'YOUR DAYS, AT A GLANCE',
-            style: _FardaCalendarType.style(
-              size: 10,
-              lineHeight: 14,
-              weight: FontWeight.w600,
-              color: _FardaCalendarColors.muted,
-              letterSpacing: 1.35,
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [_FardaCalendarColors.navy, Color(0xFF294B80)],
+        ),
+        borderRadius: BorderRadius.circular(26),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 16, 12, 16),
+        child: Row(
+          children: [
+            Expanded(
+              child: Semantics(
+                header: true,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'YOUR CALENDAR',
+                      style: _FardaCalendarType.style(
+                        size: 10,
+                        lineHeight: 14,
+                        weight: FontWeight.w600,
+                        color: _FardaCalendarColors.selectedMark,
+                        letterSpacing: 1.3,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Your days.',
+                      style: _FardaCalendarType.style(
+                        size: 29,
+                        lineHeight: 34,
+                        weight: FontWeight.w600,
+                        color: _FardaCalendarColors.white,
+                        letterSpacing: -0.6,
+                      ),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      'At your pace.',
+                      style: _FardaCalendarType.style(
+                        size: 13,
+                        lineHeight: 18,
+                        color: _FardaCalendarColors.selectedMark,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
-          ),
-          const SizedBox(height: 9),
-          Text(
-            'A rhythm\nthat fits you.',
-            style: _FardaCalendarType.style(
-              size: 34,
-              lineHeight: 37,
-              weight: FontWeight.w600,
-              letterSpacing: -0.7,
+            const SizedBox(width: 8),
+            const SizedBox(
+              width: 100,
+              height: 100,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: _FardaCalendarColors.paleBlue,
+                ),
+                child: Center(
+                  child: FardaCompanion(
+                    pose: FardaCompanionPose.calendar,
+                    size: 90,
+                  ),
+                ),
+              ),
             ),
-          ),
-          const SizedBox(height: 10),
-          Text(
-            'Tap a day. See what\'s planned, what\'s recorded, and what\'s still unknown.',
-            style: _FardaCalendarType.style(
-              size: 14,
-              lineHeight: 20,
-              color: _FardaCalendarColors.muted,
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -332,6 +378,13 @@ class _CalendarCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final visibleMarkers = ConsumerCalendarMarker.values.where((marker) {
+      return events.any((event) =>
+          event.date.year == visibleMonth.year &&
+          event.date.month == visibleMonth.month &&
+          event.marker == marker);
+    }).toList(growable: false);
+
     return DecoratedBox(
       decoration: BoxDecoration(
         color: _FardaCalendarColors.white,
@@ -370,13 +423,15 @@ class _CalendarCard extends StatelessWidget {
                       events: events,
                       onDateSelected: onDateSelected,
                     ),
-                    const SizedBox(height: 12),
-                    const Divider(
-                      height: 1,
-                      color: _FardaCalendarColors.line,
-                    ),
-                    const SizedBox(height: 13),
-                    const _CalendarLegend(),
+                    if (visibleMarkers.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      const Divider(
+                        height: 1,
+                        color: _FardaCalendarColors.line,
+                      ),
+                      const SizedBox(height: 13),
+                      _CalendarLegend(markers: visibleMarkers),
+                    ],
                   ],
                 ),
               ),
@@ -600,52 +655,62 @@ class _CalendarDay extends StatelessWidget {
       label: fullLabel,
       onTap: onPressed,
       child: ExcludeSemantics(
-        child: Material(
-          color: selected
-              ? _FardaCalendarColors.navy
-              : _FardaCalendarColors.transparent,
-          shape: RoundedRectangleBorder(
+        child: AnimatedContainer(
+          duration: MediaQuery.disableAnimationsOf(context)
+              ? Duration.zero
+              : const Duration(milliseconds: 170),
+          curve: Curves.easeOutCubic,
+          decoration: BoxDecoration(
+            color: selected
+                ? _FardaCalendarColors.navy
+                : _FardaCalendarColors.transparent,
             borderRadius: BorderRadius.circular(13),
-            side: today && !selected
-                ? const BorderSide(color: _FardaCalendarColors.todayOutline)
-                : BorderSide.none,
+            border: today && !selected
+                ? Border.all(color: _FardaCalendarColors.todayOutline)
+                : null,
           ),
-          clipBehavior: Clip.antiAlias,
-          child: InkWell(
-            onTap: onPressed,
+          child: Material(
+            type: MaterialType.transparency,
             borderRadius: BorderRadius.circular(13),
-            child: SizedBox.expand(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    '${date.day}',
-                    style: _FardaCalendarType.style(
-                      size: 14,
-                      lineHeight: 18,
-                      color: selected
-                          ? _FardaCalendarColors.white
-                          : _FardaCalendarColors.navy,
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: onPressed,
+              borderRadius: BorderRadius.circular(13),
+              child: SizedBox.expand(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      '${date.day}',
+                      style: _FardaCalendarType.style(
+                        size: 14,
+                        lineHeight: 18,
+                        color: selected
+                            ? _FardaCalendarColors.white
+                            : _FardaCalendarColors.navy,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 3),
-                  SizedBox(
-                    height: 6,
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        for (var index = 0; index < markers.length; index++) ...[
-                          if (index > 0) const SizedBox(width: 3),
-                          _StatusMark(
-                            marker: markers[index],
-                            selected: selected,
-                            size: 5,
-                          ),
+                    const SizedBox(height: 3),
+                    SizedBox(
+                      height: 6,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          for (var index = 0;
+                              index < markers.length;
+                              index++) ...[
+                            if (index > 0) const SizedBox(width: 3),
+                            _StatusMark(
+                              marker: markers[index],
+                              selected: selected,
+                              size: 5,
+                            ),
+                          ],
                         ],
-                      ],
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
@@ -656,7 +721,9 @@ class _CalendarDay extends StatelessWidget {
 }
 
 class _CalendarLegend extends StatelessWidget {
-  const _CalendarLegend();
+  const _CalendarLegend({required this.markers});
+
+  final List<ConsumerCalendarMarker> markers;
 
   @override
   Widget build(BuildContext context) {
@@ -666,19 +733,16 @@ class _CalendarLegend extends StatelessWidget {
       child: Wrap(
         spacing: 12,
         runSpacing: 8,
-        children: const [
-          _LegendItem(
-            marker: ConsumerCalendarMarker.recorded,
-            label: 'Recorded',
-          ),
-          _LegendItem(
-            marker: ConsumerCalendarMarker.unconfirmed,
-            label: 'Unconfirmed',
-          ),
-          _LegendItem(
-            marker: ConsumerCalendarMarker.refill,
-            label: 'Refill reminder',
-          ),
+        children: [
+          for (final marker in markers)
+            _LegendItem(
+              marker: marker,
+              label: switch (marker) {
+                ConsumerCalendarMarker.recorded => 'Recorded',
+                ConsumerCalendarMarker.unconfirmed => 'Unconfirmed',
+                ConsumerCalendarMarker.refill => 'Refill',
+              },
+            ),
         ],
       ),
     );
@@ -894,16 +958,44 @@ class _SelectedDayAgenda extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Semantics(
-          header: true,
-          child: Text(
-            DateFormat('EEEE, MMMM d').format(selectedDate),
-            style: _FardaCalendarType.style(
-              size: 14,
-              lineHeight: 20,
-              weight: FontWeight.w600,
+        Row(
+          children: [
+            Expanded(
+              child: Semantics(
+                header: true,
+                liveRegion: true,
+                child: Text(
+                  DateFormat('EEEE, MMMM d').format(selectedDate),
+                  style: _FardaCalendarType.style(
+                    size: 17,
+                    lineHeight: 23,
+                    weight: FontWeight.w600,
+                  ),
+                ),
+              ),
             ),
-          ),
+            if (selectedEvents.isNotEmpty)
+              Semantics(
+                label: '${selectedEvents.length} calendar ${selectedEvents.length == 1 ? 'item' : 'items'}',
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: _FardaCalendarColors.paleBlue,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: ExcludeSemantics(
+                    child: Text(
+                      '${selectedEvents.length} ${selectedEvents.length == 1 ? 'item' : 'items'}',
+                      style: _FardaCalendarType.style(
+                        size: 11,
+                        lineHeight: 15,
+                        weight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
         ),
         const SizedBox(height: 12),
         if (selectedEvents.isEmpty)
@@ -1068,17 +1160,14 @@ class _EmptyAgendaCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final message = switch (filter) {
-      ConsumerCalendarFilter.all =>
-        'Nothing is planned or recorded on this day.',
-      ConsumerCalendarFilter.routines =>
-        'No routine entries are saved for this day.',
-      ConsumerCalendarFilter.refills =>
-        'No refill reminder is saved for this day.',
+      ConsumerCalendarFilter.all => 'No saved calendar items for this day.',
+      ConsumerCalendarFilter.routines => 'No routine entries for this day.',
+      ConsumerCalendarFilter.refills => 'No refill reminders for this day.',
     };
 
     return Semantics(
       container: true,
-      label: 'A little breathing room. $message',
+      label: message,
       child: DecoratedBox(
         decoration: BoxDecoration(
           color: _FardaCalendarColors.paleBlue,
@@ -1091,7 +1180,7 @@ class _EmptyAgendaCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Icon(
-                  Icons.light_mode_outlined,
+                  Icons.calendar_today_rounded,
                   size: 20,
                   color: _FardaCalendarColors.accentBlue,
                 ),
@@ -1101,7 +1190,7 @@ class _EmptyAgendaCard extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'A little breathing room.',
+                        'A quiet day',
                         style: _FardaCalendarType.style(
                           size: 16,
                           lineHeight: 21,
@@ -1127,122 +1216,6 @@ class _EmptyAgendaCard extends StatelessWidget {
       ),
     );
   }
-}
-
-class _FriendlyCalendarNote extends StatelessWidget {
-  const _FriendlyCalendarNote();
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      label:
-          'A blank day is not a failure. It is just a record you can review.',
-      child: Row(
-        children: [
-          const ExcludeSemantics(
-            child: SizedBox(
-              width: 78,
-              height: 78,
-              child: CustomPaint(painter: _CalendarCompanionPainter()),
-            ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              'A blank day isn\'t a failure.\nIt\'s just a record you can review.',
-              style: _FardaCalendarType.style(
-                size: 12,
-                lineHeight: 17,
-                color: _FardaCalendarColors.muted,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _CalendarCompanionPainter extends CustomPainter {
-  const _CalendarCompanionPainter();
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final scaleX = size.width / 120;
-    final scaleY = size.height / 120;
-    canvas.save();
-    canvas.scale(scaleX, scaleY);
-
-    canvas.drawOval(
-      const Rect.fromLTWH(25, 105, 70, 10),
-      Paint()..color = const Color(0x1A142C55),
-    );
-
-    final body = Path()
-      ..moveTo(25, 72)
-      ..cubicTo(14, 43, 32, 15, 58, 15)
-      ..cubicTo(88, 15, 101, 40, 96, 67)
-      ..lineTo(89, 92)
-      ..cubicTo(86, 103, 70, 104, 64, 96)
-      ..cubicTo(57, 107, 43, 108, 37, 98)
-      ..close();
-    canvas.drawPath(body, Paint()..color = _FardaCalendarColors.navy);
-
-    canvas.drawCircle(
-      const Offset(45, 54),
-      3.6,
-      Paint()..color = _FardaCalendarColors.ivory,
-    );
-    canvas.drawCircle(
-      const Offset(69, 54),
-      3.6,
-      Paint()..color = _FardaCalendarColors.ivory,
-    );
-
-    final smile = Path()
-      ..moveTo(52, 68)
-      ..quadraticBezierTo(58, 73, 64, 67);
-    canvas.drawPath(
-      smile,
-      Paint()
-        ..color = _FardaCalendarColors.ivory
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2.5
-        ..strokeCap = StrokeCap.round,
-    );
-
-    final calendarRect = RRect.fromRectAndRadius(
-      const Rect.fromLTWH(36, 73, 48, 32),
-      const Radius.circular(6),
-    );
-    canvas.drawRRect(calendarRect, Paint()..color = _FardaCalendarColors.ivory);
-    final calendarInk = Paint()
-      ..color = _FardaCalendarColors.amber
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 3
-      ..strokeCap = StrokeCap.round;
-    canvas.drawLine(const Offset(36, 83), const Offset(84, 83), calendarInk);
-    canvas.drawLine(const Offset(47, 70), const Offset(47, 78), calendarInk);
-    canvas.drawLine(const Offset(73, 70), const Offset(73, 78), calendarInk);
-
-    final check = Path()
-      ..moveTo(49, 93)
-      ..lineTo(55, 98)
-      ..lineTo(66, 88);
-    canvas.drawPath(
-      check,
-      Paint()
-        ..color = _FardaCalendarColors.navy
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 3
-        ..strokeCap = StrokeCap.round
-        ..strokeJoin = StrokeJoin.round,
-    );
-    canvas.restore();
-  }
-
-  @override
-  bool shouldRepaint(covariant _CalendarCompanionPainter oldDelegate) => false;
 }
 
 class _FardaCalendarColors {

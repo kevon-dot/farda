@@ -12,6 +12,7 @@ abstract final class FardaYouPalette {
   static const border = Color(0xFFE2E7EF);
   static const warm = Color(0xFF80500E);
   static const warmBackground = Color(0xFFF7EAD5);
+  static const amber = Color(0xFFF2C983);
   static const danger = Color(0xFF8B303A);
   static const dangerBackground = Color(0xFFF8E7E9);
 }
@@ -252,6 +253,7 @@ class FardaYouLinkRow extends StatelessWidget {
     required this.icon,
     required this.onTap,
     this.showDivider = true,
+    this.preview = false,
   });
 
   final String title;
@@ -259,6 +261,7 @@ class FardaYouLinkRow extends StatelessWidget {
   final IconData icon;
   final VoidCallback onTap;
   final bool showDivider;
+  final bool preview;
 
   @override
   Widget build(BuildContext context) {
@@ -266,7 +269,7 @@ class FardaYouLinkRow extends StatelessWidget {
       children: [
         Semantics(
           button: true,
-          label: '$title. $subtitle',
+          label: '$title. ${preview ? 'Local preview. ' : ''}$subtitle',
           child: Material(
             color: Colors.transparent,
             child: InkWell(
@@ -278,7 +281,7 @@ class FardaYouLinkRow extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(vertical: 10),
                   child: Row(
                     children: [
-                      FardaYouIconTile(icon: icon),
+                      FardaYouIconTile(icon: icon, warm: preview),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Column(
@@ -306,6 +309,25 @@ class FardaYouLinkRow extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(width: 8),
+                      if (preview)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 5,
+                          ),
+                          decoration: BoxDecoration(
+                            color: FardaYouPalette.warmBackground,
+                            borderRadius: BorderRadius.circular(9),
+                          ),
+                          child: Text(
+                            'TRY',
+                            style: fardaYouText(
+                              size: 10,
+                              weight: FontWeight.w700,
+                              color: FardaYouPalette.warm,
+                              letterSpacing: 0.7,
+                            ),
+                          ),
+                        ),
                       const Icon(
                         Icons.chevron_right_rounded,
                         size: 23,

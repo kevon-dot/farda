@@ -28,7 +28,11 @@ class AppRouter {
       GoRoute(
         path: CustomRoutePaths.dashboard,
         builder: (context, state) => ConsumerEntry(
-          initialTab: state.uri.queryParameters['tab'] == 'refills' ? 2 : 0,
+          initialTab: switch (state.uri.queryParameters['tab']) {
+            'refills' => 2,
+            'you' => 3,
+            _ => 0,
+          },
         ),
       ),
       GoRoute(
@@ -59,8 +63,9 @@ class AppRouter {
             initialIndex: index,
             onTabSelected: (selected) =>
                 context.go(CustomRoutePaths.consumerV2TabPath(selected)),
-            onOpenAccount: () => context.go(CustomRoutePaths.dashboard),
-            onOpenRefillTools: () => context.go('${CustomRoutePaths.dashboard}?tab=refills'),
+            onOpenAccount: () => context.go(CustomRoutePaths.accountTools),
+            onOpenRefillTools: () =>
+                context.go(CustomRoutePaths.refillTools),
           );
         },
       ),
@@ -137,6 +142,13 @@ class CustomRoutePaths {
   static const String calibration = '/calibration';
 
   static const String consumerV2Today = '/consumer/v2/today';
+
+  /// The first screen after OTP verification or saved-session recovery.
+  static const String signedInHome = consumerV2Today;
+
+  /// The integrated account tools remain available from the Figma screens.
+  static const String accountTools = '$dashboard?tab=you';
+  static const String refillTools = '$dashboard?tab=refills';
   static const String consumerV2Calendar = '/consumer/v2/calendar';
   static const String consumerV2Refills = '/consumer/v2/refills';
   static const String consumerV2You = '/consumer/v2/you';

@@ -11,7 +11,7 @@ The Figma handoff is complete and was read back from the design file. It has 17 
 The production Flutter project now has a consumer-v2 implementation under `farda-app/lib/consumer_v2/`:
 
 - A four-tab `FardaConsumerShell` for Today, Calendar, Refills, and You.
-- Routing under `/consumer/v2`, nested tab URLs, and redirects from the previous `/home`, `/plan`, `/calendar`, and `/more` paths. The API-backed consumer flow remains at `/dashboard` during service integration.
+- Routing under `/consumer/v2`, nested tab URLs, and redirects from the previous `/home`, `/plan`, `/calendar`, and `/more` paths. Signed-in sessions now enter Today; account tools remain reachable from the consumer flow.
 - A shared navy/ivory theme layer and the repository-owned companion artwork.
 - Today with date selection, an explicit two-step dose confirmation, snooze, skipped/correction flows, and reminder-milestone previews.
 - Calendar with month/date navigation, filters, status markers, agenda cards, empty states, and accessibility semantics.
@@ -24,7 +24,9 @@ The standalone design widgets do not place calls, schedule notifications, contac
 
 ### Integration progress (October 15, 2026)
 
-The authenticated `/consumer/v2` routes load one owned snapshot through `ConsumerApiRepository`. Today shows each occurrence for the selected day; taken, skipped, and snoozed actions wait for server confirmation, and a selected entry can open the existing correction form. Calendar renders the fetched routine and refill-plan events. Refills shows actual prescriptions, count freshness, and user-reported stages, with a server-backed count edit and a handoff to established authenticated planning/receipt tools. You displays saved routine and reminder preferences and saves supported channel toggles after server confirmation and explicit call consent. Vial, Circle, native-surface and privacy previews remain labeled local demonstrations. Empty accounts and failed loads do not fall back to sample medication. The standalone Figma widgets still support injected sample state for design tests. No live provider or hardware work is implied by this UI integration.
+The authenticated `/consumer/v2` routes load one owned snapshot through `ConsumerApiRepository`. Today shows each occurrence for the selected day; taken, skipped, and snoozed actions wait for server confirmation, and a selected entry can open the existing correction form. Calendar renders fetched routine and refill-plan events. Refills now supports account-backed planning, user-reported progress, count edits, and receipt reconciliation, including an explicit choice about whether the received quantity is already counted. You displays saved routine and reminder preferences and saves supported channel toggles and quiet hours after server confirmation and explicit call consent. Vial, Circle, native-surface and privacy previews remain labeled local demonstrations. Empty accounts and failed loads do not fall back to sample medication. The standalone Figma widgets still support injected sample state for design tests. No live provider or hardware work is implied by this UI integration.
+
+The follow-up UI pass is recorded in [UX_AUDIT.md](UX_AUDIT.md): shorter copy and stronger action hierarchy; distinct neutral 3D companion states on Today; a compact Calendar hero and contextual event legend; a navy supply hero and step controls in Refills; and a navy companion hero with clear local-preview labels in You. The implementation uses shared navy/ivory control styling with restrained warm accents. The editable Figma file is the prior handoff baseline and needs a visual sync to these refinements before final visual sign-off.
 
 ## Invariants the production services must preserve
 
@@ -45,7 +47,7 @@ The reference implementation for reminder transitions is in `farda-app/lib/consu
 
 The authenticated consumer API is now present under `farda-app-backend/src/routes/apiRouter.ts`: prescriptions and schedules, bounded dose reads, explicit dose updates and history, reminder preferences/snooze, refill plans, and inventory counts/receipts. The consumer Prisma models now include dose revisions/corrections, reminder preferences/intents, and refill/inventory records. `ConsumerApiRepository` calls this contract; the old dashboard and OCR paths still coexist. The reminder service has an occurrence-scoped durable intent model and a gated worker. Read `farda-app-backend/src/reminders/README.md` for its exact behavior and limits.
 
-Remaining integration: bind every Figma tab to this authenticated source, handle stale/conflicting writes in the UI, and finish any Circle grant/device observation contract before those previews become functional. Keep vial observations separate from user-confirmed dose records. Database migration application and operational rehearsal are release work; the presence of a migration in source does not establish a migrated environment.
+Remaining integration: handle stale/conflicting writes consistently in all screens, and finish any Circle grant/device observation contract before those previews become functional. Keep vial observations separate from user-confirmed dose records. Database migration application and operational rehearsal are release work; the presence of a migration in source does not establish a migrated environment.
 
 ### P0 — security and privacy
 
@@ -57,7 +59,7 @@ Remaining integration: bind every Figma tab to this authenticated source, handle
 
 ### P0 — Flutter application integration
 
-Replace each screen's sample/local state with repositories and a shared occurrence controller while keeping presentation callbacks explicit.
+Finish supported account flows while keeping presentation callbacks explicit.
 
 - Keep all four tabs hydrated from the same authenticated account snapshot and expand the remaining local previews only behind supported account APIs.
 - Map loading, empty, offline, stale, conflict, and retry states.
@@ -65,7 +67,8 @@ Replace each screen's sample/local state with repositories and a shared occurren
 - Apply timezone and daylight-saving changes to future delivery without rewriting past occurrences.
 - Wire Routine label review to the existing prescription flow without treating OCR output as approved instructions.
 - Connect the Vial screen to the existing BLE setup/calibration flow; keep movement observational.
-- Extend You preferences and Circle grants only through authenticated APIs with explicit consent; the current reminder toggles are persisted, while Circle is still a preview.
+- Extend You preferences and Circle grants only through authenticated APIs with explicit consent; reminder toggles and quiet hours are persisted, while Circle is still a preview.
+- Sync the new character, chip, button, and copy treatments to the editable Figma frames; visually review narrow/large-text layouts and reduce any remaining repeated explanations.
 
 ### P1 — notifications and scheduling
 
@@ -120,4 +123,4 @@ Before release, also complete:
 
 ## Definition of done for the next owner
 
-The remaining integration is complete when the four Flutter tabs use one authenticated source of truth; every state-changing request is idempotent and audited; notification, call, Live Activity, refill, Circle, and vial behavior preserves the invariants above; the full Flutter suite passes; and the release gates are documented with device evidence.
+The remaining integration is complete when supported account actions across the four Flutter tabs use one authenticated source of truth; every state-changing request is idempotent and audited; notification, call, Live Activity, refill, Circle, and vial behavior preserves the invariants above; the full Flutter suite passes; and the release gates are documented with device evidence.

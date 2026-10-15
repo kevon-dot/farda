@@ -1,12 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 
-enum FardaCompanionMood { waving, quiet, resting }
+enum FardaCompanionMood { waving, quiet, resting, snoozed, confirmed, skipped }
 
-/// The editable companion exported from Figma node 3:173.
-///
-/// The SVG is embedded so this implementation remains isolated to the Today
-/// feature folder while the app's shared asset manifest is left untouched.
+/// Farda's existing three-pose, navy companion. The additional record moods
+/// use quiet, nonjudgmental symbols; neither a reminder nor vial movement
+/// changes the character into a saved-record state.
 class FardaCompanion extends StatefulWidget {
   const FardaCompanion({
     super.key,
@@ -32,7 +30,7 @@ class _FardaCompanionState extends State<FardaCompanion>
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 520),
+      duration: const Duration(milliseconds: 380),
     )..forward();
   }
 
@@ -54,9 +52,58 @@ class _FardaCompanionState extends State<FardaCompanion>
   Widget build(BuildContext context) {
     final disableAnimations =
         MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    final poseIndex = switch (widget.mood) {
+      FardaCompanionMood.waving => 0,
+      FardaCompanionMood.quiet || FardaCompanionMood.confirmed ||
+      FardaCompanionMood.skipped => 1,
+      FardaCompanionMood.resting || FardaCompanionMood.snoozed => 2,
+    };
+    final symbol = switch (widget.mood) {
+      FardaCompanionMood.confirmed => Icons.check_rounded,
+      FardaCompanionMood.skipped => Icons.remove_rounded,
+      FardaCompanionMood.snoozed => Icons.schedule_rounded,
+      _ => null,
+    };
     final pose = SizedBox.square(
       dimension: widget.size,
-      child: SvgPicture.string(_companionWaveSvg, fit: BoxFit.contain),
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Positioned.fill(
+            child: ClipRect(
+              child: Stack(
+                children: [
+                  Positioned(
+                    left: -poseIndex * widget.size,
+                    top: 0,
+                    width: widget.size * 3,
+                    height: widget.size,
+                    child: Image.asset(
+                      'assets/images/farda_companion_trio.png',
+                      fit: BoxFit.fill,
+                      filterQuality: FilterQuality.medium,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (symbol != null)
+            Positioned(
+              right: 0,
+              top: 0,
+              child: Container(
+                width: 25,
+                height: 25,
+                decoration: const BoxDecoration(
+                  color: Color(0xFFF6F5F0),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(symbol, size: 16, color: const Color(0xFF142C55)),
+              ),
+            ),
+        ],
+      ),
     );
 
     final animatedPose = disableAnimations
@@ -65,18 +112,12 @@ class _FardaCompanionState extends State<FardaCompanion>
             animation: _controller,
             child: pose,
             builder: (context, child) {
-              final curved = Curves.easeOutBack.transform(_controller.value);
-              final restingTilt = widget.mood == FardaCompanionMood.resting
-                  ? -0.025
-                  : 0.0;
+              final curved = Curves.easeOutCubic.transform(_controller.value);
               return Transform.translate(
-                offset: Offset(0, (1 - curved) * 5),
-                child: Transform.rotate(
-                  angle: restingTilt * curved,
-                  child: Transform.scale(
-                    scale: 0.94 + (0.06 * curved),
-                    child: child,
-                  ),
+                offset: Offset(0, (1 - curved) * 4),
+                child: Transform.scale(
+                  scale: 0.96 + (0.04 * curved),
+                  child: child,
                 ),
               );
             },
@@ -85,28 +126,14 @@ class _FardaCompanionState extends State<FardaCompanion>
     if (widget.decorative) {
       return ExcludeSemantics(child: animatedPose);
     }
-    return Semantics(label: 'Farda companion waving', child: animatedPose);
+    final label = switch (widget.mood) {
+      FardaCompanionMood.waving => 'Farda companion waving',
+      FardaCompanionMood.quiet => 'Farda companion with a reminder card',
+      FardaCompanionMood.resting => 'Farda companion resting',
+      FardaCompanionMood.snoozed => 'Farda companion resting while reminder is snoozed',
+      FardaCompanionMood.confirmed => 'Farda companion beside saved entry',
+      FardaCompanionMood.skipped => 'Farda companion beside skipped entry',
+    };
+    return Semantics(label: label, child: animatedPose);
   }
 }
-
-const _companionWaveSvg = '''
-<svg width="120" height="120" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <g clip-path="url(#clip0_3_173)">
-    <path opacity="0.1" d="M60 115C79.33 115 95 112.761 95 110C95 107.239 79.33 105 60 105C40.67 105 25 107.239 25 110C25 112.761 40.67 115 60 115Z" fill="#142C55"/>
-    <path d="M24.9999 72C13.9999 43 32 15 58 15C88 15 101 40 95.9999 67L88.9999 92C85.9999 103 70 104 64 96C57 107 43 108 36.9999 98L24.9999 72Z" fill="url(#paint0_linear_3_173)"/>
-    <path d="M29 66C17.6667 72 13 79 15 87" stroke="#365C99" stroke-width="13" stroke-linecap="round"/>
-    <path d="M45 58.3C46.6569 58.3 48 56.3748 48 54C48 51.6252 46.6569 49.7 45 49.7C43.3431 49.7 42 51.6252 42 54C42 56.3748 43.3431 58.3 45 58.3Z" fill="#F6F5F0"/>
-    <path d="M69 58.3C70.6569 58.3 72 56.3748 72 54C72 51.6252 70.6569 49.7 69 49.7C67.3431 49.7 66 51.6252 66 54C66 56.3748 67.3431 58.3 69 58.3Z" fill="#F6F5F0"/>
-    <path d="M52 68C56 71.3333 60 71 64 67" stroke="#F6F5F0" stroke-width="2.5" stroke-linecap="round"/>
-    <path d="M91 65C104.333 65 111 56.6667 111 40" stroke="#365C99" stroke-width="14" stroke-linecap="round"/>
-    <path d="M108 25L110 19M120 31L126 29" stroke="#80500E" stroke-width="2.5" stroke-linecap="round"/>
-  </g>
-  <defs>
-    <linearGradient id="paint0_linear_3_173" x1="21.7102" y1="15" x2="110.236" y2="89.1701" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#365C99"/>
-      <stop offset="1" stop-color="#142C55"/>
-    </linearGradient>
-    <clipPath id="clip0_3_173"><rect width="120" height="120" fill="white"/></clipPath>
-  </defs>
-</svg>
-''';
