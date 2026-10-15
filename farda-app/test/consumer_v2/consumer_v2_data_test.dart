@@ -233,6 +233,9 @@ void main() {
     await tester.tap(find.byKey(const Key('today_routine_evening-occurrence')));
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.byKey(FardaTodayRoutineCard.snoozeButtonKey));
+    await tester.drag(find.byType(SingleChildScrollView).first,
+        const Offset(0, -180));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(FardaTodayRoutineCard.snoozeButtonKey));
     await tester.pumpAndSettle();
     expect(repository.lastSnoozedId, 'evening-occurrence');

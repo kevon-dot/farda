@@ -289,7 +289,7 @@ class _SupplyCard extends StatelessWidget {
                 ],
                 const SizedBox(height: 20),
                 if (refillEnabled && onUpdateRefill != null) ...[
-                  SizedBox(width: double.infinity, child: FilledButton.icon(
+                  SizedBox(width: double.infinity, child: FilledButton(
                     style: FilledButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 15, horizontal: 16),
                       backgroundColor: FardaConsumerColors.brand,
@@ -314,15 +314,21 @@ class _SupplyCard extends StatelessWidget {
                                       onUpdateRefill: onUpdateRefill!,
                                     ),
                             ),
-                    icon: const Icon(Icons.arrow_forward_rounded, size: 19),
-                    label: Text(switch (stage) {
-                      null => 'Plan my refill',
-                      RefillStage.planning => 'I contacted my pharmacy',
-                      RefillStage.contacted => 'I was told it is ready',
-                      RefillStage.ready => 'I received my refill',
-                      RefillStage.received => inventory?.receiptReconciled == true
-                          ? 'Receipt reconciled' : 'Reconcile my refill',
-                    }),
+                    child: Row(children: [
+                      const Icon(Icons.arrow_forward_rounded, size: 19),
+                      const SizedBox(width: 10),
+                      Expanded(child: Text(
+                        switch (stage) {
+                          null => 'Plan my refill',
+                          RefillStage.planning => 'I contacted my pharmacy',
+                          RefillStage.contacted => 'I was told it is ready',
+                          RefillStage.ready => 'I received my refill',
+                          RefillStage.received => inventory?.receiptReconciled == true
+                              ? 'Receipt reconciled' : 'Reconcile my refill',
+                        },
+                        textAlign: TextAlign.center,
+                      )),
+                    ]),
                   )),
                   if (stage == RefillStage.received) TextButton(
                     onPressed: () => showDialog<void>(

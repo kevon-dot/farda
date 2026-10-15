@@ -33,6 +33,15 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  Future<void> reveal(WidgetTester tester, Finder target) async {
+    // A card can be built below the viewport, so finding its label alone does
+    // not mean a tap can reach it. Scroll the page before ensuring visibility.
+    await tester.drag(find.byType(ListView).first, const Offset(0, -450));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(target);
+    await tester.pumpAndSettle();
+  }
+
   testWidgets('authenticated empty account has no sample prescription or count',
       (tester) async {
     await pump(tester, FardaRefillsScreen(snapshot: _snapshot()));
@@ -77,7 +86,7 @@ void main() {
         return null;
       },
     ));
-    await tester.ensureVisible(find.text('Update my count'));
+    await reveal(tester, find.text('Update my count'));
     await tester.tap(find.text('Update my count'));
     await tester.pumpAndSettle();
     await tester.enterText(find.byKey(const Key('live-refill-count-input')), '8');
@@ -120,7 +129,7 @@ void main() {
         return fail ? 'The server did not save this plan.' : null;
       },
     ));
-    await tester.ensureVisible(find.text('Plan my refill'));
+    await reveal(tester, find.text('Plan my refill'));
     await tester.tap(find.text('Plan my refill'));
     await tester.pumpAndSettle();
     expect(find.textContaining('does not contact your pharmacy'), findsOneWidget);
@@ -156,7 +165,7 @@ void main() {
       onUpdateRefill: (_, __, {startNew = false}) async => null,
       onReconcileReceipt: reconcile,
     ));
-    await tester.ensureVisible(find.text('Reconcile my refill'));
+    await reveal(tester, find.text('Reconcile my refill'));
     await tester.tap(find.text('Reconcile my refill'));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('live-refill-confirm-receipt')));
@@ -191,7 +200,7 @@ void main() {
       onUpdateRefill: (_, __, {startNew = false}) async => null,
       onReconcileReceipt: (_, {required quantity, required alreadyIncluded}) async => null,
     ));
-    await tester.ensureVisible(find.text('Reconcile my refill'));
+    await reveal(tester, find.text('Reconcile my refill'));
     await tester.tap(find.text('Reconcile my refill'));
     await tester.pumpAndSettle();
     expect(find.textContaining('Save a current supply count'), findsOneWidget);
@@ -220,7 +229,7 @@ void main() {
       ),
     ));
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('I was told it is ready'));
+    await reveal(tester, find.text('I was told it is ready'));
     expect(find.text('12 at last count'), findsOneWidget);
     expect(find.text('You reported contacting your pharmacy.'), findsOneWidget);
     expect(find.text('I was told it is ready'), findsOneWidget);

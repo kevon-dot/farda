@@ -87,15 +87,23 @@ class FardaTodayRoutineCard extends StatelessWidget {
                     ),
                   ),
                 ),
-                FardaCompanion(
-                  size: 112,
-                  mood: switch (status) {
-                    TodayDoseStatus.confirmed => FardaCompanionMood.confirmed,
-                    TodayDoseStatus.skipped => FardaCompanionMood.skipped,
-                    TodayDoseStatus.pending when isSnoozed =>
-                      FardaCompanionMood.snoozed,
-                    TodayDoseStatus.pending => FardaCompanionMood.waving,
-                  },
+                Container(
+                  width: 112,
+                  height: 112,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFE9EEF7),
+                    shape: BoxShape.circle,
+                  ),
+                  child: FardaCompanion(
+                    size: 112,
+                    mood: switch (status) {
+                      TodayDoseStatus.confirmed => FardaCompanionMood.confirmed,
+                      TodayDoseStatus.skipped => FardaCompanionMood.skipped,
+                      TodayDoseStatus.pending when isSnoozed =>
+                        FardaCompanionMood.snoozed,
+                      TodayDoseStatus.pending => FardaCompanionMood.waving,
+                    },
+                  ),
                 ),
               ],
             ),
