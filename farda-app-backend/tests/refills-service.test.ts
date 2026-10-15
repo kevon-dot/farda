@@ -63,6 +63,37 @@ describe("manual refill planning and supply reconciliation", () => {
 			}),
 		).rejects.toMatchObject({ status: 409 });
 	});
+	it("rejects an expected revision when no count exists yet", async () => {
+		const f = fixture();
+		await expect(
+			f.service.count("u1", "p1", { ...count, revision: 1 }),
+		).rejects.toMatchObject({ status: 409 });
+		expect(f.rows("inventoryBalance")).toHaveLength(0);
+		expect(f.rows("inventoryEntry")).toHaveLength(0);
+		const created = await f.service.count("u1", "p1", count);
+		expect(created.inventory?.quantity).toBe(6);
+	});
+	it("preserves the count and receipt ledger on another account's refill writes", async () => {
+		const f = fixture();
+		await f.service.count("u1", "p1", count);
+		const { refill } = await f.service.create("u1", {
+			prescriptionId: "p1",
+			kind: "refill",
+		});
+		await expect(f.service.status("u2", refill.id, "received")).rejects.toMatchObject({ status: 404 });
+		await f.service.status("u1", refill.id, "received");
+		await expect(
+			f.service.receipt("u2", refill.id, {
+				quantity: 30,
+				inventoryRevision: 1,
+				alreadyIncluded: false,
+				idempotencyKey: "foreign-receipt-request",
+			}),
+		).rejects.toMatchObject({ status: 404 });
+		expect(f.rows("inventoryBalance")[0].quantity).toBe(6);
+		expect(f.rows("inventoryEntry")).toHaveLength(1);
+		expect(f.rows("refillEvent")).toHaveLength(2);
+	});
 	it("cannot add stock before user reports receipt", async () => {
 		const f = fixture();
 		await f.service.count("u1", "p1", count);

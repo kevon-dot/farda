@@ -24,7 +24,7 @@ The standalone design widgets do not place calls, schedule notifications, contac
 
 ### Integration progress (October 15, 2026)
 
-The authenticated `/consumer/v2/today` and `/consumer/v2/calendar` routes now load the same owned snapshot through `ConsumerApiRepository`. Taken, skipped, and snoozed actions on Today wait for the server before changing the visible status. Empty accounts and failed loads do not fall back to sample medication. Calendar renders the fetched routine and refill-plan events. Correction and routine creation still open the established account experience at `/dashboard`; `/consumer/v2/refills` and `/consumer/v2/you` use its authenticated screens while their Figma presentations await data binding. The standalone Figma widgets still support injected sample state for design tests. No live provider or hardware work is implied by this UI integration.
+The authenticated `/consumer/v2` routes load one owned snapshot through `ConsumerApiRepository`. Today shows each occurrence for the selected day; taken, skipped, and snoozed actions wait for server confirmation, and a selected entry can open the existing correction form. Calendar renders the fetched routine and refill-plan events. Refills shows actual prescriptions, count freshness, and user-reported stages, with a server-backed count edit and a handoff to established authenticated planning/receipt tools. You displays saved routine and reminder preferences and saves supported channel toggles after server confirmation and explicit call consent. Vial, Circle, native-surface and privacy previews remain labeled local demonstrations. Empty accounts and failed loads do not fall back to sample medication. The standalone Figma widgets still support injected sample state for design tests. No live provider or hardware work is implied by this UI integration.
 
 ## Invariants the production services must preserve
 
@@ -43,34 +43,15 @@ The reference implementation for reminder transitions is in `farda-app/lib/consu
 
 ### P0 — data contract and persistence
 
-Create one authenticated, ownership-checked API contract for the mobile app. The current Flutter repositories call legacy `dosetime/`, `mood/`, and `my-prescriptions/` shapes, while the included main API exposes prescription OCR routes such as `/api/prescriptions/ocr/user/:userId/doses`.
+The authenticated consumer API is now present under `farda-app-backend/src/routes/apiRouter.ts`: prescriptions and schedules, bounded dose reads, explicit dose updates and history, reminder preferences/snooze, refill plans, and inventory counts/receipts. The consumer Prisma models now include dose revisions/corrections, reminder preferences/intents, and refill/inventory records. `ConsumerApiRepository` calls this contract; the old dashboard and OCR paths still coexist. The reminder service has an occurrence-scoped durable intent model and a gated worker. Read `farda-app-backend/src/reminders/README.md` for its exact behavior and limits.
 
-The current Prisma `Dose` record only has `scheduledFor`, `takenAt`, `mood`, and `note`. It cannot safely represent consumer-v2 behavior. Add, at minimum:
-
-- Stable routine and occurrence IDs, timezone, scheduled wall-clock time, and schedule revision.
-- Occurrence status (`unconfirmed`, `taken`, `skipped`) without inferring `missed` from missing data.
-- Confirmation source, confirmation ID, actor, timestamp, correction history, and audit entries.
-- Reminder consent/preferences, quiet hours, delivery/call state, snooze state, call-attempt count, and idempotency keys.
-- Refill planning, handoff, user-entered receipt, count reconciliation, and pharmacy-contact state.
-- Vial observations stored separately from user-confirmed routine records.
-- Optional Circle grants with narrow, revocable permissions and an audit trail.
-
-Recommended mobile-facing operations:
-
-- Read routines and occurrences for a bounded date range.
-- Explicitly confirm, skip, correct, or snooze one occurrence with an idempotency key.
-- Read/update reminder preferences and consent.
-- Read/update refill planning and reconciliation state.
-- Read/update device connection status and ingest observations without updating the dose record.
-- Read/create/revoke Circle grants.
-
-Persist the reducer state and its delivery intents atomically, using an outbox or equivalent. Do not let a background worker write `taken` directly.
+Remaining integration: bind every Figma tab to this authenticated source, handle stale/conflicting writes in the UI, and finish any Circle grant/device observation contract before those previews become functional. Keep vial observations separate from user-confirmed dose records. Database migration application and operational rehearsal are release work; the presence of a migration in source does not establish a migrated environment.
 
 ### P0 — security and privacy
 
 - Require authentication and resource ownership for every prescription, routine, occurrence, refill, Circle, and device operation.
-- Redact authorization headers, medication data, phone numbers, and response bodies from `farda-app/lib/utilities/api_service.dart` logging before connecting the new UI.
-- Validate Twilio webhook signatures and authorize any private phone check-in before accepting a confirmation.
+- Preserve the existing redacted `ApiService` and consumer repository logging boundaries as new screens are connected.
+- Preserve signed Twilio webhook validation and the current call behavior: it never changes a dose to `taken`. Any future private phone confirmation needs a separately reviewed authentication and explicit confirmation flow.
 - Encrypt sensitive data at rest and define retention/deletion rules for reminder delivery and call metadata.
 - Resolve the existing security findings in `reviews/` before production or clinical use.
 
@@ -78,35 +59,27 @@ Persist the reducer state and its delivery intents atomically, using an outbox o
 
 Replace each screen's sample/local state with repositories and a shared occurrence controller while keeping presentation callbacks explicit.
 
-- Hydrate Today and Calendar from the same occurrence records.
+- Keep all four tabs hydrated from the same authenticated account snapshot and expand the remaining local previews only behind supported account APIs.
 - Map loading, empty, offline, stale, conflict, and retry states.
 - Use optimistic UI only where a failed write can be rolled back safely.
 - Apply timezone and daylight-saving changes to future delivery without rewriting past occurrences.
 - Wire Routine label review to the existing prescription flow without treating OCR output as approved instructions.
 - Connect the Vial screen to the existing BLE setup/calibration flow; keep movement observational.
-- Persist You preferences and Circle grants only after authenticated APIs exist.
+- Extend You preferences and Circle grants only through authenticated APIs with explicit consent; the current reminder toggles are persisted, while Circle is still a preview.
 
 ### P1 — notifications and scheduling
 
-Implement a timezone-aware scheduler for heads-up, due, snooze, and cancellation events. It must restore schedules after reboot/app update, handle permission denial, and use occurrence-scoped identifiers so confirmation cancels exactly the intended notifications.
+The server reminder service models the heads-up, due, delayed call, snooze, and cancellation intent. Complete and validate native notification scheduling/delivery, reboot/app update restoration, permission denial, and occurrence-scoped cancellation on devices.
 
 The app needs production copy and behavior for notification permission, denied state, OS settings, timezone changes, stale content, and notification tap routing.
 
 ### P1 — Twilio reminder calls
 
-The repository currently uses Twilio Verify for sign-in; reminder calls are a separate feature and consent surface.
-
-- Store versioned call consent independently of phone verification.
-- Queue one optional call only when the occurrence is still unconfirmed at the configured delay and outside quiet hours.
-- Cancel queued delivery on confirmation, snooze, opt-out, or routine cancellation.
-- Make job delivery and status webhooks idempotent.
-- Answering or completing the call must leave the occurrence unconfirmed.
-- If private phone confirmation is retained, require a reviewed authentication method and a final explicit confirmation step.
-- Implement opt-out, error, carrier, retry, and compliance handling with legal review.
+Versioned call consent, verified-number and quiet-hours gates, one-attempt limits, signed callbacks, and cancellation are implemented behind disabled-by-default server configuration. Answering a call leaves the dose unconfirmed. Remaining work is provider configuration and real carrier validation, operational monitoring, consent/compliance review, and any separately authenticated phone confirmation flow if retained. See `farda-app-backend/src/reminders/README.md` before enabling the worker or calls.
 
 ### P1 — iOS Live Activities
 
-Add an ActivityKit/WidgetKit extension, entitlements, App Group if required, push-token registration, server start/update/end support, and lifecycle handling. Map the existing preview states to `before`, `due`, `snoozed`, `stale`, `confirmed`, and `off`.
+The repository has an ActivityKit extension and a foreground Flutter bridge with unsigned simulator CI coverage. Finish APNs/background token registration and server delivery, entitlements/signing validation, and real-device lifecycle handling. Map the preview states to `before`, `due`, `snoozed`, `stale`, `confirmed`, and `off` only when delivery is supported.
 
 Use privacy-safe Lock Screen content by default. Expiration, denied permission, device restart, late pushes, and explicit confirmation must end or update the correct activity. The Flutter preview is visual reference only.
 
@@ -119,7 +92,7 @@ Use privacy-safe Lock Screen content by default. Expiration, denied permission, 
 
 ## Verification and release gates
 
-The app pins Flutter `3.41.3` in `.fvmrc`. In a Flutter-capable environment, run:
+The app pins Flutter `3.47.7` in `.fvmrc`, matching both mobile CI jobs. In a Flutter-capable environment, run:
 
 ```bash
 cd farda-app

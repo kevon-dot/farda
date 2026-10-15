@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:farda/features/consumer/consumer_controller.dart';
+import 'package:farda/features/consumer/data/consumer_models.dart';
 
 import 'you_models.dart';
 import 'you_pages.dart';
@@ -9,10 +11,8 @@ export 'you_models.dart' show FardaYouDestination, FardaYouKeys;
 /// Consumer-v2 profile, settings, and preview experience from the Farda Figma
 /// handoff (profile node 2:18 and its connected screens).
 ///
-/// All state in this feature is intentionally local. It does not place calls,
-/// schedule notifications, connect to hardware, send invitations, persist
-/// health information, or write a dose record. The app shell can replace these
-/// previews with real routes and approved services in a later integration.
+/// Pass [controller] for authenticated routine and reminder preferences. The
+/// vial, Circle, OS surfaces, privacy, and call delay remain local previews.
 class FardaYouScreen extends StatefulWidget {
   const FardaYouScreen({
     super.key,
@@ -21,6 +21,8 @@ class FardaYouScreen extends StatefulWidget {
     this.showBrandHeader = true,
     this.bottomNavigationBar,
     this.onNativePreviewChanged,
+    this.controller,
+    this.onOpenAccount,
   });
 
   final FardaYouDestination initialDestination;
@@ -34,12 +36,21 @@ class FardaYouScreen extends StatefulWidget {
   /// Lets a parent shell hide its navigation while an OS-surface preview is
   /// being demonstrated.
   final ValueChanged<bool>? onNativePreviewChanged;
+  final ConsumerController? controller;
+  final VoidCallback? onOpenAccount;
 
   @override
   State<FardaYouScreen> createState() => _FardaYouScreenState();
 }
 
 class _FardaYouScreenState extends State<FardaYouScreen> {
+  bool get _live => widget.controller != null;
+  ConsumerSnapshot? get _snapshot => widget.controller?.snapshot;
+  ConsumerPrescription? get _primaryPrescription =>
+      _snapshot?.prescriptions.isNotEmpty == true
+          ? _snapshot!.prescriptions.first
+          : null;
+
   late FardaYouDestination _destination;
   final List<FardaYouDestination> _history = [];
 
@@ -70,6 +81,7 @@ class _FardaYouScreenState extends State<FardaYouScreen> {
   @override
   void initState() {
     super.initState();
+    widget.controller?.addListener(_refreshFromController);
     _destination = widget.initialDestination;
     if (_destination == FardaYouDestination.liveActivity && !_liveActivities) {
       _liveState = FardaLivePreviewState.off;
@@ -80,6 +92,10 @@ class _FardaYouScreenState extends State<FardaYouScreen> {
   @override
   void didUpdateWidget(covariant FardaYouScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      oldWidget.controller?.removeListener(_refreshFromController);
+      widget.controller?.addListener(_refreshFromController);
+    }
     if (widget.initialDestination != oldWidget.initialDestination) {
       setState(() {
         _history.clear();
@@ -89,6 +105,16 @@ class _FardaYouScreenState extends State<FardaYouScreen> {
     }
   }
 
+  void _refreshFromController() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    widget.controller?.removeListener(_refreshFromController);
+    super.dispose();
+  }
+
   String get _formattedReminderTime {
     final hour = _reminderTime.hourOfPeriod == 0
         ? 12
@@ -96,6 +122,48 @@ class _FardaYouScreenState extends State<FardaYouScreen> {
     final minute = _reminderTime.minute.toString().padLeft(2, '0');
     final period = _reminderTime.period == DayPeriod.am ? 'AM' : 'PM';
     return '$hour:$minute $period';
+  }
+
+  String _displayTime(String value) {
+    final parts = value.split(':');
+    if (parts.length != 2) return value;
+    final hour = int.tryParse(parts[0]);
+    final minute = int.tryParse(parts[1]);
+    if (hour == null || minute == null || hour > 23 || minute > 59) {
+      return value;
+    }
+    return TimeOfDay(hour: hour, minute: minute).format(context);
+  }
+
+  bool get _preferencesAvailable => _snapshot != null &&
+      !_snapshot!.warnings.any((w) => w.startsWith('Reminder preferences are unavailable'));
+
+  Future<void> _savePreferences(ConsumerReminderPreferences next,
+      {bool callConsent = false}) async {
+    final controller = widget.controller!;
+    final error = await controller.mutate(() => controller.repository
+        .saveReminderPreferences(next, callConsent: callConsent));
+    if (!mounted) return;
+    _showMessage(error ?? 'Reminder preferences saved to your account.');
+  }
+
+  Future<void> _setLiveActivities(bool enabled) async {
+    if (!_live) {
+      setState(() {
+        _liveActivities = enabled;
+        _liveState = enabled ? FardaLivePreviewState.due : FardaLivePreviewState.off;
+      });
+      _showMessage(enabled
+          ? 'Live Activities enabled in this preview only.'
+          : 'Live Activities turned off in this preview.');
+      return;
+    }
+    if (enabled && _snapshot?.capabilities.liveActivityDeliveryEnabled != true) {
+      _showMessage('Live Activity delivery is unavailable for this account.');
+      return;
+    }
+    await _savePreferences(_snapshot!.preferences.copyWith(
+        liveActivitiesEnabled: enabled));
   }
 
   bool _isNative(FardaYouDestination destination) =>
@@ -170,11 +238,11 @@ class _FardaYouScreenState extends State<FardaYouScreen> {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: FardaYouPalette.ivory,
-        title: const Text('Privacy in this preview'),
+        title: const Text('Privacy of these previews'),
         content: Text(
-          'Medication names stay hidden on the sample Lock Screen by default. '
-          'The controls here live only in memory: closing this screen resets '
-          'them, and nothing is uploaded or shared.',
+          'Lock Screen privacy and the companion setting on this page live only '
+          'in memory. Reminder preferences are saved to your account when '
+          'confirmed. Previewing Circle, vial, or a call shares nothing.',
           style: fardaYouText(
             size: 14,
             height: 20,
@@ -192,6 +260,14 @@ class _FardaYouScreenState extends State<FardaYouScreen> {
   }
 
   Future<void> _editRoutine() async {
+    if (_live) {
+      if (widget.onOpenAccount != null) {
+        widget.onOpenAccount!();
+      } else {
+        _showMessage('Open account settings to edit your routine.');
+      }
+      return;
+    }
     final nameController = TextEditingController(text: _medicationName);
     var selectedTime = _reminderTime;
     final result = await showDialog<_RoutineEditResult>(
@@ -278,6 +354,14 @@ class _FardaYouScreenState extends State<FardaYouScreen> {
   }
 
   Future<void> _reviewLabel() async {
+    if (_live) {
+      if (widget.onOpenAccount != null) {
+        widget.onOpenAccount!();
+      } else {
+        _showMessage('Open account settings to review your prescription label.');
+      }
+      return;
+    }
     var checked = false;
     final confirmed = await showDialog<bool>(
       context: context,
@@ -330,6 +414,38 @@ class _FardaYouScreenState extends State<FardaYouScreen> {
   }
 
   Future<void> _changeCallReminders(bool enabled) async {
+    if (_live) {
+      final snapshot = _snapshot;
+      if (snapshot == null || !_preferencesAvailable) return;
+      if (enabled) {
+        if (!snapshot.capabilities.voiceEnabled ||
+            !snapshot.capabilities.phoneVerified ||
+            snapshot.callConsentText == null) {
+          _showMessage('Verify your phone and review call consent in account settings first.');
+          widget.onOpenAccount?.call();
+          return;
+        }
+        final consent = await showDialog<bool>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: const Text('Enable reminder calls?'),
+            content: Text(snapshot.callConsentText!),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(dialogContext, false),
+                  child: const Text('Cancel')),
+              FilledButton(onPressed: () => Navigator.pop(dialogContext, true),
+                  child: const Text('I agree to reminder calls')),
+            ],
+          ),
+        );
+        if (!mounted || consent != true) return;
+        await _savePreferences(snapshot.preferences.copyWith(callsEnabled: true),
+            callConsent: true);
+      } else {
+        await _savePreferences(snapshot.preferences.copyWith(callsEnabled: false));
+      }
+      return;
+    }
     if (!enabled) {
       final disable = await showDialog<bool>(
         context: context,
@@ -605,7 +721,7 @@ class _FardaYouScreenState extends State<FardaYouScreen> {
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
-                      '$_medicationName\n$_formattedReminderTime · Today',
+                      '${_live ? 'Sample medication' : _medicationName}\n${_live ? '9:00 AM' : _formattedReminderTime} · Sample day',
                       style: fardaYouText(size: 13, height: 19),
                     ),
                   ),
@@ -653,7 +769,9 @@ class _FardaYouScreenState extends State<FardaYouScreen> {
         backgroundColor: FardaYouPalette.ivory,
         title: const Text('Stop call reminders?'),
         content: Text(
-          'This turns off the local preference and ends the current simulation. No real subscription or scheduled call exists.',
+          _live
+              ? 'This ends only the sample call. Change your account call preference on the reminders page.'
+              : 'This turns off the local preference and ends the current simulation. No real subscription or scheduled call exists.',
           style: fardaYouText(
             size: 14,
             height: 20,
@@ -678,19 +796,30 @@ class _FardaYouScreenState extends State<FardaYouScreen> {
       _callReminders = false;
       _callStage = FardaCallPreviewStage.ended;
     });
-    _showMessage('Call reminders are off in this preview.');
+    _showMessage(_live
+        ? 'Sample call ended. Your account preference did not change.'
+        : 'Call reminders are off in this preview.');
   }
 
   @override
   Widget build(BuildContext context) {
     final reduceMotion = MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    final prescription = _primaryPrescription;
+    final preferences = _snapshot?.preferences;
+    final reminderTime = prescription?.times.isNotEmpty == true
+        ? _displayTime(prescription!.times.first)
+        : 'No reminder time';
+    final quietHours = preferences == null
+        ? 'Unavailable'
+        : '${_displayTime(preferences.quietHoursStart)} – ${_displayTime(preferences.quietHoursEnd)}';
     final page = switch (_destination) {
       FardaYouDestination.overview => FardaYouOverviewPage(
           key: const ValueKey(FardaYouDestination.overview),
-          profileLabel: widget.profileLabel,
+          profileLabel: _live ? 'ME' : widget.profileLabel,
           showBrandHeader: widget.showBrandHeader,
           showCompanion: _showCompanion,
           privatePreviews: _privatePreviews,
+          liveRecords: _live,
           onDestinationSelected: _open,
           onCompanionChanged: (value) =>
               setState(() => _showCompanion = value),
@@ -700,12 +829,19 @@ class _FardaYouScreenState extends State<FardaYouScreen> {
         ),
       FardaYouDestination.routine => FardaRoutinePage(
           key: const ValueKey(FardaYouDestination.routine),
-          profileLabel: widget.profileLabel,
+          profileLabel: _live ? 'ME' : widget.profileLabel,
           showBrandHeader: widget.showBrandHeader,
           showCompanion: _showCompanion,
-          medicationName: _medicationName,
-          reminderTime: _formattedReminderTime,
-          labelReviewed: _labelReviewed,
+          medicationName: _live ? prescription?.name ?? 'No routine yet' : _medicationName,
+          reminderTime: _live ? reminderTime : _formattedReminderTime,
+          labelReviewed: _live ? prescription?.labelReviewed ?? false : _labelReviewed,
+          liveRecords: _live,
+          hasRoutine: prescription != null,
+          additionalRoutineCount: _live && (_snapshot?.prescriptions.length ?? 0) > 1
+              ? _snapshot!.prescriptions.length - 1 : 0,
+          timeZoneLabel: _live ? prescription?.timeZone ?? 'your account timezone' : 'Los Angeles time',
+          scheduleLabel: _live ? 'Saved routine' : 'Morning routine',
+          directions: prescription?.directions,
           onBack: _back,
           onEditRoutine: _editRoutine,
           onReviewLabel: _reviewLabel,
@@ -713,28 +849,24 @@ class _FardaYouScreenState extends State<FardaYouScreen> {
         ),
       FardaYouDestination.reminders => FardaReminderPreferencesPage(
           key: const ValueKey(FardaYouDestination.reminders),
-          profileLabel: widget.profileLabel,
+          profileLabel: _live ? 'ME' : widget.profileLabel,
           showBrandHeader: widget.showBrandHeader,
           showCompanion: _showCompanion,
-          callReminders: _callReminders,
-          liveActivities: _liveActivities,
+          callReminders: _live ? preferences?.callsEnabled ?? false : _callReminders,
+          liveActivities: _live ? preferences?.liveActivitiesEnabled ?? false : _liveActivities,
           privatePreviews: _privatePreviews,
           callDelayMinutes: _callDelayMinutes,
+          liveRecords: _live,
+          preferencesAvailable: !_live || _preferencesAvailable,
+          saving: widget.controller?.saving ?? false,
+          canEnableCalls: _snapshot?.capabilities.voiceEnabled == true &&
+              _snapshot?.capabilities.phoneVerified == true &&
+              _snapshot?.callConsentText != null,
+          canEnableLiveActivities: _snapshot?.capabilities.liveActivityDeliveryEnabled == true,
+          quietHoursLabel: _live ? quietHours : '9:00 PM – 8:00 AM',
           onBack: _back,
           onCallRemindersChanged: _changeCallReminders,
-          onLiveActivitiesChanged: (value) {
-            setState(() {
-              _liveActivities = value;
-              _liveState = value
-                  ? FardaLivePreviewState.due
-                  : FardaLivePreviewState.off;
-            });
-            _showMessage(
-              value
-                  ? 'Live Activities enabled in this preview only.'
-                  : 'Live Activities turned off in this preview.',
-            );
-          },
+          onLiveActivitiesChanged: _setLiveActivities,
           onPrivatePreviewsChanged: (value) =>
               setState(() => _privatePreviews = value),
           onEditDelay: _editCallDelay,
@@ -744,7 +876,7 @@ class _FardaYouScreenState extends State<FardaYouScreen> {
         ),
       FardaYouDestination.vial => FardaVialPage(
           key: const ValueKey(FardaYouDestination.vial),
-          profileLabel: widget.profileLabel,
+          profileLabel: _live ? 'ME' : widget.profileLabel,
           showBrandHeader: widget.showBrandHeader,
           setupStep: _vialSetupStep,
           onBack: _back,
@@ -762,7 +894,7 @@ class _FardaYouScreenState extends State<FardaYouScreen> {
         ),
       FardaYouDestination.circle => FardaCirclePage(
           key: const ValueKey(FardaYouDestination.circle),
-          profileLabel: widget.profileLabel,
+          profileLabel: _live ? 'ME' : widget.profileLabel,
           showBrandHeader: widget.showBrandHeader,
           showCompanion: _showCompanion,
           connected: _circleConnected,
@@ -787,7 +919,7 @@ class _FardaYouScreenState extends State<FardaYouScreen> {
           privatePreviews: _privatePreviews,
           expandedIsland: _expandedIsland,
           callDelayMinutes: _callDelayMinutes,
-          medicationName: _medicationName,
+          medicationName: _live ? 'Sample medication' : _medicationName,
           onBack: _back,
           onStateChanged: (state) {
             setState(() {
@@ -807,7 +939,7 @@ class _FardaYouScreenState extends State<FardaYouScreen> {
           key: const ValueKey(FardaYouDestination.callPreview),
           stage: _callStage,
           callDelayMinutes: _callDelayMinutes,
-          callRemindersEnabled: _callReminders,
+          callRemindersEnabled: _live ? preferences?.callsEnabled ?? false : _callReminders,
           entryConfirmed: _callEntryConfirmed,
           onBack: _back,
           onAnswer: () =>

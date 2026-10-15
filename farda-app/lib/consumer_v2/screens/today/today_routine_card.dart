@@ -252,9 +252,11 @@ class _RoutineCopy {
       );
     }
     if (isSnoozed) {
-      return const _RoutineCopy(
+      return _RoutineCopy(
         headline: 'A little\nbreathing room.',
-        support: 'We’ll remind you again in\n15 minutes. No plan changes.',
+        support: neutralCopy
+            ? 'Reminder snoozed. No dose was logged.'
+            : 'We’ll remind you again in\n15 minutes. No plan changes.',
         statusLine: 'Reminder snoozed · Not yet confirmed',
       );
     }

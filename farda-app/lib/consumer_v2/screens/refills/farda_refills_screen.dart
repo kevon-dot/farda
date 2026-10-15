@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:farda/features/consumer/data/consumer_models.dart';
 
 import 'refill_station_screen.dart';
 import 'refill_station_state.dart';
+import 'live_refills_screen.dart';
 
 export 'refill_station_screen.dart'
     show PharmacyContactCallback, RefillStationKeys;
@@ -21,6 +23,9 @@ class FardaRefillsScreen extends StatelessWidget {
     this.onStateChanged,
     this.onOpenPharmacyContact,
     this.onReviewVial,
+    this.snapshot,
+    this.onUpdateInventory,
+    this.onOpenRefillTools,
   }) : assert(controller == null || initialState == null);
 
   final RefillStationController? controller;
@@ -28,9 +33,21 @@ class FardaRefillsScreen extends StatelessWidget {
   final ValueChanged<RefillStationState>? onStateChanged;
   final PharmacyContactCallback? onOpenPharmacyContact;
   final VoidCallback? onReviewVial;
+  /// Non-null on the authenticated route. A null snapshot preserves the
+  /// isolated design preview, which intentionally uses local sample state.
+  final ConsumerSnapshot? snapshot;
+  final Future<String?> Function(String prescriptionId, int quantity)? onUpdateInventory;
+  final VoidCallback? onOpenRefillTools;
 
   @override
   Widget build(BuildContext context) {
+    if (snapshot != null) {
+      return LiveRefillsScreen(
+        snapshot: snapshot!,
+        onUpdateInventory: onUpdateInventory,
+        onOpenRefillTools: onOpenRefillTools,
+      );
+    }
     return RefillStationScreen(
       controller: controller,
       initialState: initialState,

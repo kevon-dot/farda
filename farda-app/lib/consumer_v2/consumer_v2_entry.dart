@@ -8,7 +8,7 @@ import 'package:go_router/go_router.dart';
 
 import 'farda_consumer_shell.dart';
 
-/// Authenticated entry for the Figma Today and Calendar screens. Preview
+/// Authenticated entry for the four Figma consumer screens. Preview
 /// widgets remain injectable in isolation, but this route never uses fixtures.
 class ConsumerV2Entry extends StatefulWidget {
   const ConsumerV2Entry({
@@ -17,12 +17,14 @@ class ConsumerV2Entry extends StatefulWidget {
     this.repository,
     this.onTabSelected,
     this.onOpenAccount,
+    this.onOpenRefillTools,
   });
 
   final int initialIndex;
   final ConsumerRepository? repository;
   final ValueChanged<int>? onTabSelected;
   final VoidCallback? onOpenAccount;
+  final VoidCallback? onOpenRefillTools;
 
   @override
   State<ConsumerV2Entry> createState() => _ConsumerV2EntryState();
@@ -112,6 +114,7 @@ class _ConsumerV2EntryState extends State<ConsumerV2Entry>
               controller: controller,
               onTabSelected: widget.onTabSelected,
               onOpenAccount: widget.onOpenAccount,
+              onOpenRefillTools: widget.onOpenRefillTools,
             ),
           ),
         ],
