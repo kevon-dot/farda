@@ -4,7 +4,7 @@ Open **farda-navy-mock.html** in a modern browser. It embeds fonts, images, scri
 
 Nine views: Today, Calendar, Refills, You, Routine, Vial, Phone reminders, Live Activities and Circle. Deep navy, the original Outfit/wordmark direction, three character poses and interactive calendar navigation.
 
-The [Figma handoff](FIGMA_HANDOFF.md) provides 17 editable Figma screens, prototype links, the screen/node map, verification evidence, and a [Flutter component example](flutter/README.md).
+The [Figma handoff](FIGMA_HANDOFF.md) provides 17 editable Figma screens, prototype links, the screen/node map, and verification evidence. The production Flutter port is under `../../farda-app/lib/consumer_v2/`; the [frontend handoff](FRONTEND_HANDOFF.md) records what is complete and what backend/native work remains.
 
 ## Try it
 
@@ -38,4 +38,4 @@ The cadence timeline advances preview states, not real time. Call opt-in and PIN
 
 Stock is manually reconciled; dose logs do not decrement it. Label review saves a demo draft, not a new active prescription. Setup and sharing are simulated.
 
-27 tests, syntax and embedding checks pass. Browser/native visual QA and complete accessibility testing remain outstanding because the supported preview environment is unavailable. The separate Figma screens were visually reviewed and their MCP code readback was verified. This is a design handoff; production app routes and services are not replaced.
+27 tests, syntax and embedding checks pass. Browser/native visual QA and complete accessibility testing remain outstanding because the supported preview environment is unavailable. The separate Figma screens were visually reviewed and their design-context readback was verified. The consumer-v2 shell is available at `/consumer/v2`; the API-backed flow remains at `/dashboard` until its services are bound to the new presentation layer. Real calls, notifications, pharmacy integrations, and real hardware validation remain outside this frontend pass.

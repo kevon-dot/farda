@@ -1,47 +1,26 @@
-import 'package:farda/components/_components.dart';
-import 'package:farda/screens/dashboard/calendar/screen_calendar.dart';
-import 'package:farda/screens/dashboard/home/screen_home.dart';
-import 'package:farda/screens/dashboard/more/screen_more.dart';
-import 'package:farda/screens/dashboard/plan/screen_plan.dart';
+import 'package:farda/consumer_v2/farda_consumer_shell.dart';
 import 'package:flutter/material.dart';
 
+/// Compatibility wrapper retained for the existing authentication flow.
+///
+/// Login and onboarding already navigate to `/dashboard`; the new consumer
+/// shell is mounted here so those flows do not need to change at the same time
+/// as the dashboard redesign.
+class ScreenDashboardShell extends StatelessWidget {
+  final int initialIndex;
+  final ValueChanged<int>? onTabSelected;
 
-class ScreenDashboardShell extends StatefulWidget {
-  final Widget? child;
-  const ScreenDashboardShell({super.key, this.child});
-
-  @override
-  State<ScreenDashboardShell> createState() => _ScreenDashboardShellState();
-}
-
-class _ScreenDashboardShellState extends State<ScreenDashboardShell> {
-  int currentIndex = 0;
-  bool isReverse = false;
-  void changeIndex(int index) {
-    if (index > currentIndex) {
-      isReverse = false;
-    } else {
-      isReverse = true;
-    }
-    currentIndex = index;
-    setState(() {});
-  }
-
-  final List<Widget> children = [
-    ScreenHome(),
-    ScreenPlanHope(),
-    ScreenCalendar(),
-    ScreenMore(),
-  ];
+  const ScreenDashboardShell({
+    super.key,
+    this.initialIndex = 0,
+    this.onTabSelected,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: widget.child ?? children[currentIndex],
-      bottomNavigationBar: BottomNavBar(
-        onSelect: changeIndex,
-        index: currentIndex,
-      ),
+    return FardaConsumerShell(
+      initialIndex: initialIndex,
+      onTabSelected: onTabSelected,
     );
   }
 }
