@@ -1,13 +1,13 @@
 # Farda production release handoff
 
-Prepared October 15, 2026 from the merged consumer build at `f8d894f66b8d631307bc08996cbf488f38da54f9`. This is a release procedure and evidence ledger, not a record of a production deployment.
+Updated October 15, 2026 against the repository default branch at `826c864cff9eb8ee969258b8a8d9025b607dabd8`. This is a release procedure and evidence ledger, not a record of a production deployment.
 
 ## Current evidence
 
-- PRs [#104](https://github.com/kevon-dot/farda/pull/104) and [#105](https://github.com/kevon-dot/farda/pull/105) are merged into the repository default branch, `claude/enterprise-code-review-s359w1`. `main` remains at `24cb6f2a5cfdd24151903fdd128467088f3bde63` and has **not** received those merges. Confirm which branch is the actual release source before promotion.
-- [CI run 38781476758](https://github.com/kevon-dot/farda/actions/runs/38781476758) passed after an Android job retry. It uses disposable PostgreSQL and MongoDB, a debug demo APK, and an unsigned iOS simulator build. It does not prove deployment or signed device builds.
-- There is no release workflow in `.github/workflows/ci.yml` and no GitHub release for this commit. No production URL, host, database instance, signing team, or store account is recorded in this repository.
-- The user-facing API-backed path is `/dashboard`; the Figma-matched implementation is at `/consumer/v2`. The latter contains local preview behavior. The authenticated consumer implementation is in `farda-app/lib/features/consumer/`. Review which path is intended for a pilot before publishing a build.
+- PRs [#104](https://github.com/kevon-dot/farda/pull/104), [#105](https://github.com/kevon-dot/farda/pull/105), [#107](https://github.com/kevon-dot/farda/pull/107), and [#108](https://github.com/kevon-dot/farda/pull/108) are merged into the repository default branch, `claude/enterprise-code-review-s359w1`. [#109](https://github.com/kevon-dot/farda/pull/109) is an open draft UI and account-flow update; its CI is still being resolved and it is not part of the default branch. `main` has not received these consumer merges. Confirm the intended release source before promotion.
+- [Postmerge CI run 38798283976](https://github.com/kevon-dot/farda/actions/runs/38798283976) passed all five jobs for #108. It uses disposable PostgreSQL and MongoDB, a debug review APK, and an unsigned iOS simulator build. It does not prove deployment or signed device builds. Recheck exact-head and postmerge CI for subsequent PRs before selecting a release commit.
+- There is no release workflow in `.github/workflows/ci.yml` and no GitHub release for this consumer build. No production URL, host, database instance, signing team, or store account is recorded in this repository.
+- The default branch's Figma-matched `/consumer/v2` four-tab experience reads authenticated Today, Calendar, Refills, and You data. `/dashboard` still exposes established account tools. #109 proposes routing saved sessions and OTP completion to `/consumer/v2/today` and adding direct refill and quiet-hours controls there; validate the final merged route and all account flows on a signed device before a pilot. Native Circle and some previews remain outside authenticated release scope.
 
 ## Release decisions and evidence to record
 
