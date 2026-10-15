@@ -4,7 +4,7 @@ import { ConsumerError, DosePatch, PrescriptionInput, PrescriptionPatch, Schedul
 import type { Prisma } from '../../generated/prisma/client';
 import type { Request, Response } from 'express';
 import { z } from 'zod';
-import { cancelOccurrenceReminders } from '../reminders/service';
+import { cancelOccurrenceReminders, serial } from '../reminders/service';
 
 export function authenticatedUser(req: Request) {
   if (!req.user?.id) throw new ConsumerError(401, 'unauthorized', 'Sign in to continue');
@@ -121,12 +121,12 @@ export const changeSchedule = async (req: Request, res: Response) => {
   try {
     const userId = authenticatedUser(req);
     const input = ScheduleInput.parse(req.body);
-    const data = await prisma.$transaction(async tx => {
+    const data = await serial(prisma, async tx => {
       const owned = await tx.prescription.findFirst({ where: { id: String(req.params.id), userId, archivedAt: null } });
       if (!owned) throw new ConsumerError(404, 'not_found', 'Record not found');
       if (!owned.labelReviewedAt || !owned.dosageInstructions) throw new ConsumerError(422, 'label_review_required', 'Review your prescription label before activating reminders');
       return addSchedule(tx, userId, owned.id, input, new Date());
-    }, { isolationLevel: 'Serializable' });
+    });
     return res.status(201).json({ data });
   } catch (error) { return sendConsumerError(res, error); }
 };
