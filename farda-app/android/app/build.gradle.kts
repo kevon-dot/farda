@@ -5,6 +5,30 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+val releaseRequested = gradle.startParameter.taskNames.any {
+    it.contains("Release", ignoreCase = true)
+}
+val releaseApplicationId = System.getenv("FARDA_ANDROID_APPLICATION_ID")
+val releaseStorePath = System.getenv("FARDA_ANDROID_KEYSTORE_PATH")
+val releaseStorePassword = System.getenv("FARDA_ANDROID_KEYSTORE_PASSWORD")
+val releaseKeyAlias = System.getenv("FARDA_ANDROID_KEY_ALIAS")
+val releaseKeyPassword = System.getenv("FARDA_ANDROID_KEY_PASSWORD")
+val releaseSigningConfigured = listOf(
+    releaseStorePath,
+    releaseStorePassword,
+    releaseKeyAlias,
+    releaseKeyPassword,
+).all { !it.isNullOrBlank() }
+
+if (releaseRequested) {
+    if (releaseApplicationId.isNullOrBlank() || releaseApplicationId == "com.example.farda") {
+        throw GradleException("Set FARDA_ANDROID_APPLICATION_ID to the approved production application ID before building a release.")
+    }
+    if (!releaseSigningConfigured || !file(releaseStorePath!!).isFile) {
+        throw GradleException("Set a readable FARDA_ANDROID_KEYSTORE_PATH and all FARDA_ANDROID_KEY_* signing variables before building a release.")
+    }
+}
+
 android {
     namespace = "com.example.farda"
     compileSdk = flutter.compileSdkVersion
@@ -20,8 +44,7 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.example.farda"
+        applicationId = releaseApplicationId?.takeIf { it.isNotBlank() } ?: "com.example.farda"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
@@ -30,11 +53,20 @@ android {
         versionName = flutter.versionName
     }
 
+    if (releaseSigningConfigured) {
+        signingConfigs.create("release") {
+            storeFile = file(releaseStorePath!!)
+            storePassword = releaseStorePassword
+            keyAlias = releaseKeyAlias
+            keyPassword = releaseKeyPassword
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            if (releaseSigningConfigured) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 }

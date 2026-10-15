@@ -50,6 +50,9 @@ complete, the behavioral invariants, and the backend/native work that remains.
 The [consumer upgrade plan](reviews/CONSUMER_UPGRADE_PLAN.md) maps every baseline
 gap to the intended behavior. The [build handoff](reviews/OVERNIGHT_BUILD_HANDOFF.md)
 maps those improvements to code, review commands, tests, and release gates.
+For production preparation, use the [release handoff](reviews/PRODUCTION_RELEASE_HANDOFF.md)
+to record the target environment, database rehearsal, provider configuration,
+signed builds, device validation, and live deployment evidence.
 
 ## Getting started
 
