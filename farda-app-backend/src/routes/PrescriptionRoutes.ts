@@ -72,13 +72,13 @@ export const createPrescription = async (req: Request, res: Response) => {
     const hash = requestHash;
     if (input.deviceId) throw new ConsumerError(409, 'pairing_required', 'Save your prescription first, then pair your vial through verified setup');
     const now = new Date();
-    const result = await prisma.$transaction(async tx => {
+    const result = await serial(prisma, async tx => {
       const existing = await tx.prescription.findUnique({ where: { userId_clientRequestId: { userId, clientRequestId: input.clientRequestId } }, include: { schedules: { orderBy: { version: 'desc' } } } });
       if (existing) return { record: matchingRequest(existing, hash), created: false };
       const record = await tx.prescription.create({ data: { ...recordFields(input), medicationName: input.medicationName, userId, clientRequestId: input.clientRequestId, requestHash: hash } });
       if (input.schedule) await addSchedule(tx, userId, record.id, input.schedule, now);
       return { record: await tx.prescription.findUniqueOrThrow({ where: { id: record.id }, include: { schedules: { orderBy: { version: 'desc' } } } }), created: true };
-    }, { isolationLevel: 'Serializable' });
+    });
     return res.status(result.created ? 201 : 200).json({ data: publicPrescription(result.record) });
   } catch (error) {
     // A racing identical request may commit while this serializable transaction
@@ -107,12 +107,12 @@ export const updatePrescription = async (req: Request, res: Response) => {
   try {
     const userId = authenticatedUser(req);
     const input = PrescriptionPatch.parse(req.body);
-    const data = await prisma.$transaction(async tx => {
+    const data = await serial(prisma, async tx => {
       const owned = await tx.prescription.findFirst({ where: { id: String(req.params.id), userId, archivedAt: null } });
       if (!owned) throw new ConsumerError(404, 'not_found', 'Record not found');
       if (input.dosageInstructions === null || input.dosageInstructions === '') throw new ConsumerError(422, 'directions_required', 'Keep the reviewed directions; edit reminders separately');
       return tx.prescription.update({ where: { id: owned.id }, data: recordFields(input) });
-    }, { isolationLevel: 'Serializable' });
+    });
     return res.json({ data: publicPrescription(data) });
   } catch (error) { return sendConsumerError(res, error); }
 };
@@ -135,7 +135,7 @@ export const archivePrescription = async (req: Request, res: Response) => {
   try {
     const userId = authenticatedUser(req);
     const now = new Date();
-    await prisma.$transaction(async tx => {
+    await serial(prisma, async tx => {
       const owned = await tx.prescription.findFirst({ where: { id: String(req.params.id), userId } });
       if (!owned) throw new ConsumerError(404, 'not_found', 'Record not found');
       await tx.prescription.update({ where: { id: owned.id }, data: { archivedAt: now } });
@@ -143,7 +143,7 @@ export const archivePrescription = async (req: Request, res: Response) => {
       const cancelled = await tx.dose.findMany({ where: { userId, prescriptionId: owned.id, status: 'unconfirmed', scheduledFor: { gte: now } }, select: { id: true } });
       await tx.dose.updateMany({ where: { id: { in: cancelled.map(dose => dose.id) }, userId }, data: { status: 'cancelled', canceledAt: now, revision: { increment: 1 } } });
       await cancelOccurrenceReminders(tx, cancelled.map(dose => dose.id), 'prescription_archived');
-    }, { isolationLevel: 'Serializable' });
+    });
     return res.status(204).end();
   } catch (error) { return sendConsumerError(res, error); }
 };
@@ -167,7 +167,7 @@ export const recordDose = async (req: Request, res: Response) => {
     const input = DosePatch.parse(req.body);
     const changes = doseChanges(input, new Date());
     const doseId = String(req.params.id ?? req.params.doseId);
-    const data = await prisma.$transaction(async tx => {
+    const data = await serial(prisma, async tx => {
       const before = await tx.dose.findFirst({ where: { id: doseId, userId } });
       if (!before) throw new ConsumerError(404, 'not_found', 'Record not found');
       if (input.expectedRevision !== undefined && input.expectedRevision !== before.revision) throw new ConsumerError(409, 'conflict', 'This record changed. Reload it before editing');
@@ -178,7 +178,7 @@ export const recordDose = async (req: Request, res: Response) => {
       const after = await tx.dose.findFirstOrThrow({ where: { id: doseId, userId } });
       await tx.doseCorrection.create({ data: { doseId, actorId: userId, revision: after.revision, before: asJson(before), after: asJson(after), reason: input.reason } });
       return after;
-    }, { isolationLevel: 'Serializable' });
+    });
     return res.json({ data });
   } catch (error) { return sendConsumerError(res, error); }
 };
