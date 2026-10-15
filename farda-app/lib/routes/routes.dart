@@ -1,13 +1,7 @@
-import 'package:farda/screens/_screens.dart';
 import 'package:farda/screens/connect_onboard/screen_setup_vial.dart';
-import 'package:farda/screens/dashboard/calendar/screen_calendar.dart';
 import 'package:farda/screens/dashboard/calibration/screen_calibration.dart';
 import 'package:farda/screens/dashboard/dashboard_shell.dart';
-import 'package:farda/screens/dashboard/home/screen_home.dart';
 import 'package:farda/screens/dashboard/mood_check/screen_mood_checkin.dart';
-import 'package:farda/screens/dashboard/more/screen_more.dart';
-import 'package:farda/screens/dashboard/plan/screen_plan.dart';
-import 'package:farda/screens/emoji/screen_emoji.dart';
 import 'package:farda/screens/login/screen_login.dart';
 import 'package:farda/screens/onboard/screen_onboard.dart';
 import 'package:farda/screens/otp_verify/screen_otp_verify.dart';
@@ -19,8 +13,6 @@ import 'package:go_router/go_router.dart';
 final GlobalKey<NavigatorState> _rootNavigatorKey = GlobalKey<NavigatorState>();
 
 class AppRouter {
- 
-
   static final GoRouter router = GoRouter(
     navigatorKey: _rootNavigatorKey,
     debugLogDiagnostics: true,
@@ -28,7 +20,24 @@ class AppRouter {
     routes: [
       GoRoute(
         path: CustomRoutePaths.dashboard,
-        builder: (context, state) => ScreenDashboardShell(),
+        redirect: (context, state) => CustomRoutePaths.today,
+      ),
+      GoRoute(
+        path: '${CustomRoutePaths.dashboard}/:tab',
+        redirect: (context, state) {
+          final tab = state.pathParameters['tab'];
+          return CustomRoutePaths.consumerTabs.contains(tab)
+              ? null
+              : CustomRoutePaths.today;
+        },
+        builder: (context, state) => ScreenDashboardShell(
+          initialIndex: CustomRoutePaths.consumerTabs.indexOf(
+            state.pathParameters['tab']!,
+          ),
+          onTabSelected: (index) {
+            context.go(CustomRoutePaths.consumerTabPath(index));
+          },
+        ),
       ),
       GoRoute(
         path: CustomRoutePaths.login,
@@ -66,37 +75,21 @@ class AppRouter {
         path: CustomRoutePaths.calibration,
         builder: (context, state) => const ScreenCalibration(),
       ),
-      // Dashboard Shell Route
-      ShellRoute(
-        builder: (context, state, child) {
-          return ScreenDashboardShell(
-            child: state.fullPath == CustomRoutePaths.dashboard ? null : child,
-          );
-        },
-        routes: [
-          GoRoute(
-            path: CustomRoutePaths.home,
-            builder: (context, state) => const ScreenHome(),
-          ),
-          GoRoute(
-            path: CustomRoutePaths.plan,
-            builder: (context, state) => const ScreenPlanHope(),
-          ),
-          GoRoute(
-            path: '/calendar',
-            builder: (context, state) => const ScreenCalendar(),
-            routes: [
-              GoRoute(
-                path: 'emoji',
-                builder: (context, state) => const ScreenEmoji(),
-              ),
-            ],
-          ),
-          GoRoute(
-            path: CustomRoutePaths.more,
-            builder: (context, state) => const ScreenMore(),
-          ),
-        ],
+      GoRoute(
+        path: CustomRoutePaths.legacyHome,
+        redirect: (context, state) => CustomRoutePaths.today,
+      ),
+      GoRoute(
+        path: CustomRoutePaths.legacyPlan,
+        redirect: (context, state) => CustomRoutePaths.refills,
+      ),
+      GoRoute(
+        path: CustomRoutePaths.legacyCalendar,
+        redirect: (context, state) => CustomRoutePaths.calendar,
+      ),
+      GoRoute(
+        path: CustomRoutePaths.legacyMore,
+        redirect: (context, state) => CustomRoutePaths.you,
       ),
     ],
     // redirect: (context, state) async {
@@ -123,8 +116,8 @@ class AppRouter {
 
 class CustomRoutePaths {
   static const String root = '/';
-  static const String screenConnectOnBoard = "/screen-connect-onboard";
-  static const String onboard = "/onboard";
+  static const String screenConnectOnBoard = '/screen-connect-onboard';
+  static const String onboard = '/onboard';
   static const String dashboard = '/dashboard';
   static const String login = '/login';
   static const String otpVerify = '/otp-verify';
@@ -134,11 +127,30 @@ class CustomRoutePaths {
       '/calendar/emoji'; // Remove the '/' for relative path
   static const String mood = '/mood';
   static const String calibration = '/calibration';
-  static const String dashboardto = '/dashboard/calendar';
+  // Consumer-v2 tabs under dashboard.
+  static const String today = '/dashboard/today';
+  static const String calendar = '/dashboard/calendar';
+  static const String refills = '/dashboard/refills';
+  static const String you = '/dashboard/you';
+  static const String dashboardto = calendar;
+  static const List<String> consumerTabs = [
+    'today',
+    'calendar',
+    'refills',
+    'you',
+  ];
 
-  // Tabs under dashboard
-  static const String home = 'home';
-  static const String plan = 'plan';
-  static const String calendar = 'calendar';
-  static const String more = 'more';
+  static String consumerTabPath(int index) {
+    final safeIndex = index.clamp(0, consumerTabs.length - 1).toInt();
+    return '$dashboard/${consumerTabs[safeIndex]}';
+  }
+
+  // Legacy aliases retained while older callers are migrated.
+  static const String home = today;
+  static const String plan = refills;
+  static const String more = you;
+  static const String legacyHome = '/home';
+  static const String legacyPlan = '/plan';
+  static const String legacyCalendar = '/calendar';
+  static const String legacyMore = '/more';
 }

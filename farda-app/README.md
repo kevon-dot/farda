@@ -1,16 +1,31 @@
-# farda
+# Farda Flutter app
 
-A new Flutter project.
+The consumer-v2 navy experience is mounted at `/dashboard` and implemented in `lib/consumer_v2/`.
 
-## Getting Started
+## Main frontend areas
 
-This project is a starting point for a Flutter application.
+- `lib/consumer_v2/farda_consumer_shell.dart` — Today, Calendar, Refills, and You navigation.
+- `lib/consumer_v2/design_system/` — consumer semantic colors, type, spacing, and shared presentation widgets.
+- `lib/consumer_v2/screens/` — the Figma-aligned screen implementations and local preview flows.
+- `lib/consumer_v2/reminders/` — pure-Dart occurrence rules and delivery intents.
+- `test/consumer_v2/` — shell, widget, state, and reminder-domain coverage.
 
-A few resources to get you started if this is your first Flutter project:
+## Run and test
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+The repository pins Flutter 3.41.3 in `.fvmrc`. Environment files are bundled assets and must exist locally:
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+```bash
+cp .env.example .env.development
+cp .env.example .env.staging
+cp .env.example .env.production
+flutter pub get
+flutter run --dart-define=ENV=development
+```
+
+```bash
+dart format --output=none --set-exit-if-changed lib test
+flutter analyze
+flutter test
+```
+
+The current screens use local sample state for actions that require services or native code. See the [consumer-v2 frontend handoff](../prototypes/consumer-v2/FRONTEND_HANDOFF.md) for the exact production integration boundary and remaining work.

@@ -40,10 +40,10 @@ architecture map and known integration gaps.
 
 The [Farda Figma handoff](prototypes/consumer-v2/FIGMA_HANDOFF.md) contains the
 17-screen navy consumer design, prototype links, screen/node map, and verified
-MCP design-to-code results. It includes an isolated Flutter component example
-and a [self-contained browser mock](prototypes/consumer-v2/farda-navy-mock.html).
-See the [prototype README](prototypes/consumer-v2/README.md) for walkthroughs and
-implementation limits.
+design-to-code results. The matching Flutter experience now lives in
+`farda-app/lib/consumer_v2/` and is mounted at `/dashboard`. See the
+[frontend handoff](prototypes/consumer-v2/FRONTEND_HANDOFF.md) for what is
+complete, the behavioral invariants, and the backend/native work that remains.
 
 ## Getting started
 
