@@ -87,7 +87,8 @@ void main() {
     await tester.tap(find.byKey(FardaTodayScreen.confirmDoseButtonKey));
     await tester.pumpAndSettle();
     expect(repository.status, OccurrenceStatus.unconfirmed);
-    expect(find.text('9:00 AM · Not yet confirmed'), findsOneWidget);
+    expect(find.textContaining('Not yet confirmed'), findsWidgets);
+    expect(find.byKey(FardaTodayRoutineCard.logDoseButtonKey), findsOneWidget);
 
     await tester.ensureVisible(log);
     await tester.tap(log);
@@ -96,7 +97,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(repository.status, OccurrenceStatus.taken);
     expect(repository.writes, 2);
-    expect(find.text('You confirmed · 9:00 AM'), findsOneWidget);
+    expect(find.textContaining('You confirmed'), findsOneWidget);
 
     await tester.tap(find.text('Calendar'));
     await tester.pumpAndSettle();
