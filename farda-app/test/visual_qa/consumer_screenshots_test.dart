@@ -432,7 +432,7 @@ void main() {
 
   testWidgets('390 refills handoff', (tester) async {
     await _pumpVisualFrame(tester, size: const Size(390, 844), tab: 2);
-    await tester.tap(find.text('Plan my refill').first);
+    await tester.tap(find.text('Prepare refill').first);
     await tester.pumpAndSettle();
     await _checkFrame(tester, '390-refills-handoff');
   });
@@ -444,7 +444,7 @@ void main() {
       textScale: 1.3,
       tab: 2,
     );
-    await tester.tap(find.text('Plan my refill').first);
+    await tester.tap(find.text('Prepare refill').first);
     await tester.pumpAndSettle();
     await _checkFrame(tester, '320-refills-handoff');
   });

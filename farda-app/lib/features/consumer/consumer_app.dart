@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 
 import 'consumer_controller.dart';
 import 'consumer_forms.dart';
+import 'prescription_onboarding.dart';
 import 'consumer_widgets.dart';
 import 'data/consumer_models.dart';
 import 'data/consumer_repository.dart';
@@ -124,8 +125,11 @@ class ConsumerAppState extends State<ConsumerApp> with WidgetsBindingObserver {
     );
   }
 
-  void _addPrescription() =>
-      _sheet(ConsumerPrescriptionForm(controller: controller));
+  void _addPrescription() => Navigator.of(context).push<bool>(
+    MaterialPageRoute(
+      builder: (_) => PrescriptionOnboarding(controller: controller),
+    ),
+  );
   void _entry(ConsumerOccurrence occurrence, {bool noteOnly = false}) => _sheet(
     ConsumerEntryForm(
       controller: controller,

@@ -8,7 +8,7 @@ Rendered comparison and current design evidence: [VISUAL_PARITY.md](VISUAL_PARIT
 
 ## Completed in this frontend pass
 
-The Figma handoff has 21 editable 390 × 844 screens: the original 17 plus four Calendar state views. It uses shared variables and components, Outfit styles, and connected prototype flows. Today, Calendar, Refills, You, Routine, Reminders, Vial, Circle, Live Activity states, reminder-call states, explicit confirmation, refill handoff, and snooze are represented.
+The Figma handoff has 37 editable 390 × 844 screens: the original 17, four Calendar state views and sixteen prescription/refill states. It uses shared variables and components, Outfit styles, and connected prototype flows. Today, Calendar, Refills, You, Routine, Reminders, Vial, Circle, Live Activity states, reminder-call states, explicit confirmation, refill handoff, and snooze are represented.
 
 The production Flutter project now has a consumer-v2 implementation under `farda-app/lib/consumer_v2/`:
 
@@ -67,7 +67,7 @@ Finish supported account flows while keeping presentation callbacks explicit.
 - Map loading, empty, offline, stale, conflict, and retry states.
 - Use optimistic UI only where a failed write can be rolled back safely.
 - Apply timezone and daylight-saving changes to future delivery without rewriting past occurrences.
-- Wire Routine label review to the existing prescription flow without treating OCR output as approved instructions.
+- Completed: direct Add medication entry points now share guided capture/manual onboarding and explicit label review. See PRESCRIPTION_ONBOARDING_HANDOFF.md. Real-camera and configured-provider validation remains.
 - Connect the Vial screen to the existing BLE setup/calibration flow; keep movement observational.
 - Extend You preferences and Circle grants only through authenticated APIs with explicit consent; reminder toggles and quiet hours are persisted, while Circle is still a preview.
 - Visually review narrow/large-text layouts and, if those flows evolve, add separate Figma frames for the Flutter Today character variants.
@@ -126,3 +126,7 @@ Before release, also complete:
 ## Definition of done for the next owner
 
 The remaining integration is complete when supported account actions across the four Flutter tabs use one authenticated source of truth; every state-changing request is idempotent and audited; notification, call, Live Activity, refill, Circle, and vial behavior preserves the invariants above; the full Flutter suite passes; and the release gates are documented with device evidence.
+
+## Prescription onboarding follow-up — October 15
+
+Guided multi-photo capture, manual onboarding, record-only prescriptions and a copyable refill assistant are implemented. All 233 Flutter tests pass; backend OCR/validation checks passed 42 tests. See [PRESCRIPTION_ONBOARDING_HANDOFF.md](PRESCRIPTION_ONBOARDING_HANDOFF.md) for exact behavior and release boundaries.

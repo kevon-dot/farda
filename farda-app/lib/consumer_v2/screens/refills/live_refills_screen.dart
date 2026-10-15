@@ -33,6 +33,7 @@ class LiveRefillsScreen extends StatelessWidget {
     this.onReconcileReceipt,
     this.onOpenRefillTools,
     this.onOpenProfile,
+    this.onAddPrescription,
   });
 
   final ConsumerSnapshot snapshot;
@@ -41,6 +42,7 @@ class LiveRefillsScreen extends StatelessWidget {
   final ReceiptReconciliation? onReconcileReceipt;
   final VoidCallback? onOpenRefillTools;
   final VoidCallback? onOpenProfile;
+  final VoidCallback? onAddPrescription;
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -74,7 +76,13 @@ class LiveRefillsScreen extends StatelessWidget {
                     'Add your label details before tracking supply or planning a refill.',
                     style: FardaConsumerType.body,
                   ),
-                  if (onOpenRefillTools != null) ...[
+                  if (onAddPrescription != null) ...[
+                    const SizedBox(height: 12),
+                    RefillsPrimaryAction(
+                      label: 'Add medication',
+                      onPressed: onAddPrescription,
+                    ),
+                  ] else if (onOpenRefillTools != null) ...[
                     const SizedBox(height: 12),
                     TextButton(
                       onPressed: onOpenRefillTools,
@@ -148,8 +156,29 @@ class _SupplySection extends StatelessWidget {
       if (rx != null && rx.length >= 4)
         'Rx ending ${rx.substring(rx.length - 4)}',
     ].join(' · ');
+    void openAssistant() {
+      Navigator.of(context).push<void>(
+        MaterialPageRoute(
+          builder:
+              (_) => RefillsHandoffScreen(
+                medicationName: prescription.name,
+                rxLabel: 'Prescription number not saved',
+                rxNumber: prescription.rxNumber,
+                directions: prescription.directions,
+                pharmacy: prescription.pharmacy,
+                showSavePlan:
+                    stage == null && refillEnabled && onUpdateRefill != null,
+                actionLabel: 'Save my refill plan',
+                onSavePlan:
+                    () =>
+                        onUpdateRefill!(prescription.id, RefillStage.planning),
+              ),
+        ),
+      );
+    }
+
     final nextLabel = switch (stage) {
-      null => 'Plan my refill',
+      null => 'Prepare refill',
       RefillStage.planning => 'I contacted my pharmacy',
       RefillStage.contacted => 'I was told it is ready',
       RefillStage.ready => 'I received my refill',
@@ -189,59 +218,35 @@ class _SupplySection extends StatelessWidget {
         RefillsPrimaryAction(
           label: nextLabel,
           onPressed:
-              !refillEnabled || onUpdateRefill == null
+              stage == null
+                  ? openAssistant
+                  : !refillEnabled || onUpdateRefill == null
                   ? null
-                  : () =>
-                      stage == null
-                          ? Navigator.of(context).push<void>(
-                            MaterialPageRoute(
-                              builder:
-                                  (_) => RefillsHandoffScreen(
-                                    medicationName: prescription.name,
-                                    rxLabel:
-                                        rx != null && rx.length >= 4
-                                            ? 'Rx ending ${rx.substring(rx.length - 4)} · Saved by you'
-                                            : 'Saved by you',
-                                    actionLabel: 'Save my refill plan',
-                                    onSavePlan:
-                                        () => onUpdateRefill!(
-                                          prescription.id,
-                                          RefillStage.planning,
-                                        ),
-                                    onOpenContact:
-                                        onOpenRefillTools == null
-                                            ? null
-                                            : () {
-                                              Navigator.of(context).pop();
-                                              onOpenRefillTools!();
-                                            },
-                                    contactLabel:
-                                        onOpenRefillTools == null
-                                            ? 'Find pharmacy contact'
-                                            : 'Open account tools',
-                                  ),
-                            ),
-                          )
-                          : showDialog<void>(
-                            context: context,
-                            builder:
-                                (_) =>
-                                    stage == RefillStage.received &&
-                                            inventory?.receiptReconciled != true
-                                        ? _ReceiptDialog(
-                                          prescription: prescription,
-                                          inventory: inventory,
-                                          onReconcileReceipt:
-                                              onReconcileReceipt,
-                                          onOpenRefillTools: onOpenRefillTools,
-                                        )
-                                        : _RefillDialog(
-                                          prescription: prescription,
-                                          stage: stage,
-                                          onUpdateRefill: onUpdateRefill!,
-                                        ),
-                          ),
+                  : () => showDialog<void>(
+                    context: context,
+                    builder:
+                        (_) =>
+                            stage == RefillStage.received &&
+                                    inventory?.receiptReconciled != true
+                                ? _ReceiptDialog(
+                                  prescription: prescription,
+                                  inventory: inventory,
+                                  onReconcileReceipt: onReconcileReceipt,
+                                  onOpenRefillTools: onOpenRefillTools,
+                                )
+                                : _RefillDialog(
+                                  prescription: prescription,
+                                  stage: stage,
+                                  onUpdateRefill: onUpdateRefill!,
+                                ),
+                  ),
         ),
+        if (stage != null)
+          TextButton(
+            onPressed: openAssistant,
+            style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
+            child: const Text('Prepare refill request'),
+          ),
         if (!refillEnabled) ...[
           const SizedBox(height: 4),
           const Text(

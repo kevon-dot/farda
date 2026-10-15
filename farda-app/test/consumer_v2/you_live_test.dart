@@ -101,7 +101,7 @@ void main() {
         _YouRepository(hasRoutine: false),
         destination: FardaYouDestination.routine,
       );
-      expect(find.textContaining('No routine is saved'), findsOneWidget);
+      expect(find.textContaining('No medication is saved'), findsOneWidget);
       expect(find.text('Daily medication'), findsNothing);
       expect(find.text('Evening routine'), findsNothing);
     },

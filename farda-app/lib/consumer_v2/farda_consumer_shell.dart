@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 
 import 'package:farda/features/consumer/consumer_controller.dart';
 import 'package:farda/features/consumer/consumer_forms.dart';
+import 'package:farda/features/consumer/prescription_onboarding.dart';
 import 'package:farda/features/consumer/consumer_widgets.dart';
 import 'package:farda/features/consumer/data/consumer_models.dart';
 
@@ -13,6 +14,7 @@ import 'screens/today/today_models.dart';
 import 'screens/refills/farda_refills_screen.dart';
 import 'screens/today/farda_today_screen.dart';
 import 'screens/you/farda_you_screen.dart';
+import 'screens/you/you_models.dart';
 
 /// The production Flutter entry point for the consumer-v2 Farda experience.
 ///
@@ -70,6 +72,35 @@ class _FardaConsumerShellState extends State<FardaConsumerShell> {
       if (index != 3) _hideBottomNavigation = false;
     });
     widget.onTabSelected?.call(index);
+  }
+
+  Future<void> _addPrescription() async {
+    final controller = widget.controller;
+    if (controller == null) return;
+    await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => PrescriptionOnboarding(controller: controller),
+      ),
+    );
+  }
+
+  Future<void> _reviewRoutine() async {
+    final controller = widget.controller;
+    if (controller == null) {
+      _selectTab(3);
+      return;
+    }
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder:
+            (_) => FardaYouScreen(
+              controller: controller,
+              initialDestination: FardaYouDestination.routine,
+              onOpenAccount: widget.onOpenAccount,
+              onAddPrescription: _addPrescription,
+            ),
+      ),
+    );
   }
 
   TodayDoseStatus _todayStatus(ConsumerOccurrence occurrence) =>
@@ -257,6 +288,10 @@ class _FardaConsumerShellState extends State<FardaConsumerShell> {
                 showBottomNavigation: false,
                 liveRecords: controller != null,
                 hasRoutine: controller == null || occurrence != null,
+                hasPrescriptions:
+                    controller == null ||
+                    (snapshot?.prescriptions.isNotEmpty ?? false),
+                onAddPrescription: controller == null ? null : _addPrescription,
                 routines: routines,
                 initialDate: controller?.selectedDate,
                 initialDoseStatus:
@@ -307,7 +342,7 @@ class _FardaConsumerShellState extends State<FardaConsumerShell> {
                           );
                         },
                 onCorrectRoutine: controller == null ? null : _correct,
-                onReviewRoutineTap: widget.onOpenAccount,
+                onReviewRoutineTap: _reviewRoutine,
                 onOpenCalendar: () => _selectTab(1),
                 onOpenRefills: () => _selectTab(2),
                 onOpenProfile: () => _selectTab(3),
@@ -369,9 +404,11 @@ class _FardaConsumerShellState extends State<FardaConsumerShell> {
                               ),
                             ),
                 onOpenRefillTools: widget.onOpenRefillTools,
+                onAddPrescription: controller == null ? null : _addPrescription,
               ),
               FardaYouScreen(
                 controller: controller,
+                onAddPrescription: controller == null ? null : _addPrescription,
                 onOpenAccount: widget.onOpenAccount,
                 onNativePreviewChanged: (isNativePreview) {
                   if (_hideBottomNavigation == isNativePreview) return;

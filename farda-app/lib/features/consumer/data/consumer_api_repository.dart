@@ -5,10 +5,12 @@ import 'package:http/http.dart' as http;
 
 import 'consumer_models.dart';
 import 'consumer_repository.dart';
+import 'label_scan.dart';
+import 'package:http_parser/http_parser.dart';
 
 /// The production adapter never substitutes fixture data after a failed request.
 /// Transport logs deliberately contain neither bearer tokens nor health records.
-class ConsumerApiRepository implements ConsumerRepository {
+class ConsumerApiRepository implements ConsumerRepository, LabelScanRepository {
   ConsumerApiRepository({
     required String baseUrl,
     required Future<String?> Function() tokenProvider,
@@ -177,6 +179,121 @@ class ConsumerApiRepository implements ConsumerRepository {
     } on FormatException {
       throw const ConsumerRepositoryException(
         'The service returned an unreadable response. Please try again.',
+      );
+    }
+  }
+
+  @override
+  Future<LabelScanDraft> extractLabel(List<LabelPhoto> photos) async {
+    if (photos.isEmpty || photos.length > 4) {
+      throw const ConsumerRepositoryException(
+        'Add one to four photos of the same label.',
+      );
+    }
+    for (final photo in photos) {
+      if (photo.validationError != null) {
+        throw ConsumerRepositoryException(photo.validationError!);
+      }
+    }
+    String? token;
+    try {
+      token = await _tokenProvider();
+    } catch (_) {
+      throw const ConsumerRepositoryException(
+        'Sign in again to scan your label.',
+        sessionExpired: true,
+      );
+    }
+    if (token == null || token.isEmpty) {
+      throw const ConsumerRepositoryException(
+        'Sign in to scan your label.',
+        sessionExpired: true,
+      );
+    }
+    final request =
+        http.MultipartRequest(
+            'POST',
+            Uri.parse('$_base/prescriptions/ocr/extract'),
+          )
+          ..followRedirects = false
+          ..headers['Authorization'] = 'Bearer $token';
+    for (var i = 0; i < photos.length; i++) {
+      final photo = photos[i];
+      final extension = photo.mimeType.split('/').last;
+      request.files.add(
+        http.MultipartFile.fromBytes(
+          'image',
+          photo.bytes,
+          filename: 'label-${i + 1}.$extension',
+          contentType: MediaType.parse(photo.mimeType),
+        ),
+      );
+    }
+    try {
+      final response = await _client
+          .send(request)
+          .then(http.Response.fromStream)
+          .timeout(const Duration(seconds: 60));
+      String? currentToken;
+      try {
+        currentToken = await _tokenProvider();
+      } catch (_) {
+        throw const ConsumerRepositoryException(
+          'Sign in again to review your label.',
+          sessionExpired: true,
+        );
+      }
+      if (currentToken != token) {
+        throw const ConsumerRepositoryException(
+          'Your account changed. Reopen the scanner.',
+          sessionExpired: true,
+          sessionChanged: true,
+        );
+      }
+      if (response.statusCode == 401) {
+        try {
+          await _tokenInvalidator?.call(token);
+        } catch (_) {
+          throw const ConsumerRepositoryException(
+            'Your session ended. Sign in again to continue.',
+            sessionExpired: true,
+          );
+        }
+        throw const ConsumerRepositoryException(
+          'Your session ended. Sign in again.',
+          sessionExpired: true,
+        );
+      }
+      if (response.statusCode == 413) {
+        throw const ConsumerRepositoryException(
+          'Use up to four photos under 8 MB each, or enter manually.',
+        );
+      }
+      if (response.statusCode == 429) {
+        throw const ConsumerRepositoryException(
+          'Scanning needs a moment. Try again shortly, or enter manually.',
+        );
+      }
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw const ConsumerRepositoryException(
+          'We could not read this label. Your photos are still here. Try again or enter manually.',
+        );
+      }
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map<String, dynamic>)
+        throw const FormatException('Invalid label response');
+      return LabelScanDraft.fromJson(decoded);
+    } on TimeoutException {
+      throw const ConsumerRepositoryException(
+        'Scanning took too long. Try again or enter manually. Nothing was saved.',
+      );
+    } on http.ClientException {
+      throw const ConsumerRepositoryException(
+        'Check your connection, or enter the label manually. Nothing was saved.',
+      );
+    } on FormatException {
+      throw const ConsumerRepositoryException(
+        'We could not read the scan result. Try another photo or enter manually.',
       );
     }
   }

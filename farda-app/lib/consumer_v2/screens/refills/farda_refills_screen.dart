@@ -29,6 +29,7 @@ class FardaRefillsScreen extends StatelessWidget {
     this.onReconcileReceipt,
     this.onOpenRefillTools,
     this.onOpenProfile,
+    this.onAddPrescription,
   }) : assert(controller == null || initialState == null);
 
   final RefillStationController? controller;
@@ -56,6 +57,7 @@ class FardaRefillsScreen extends StatelessWidget {
   onReconcileReceipt;
   final VoidCallback? onOpenRefillTools;
   final VoidCallback? onOpenProfile;
+  final VoidCallback? onAddPrescription;
 
   @override
   Widget build(BuildContext context) {
@@ -67,6 +69,7 @@ class FardaRefillsScreen extends StatelessWidget {
         onReconcileReceipt: onReconcileReceipt,
         onOpenRefillTools: onOpenRefillTools,
         onOpenProfile: onOpenProfile,
+        onAddPrescription: onAddPrescription,
       );
     }
     return RefillStationScreen(

@@ -95,12 +95,16 @@ class ConsumerDemoRepository implements ConsumerRepository {
         pharmacy: draft.pharmacy,
         rxNumber: draft.rxNumber,
         labelReviewed: draft.labelReviewed,
-        times: List.of(draft.times),
+        times: draft.remindersEnabled ? List.of(draft.times) : const [],
         timeZone: draft.timeZone,
       ),
     );
     // Demo-only dates use the device clock; production occurrences come from the server.
-    for (var day = 0; day < draft.durationDays; day++) {
+    for (
+      var day = 0;
+      draft.remindersEnabled && day < draft.durationDays;
+      day++
+    ) {
       for (final time in draft.times) {
         final pieces = time.split(':');
         final date = DateTime(
