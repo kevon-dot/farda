@@ -130,4 +130,40 @@ void main() {
     expect(repository.writes, 1);
     expect(controller.snapshot!.preferences.callsEnabled, true);
   });
+
+  testWidgets('quiet hours and timezone only change after confirmed account save',
+      (tester) async {
+    final repository = _YouRepository()..failNextWrite = true;
+    final controller = await pumpYou(tester, repository,
+        destination: FardaYouDestination.reminders);
+    final edit = find.byKey(FardaYouKeys.quietHoursEdit);
+    expect(find.text('Saved for your account · America/Los_Angeles'), findsOneWidget);
+
+    Future<void> chooseEasternAndSave() async {
+      await tester.ensureVisible(edit);
+      await tester.tap(edit);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Eastern · New York'));
+      await tester.pumpAndSettle();
+      expect(find.text('QUIET HOURS START'), findsOneWidget);
+      await tester.tap(find.text('OK').last);
+      await tester.pumpAndSettle();
+      expect(find.text('QUIET HOURS END'), findsOneWidget);
+      await tester.tap(find.text('OK').last);
+      await tester.pumpAndSettle();
+    }
+
+    await chooseEasternAndSave();
+    expect(repository.writes, 1);
+    expect(repository.preferences.timeZone, 'America/Los_Angeles');
+    expect(controller.snapshot!.preferences.timeZone, 'America/Los_Angeles');
+    expect(find.text('Saved for your account · America/Los_Angeles'), findsOneWidget);
+    expect(find.text('The server did not save this preference.'), findsOneWidget);
+
+    await chooseEasternAndSave();
+    expect(repository.writes, 2);
+    expect(repository.preferences.timeZone, 'America/New_York');
+    expect(controller.snapshot!.preferences.timeZone, 'America/New_York');
+    expect(find.text('Saved for your account · America/New_York'), findsOneWidget);
+  });
 }

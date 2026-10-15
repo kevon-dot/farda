@@ -43,5 +43,6 @@ abstract final class FardaYouKeys {
   static const privacyToggle = Key('you_privacy_toggle');
   static const callToggle = Key('you_call_toggle');
   static const liveActivityToggle = Key('you_live_activity_toggle');
+  static const quietHoursEdit = Key('you_quiet_hours_edit');
   static const confirmSampleEntry = Key('you_confirm_sample_entry');
 }

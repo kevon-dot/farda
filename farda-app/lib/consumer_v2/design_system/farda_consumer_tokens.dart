@@ -12,6 +12,9 @@ abstract final class FardaConsumerColors {
   static const deep = Color(0xFF0B1D3C);
   static const soft = Color(0xFFE9EEF7);
   static const warm = Color(0xFFF8ECD8);
+  static const peach = Color(0xFFF4D9C9);
+  static const lilac = Color(0xFFECE8F7);
+  static const mint = Color(0xFFDDEFE5);
   static const textPrimary = Color(0xFF142C55);
   static const textSecondary = Color(0xFF58677D);
   static const textInverse = Color(0xFFFFFFFF);
@@ -115,6 +118,43 @@ abstract final class FardaConsumerTheme {
       scaffoldBackgroundColor: FardaConsumerColors.canvas,
       canvasColor: FardaConsumerColors.canvas,
       dividerColor: FardaConsumerColors.border,
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(
+          backgroundColor: FardaConsumerColors.brand,
+          foregroundColor: FardaConsumerColors.textInverse,
+          minimumSize: const Size(0, 48),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(FardaConsumerRadius.md),
+          ),
+          textStyle: FardaConsumerType.bodyStrong,
+        ),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          foregroundColor: FardaConsumerColors.brand,
+          minimumSize: const Size(0, 48),
+          side: const BorderSide(color: FardaConsumerColors.border),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(FardaConsumerRadius.md),
+          ),
+          textStyle: FardaConsumerType.bodyStrong,
+        ),
+      ),
+      chipTheme: ChipThemeData(
+        backgroundColor: FardaConsumerColors.soft,
+        selectedColor: FardaConsumerColors.brand,
+        labelStyle: FardaConsumerType.caption.copyWith(
+          color: FardaConsumerColors.brand,
+          fontWeight: FontWeight.w600,
+        ),
+        secondaryLabelStyle: FardaConsumerType.caption.copyWith(
+          color: FardaConsumerColors.textInverse,
+          fontWeight: FontWeight.w600,
+        ),
+        side: BorderSide.none,
+        shape: const StadiumBorder(),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      ),
       textTheme: base.textTheme.apply(
         fontFamily: 'Outfit',
         bodyColor: FardaConsumerColors.textPrimary,

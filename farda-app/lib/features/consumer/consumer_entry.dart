@@ -1,5 +1,6 @@
 import 'package:farda/application/authentication/storage/auth_storage.dart';
 import 'package:farda/env.dart';
+import 'package:farda/routes/routes.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -10,9 +11,15 @@ import 'data/consumer_demo_repository.dart';
 import 'data/consumer_repository.dart';
 
 class ConsumerEntry extends StatefulWidget {
-  const ConsumerEntry({super.key, this.demo = false, this.initialTab = 0});
+  const ConsumerEntry({
+    super.key,
+    this.demo = false,
+    this.initialTab = 0,
+    this.repository,
+  });
   final bool demo;
   final int initialTab;
+  final ConsumerRepository? repository;
   @override
   State<ConsumerEntry> createState() => _ConsumerEntryState();
 }
@@ -23,69 +30,87 @@ class _ConsumerEntryState extends State<ConsumerEntry> {
   @override
   void initState() {
     super.initState();
-    _repository =
-        widget.demo
+    _repository = widget.repository ??
+        (widget.demo
             ? ConsumerDemoRepository()
             : ConsumerApiRepository(
-              baseUrl: appBaseUrl,
-              tokenInvalidator: AuthStorage.invalidateToken,
-              tokenProvider: () async {
-                final session = await AuthStorage.getSession();
-                return session['access'];
-              },
-            );
+                baseUrl: appBaseUrl,
+                tokenInvalidator: AuthStorage.invalidateToken,
+                tokenProvider: () async {
+                  final session = await AuthStorage.getSession();
+                  return session['access'];
+                },
+              ));
   }
 
   @override
-  Widget build(BuildContext context) => ConsumerApp(
-    key: ValueKey(_generation),
-    repository: _repository,
-    initialTab: widget.initialTab,
-    onResetDemo:
-        widget.demo
-            ? () => setState(() {
-              _repository = ConsumerDemoRepository();
-              _generation++;
-            })
-            : null,
-    onSignIn: () => context.go('/login'),
-    onOpenHardware: () => context.push('/screen-connect-onboard'),
-    onSignOut:
-        widget.demo
-            ? null
-            : () async {
-              final session = await AuthStorage.getSession();
-              final token = session['access'];
-              final revoked =
-                  token == null ? false : await _repository.signOut(token);
-              try {
-                if (token != null) await AuthStorage.invalidateToken(token);
-              } catch (_) {
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text(
-                        'Your device session could not be cleared. Please try signing out again.',
-                      ),
-                    ),
-                  );
-                }
-                if (context.mounted) context.go('/onboard');
-                return;
-              }
-              if (context.mounted) {
-                if (!revoked) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text(
-                        'Signed out on this device. Server session revocation could not be confirmed.',
-                      ),
-                    ),
-                  );
-                }
-                context.go('/onboard');
-              }
-            },
+  Widget build(BuildContext context) => Column(
+    children: [
+      if (!widget.demo)
+        SafeArea(
+          bottom: false,
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: () => context.go(CustomRoutePaths.signedInHome),
+              icon: const Icon(Icons.arrow_back_rounded),
+              label: const Text('Back to Today'),
+            ),
+          ),
+        ),
+      Expanded(
+        child: ConsumerApp(
+          key: ValueKey(_generation),
+          repository: _repository,
+          initialTab: widget.initialTab,
+          onResetDemo: widget.demo
+              ? () => setState(() {
+                    _repository = ConsumerDemoRepository();
+                    _generation++;
+                  })
+              : null,
+          onSignIn: () => context.go(CustomRoutePaths.login),
+          onOpenHardware: () =>
+              context.push(CustomRoutePaths.screenConnectOnBoard),
+          onSignOut: widget.demo
+              ? null
+              : () async {
+                  final session = await AuthStorage.getSession();
+                  final token = session['access'];
+                  final revoked = token == null
+                      ? false
+                      : await _repository.signOut(token);
+                  try {
+                    if (token != null) await AuthStorage.invalidateToken(token);
+                  } catch (_) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                            'Your device session could not be cleared. Please try signing out again.',
+                          ),
+                        ),
+                      );
+                    }
+                    if (context.mounted) context.go(CustomRoutePaths.onboard);
+                    return;
+                  }
+                  if (context.mounted) {
+                    if (!revoked) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                            'Signed out on this device. Server session revocation could not be confirmed.',
+                          ),
+                        ),
+                      );
+                    }
+                    context.go(CustomRoutePaths.onboard);
+                  }
+                },
+        ),
+      ),
+    ],
   );
 }
 
@@ -107,7 +132,9 @@ class _ConsumerWelcomeState extends State<ConsumerWelcome> {
     try {
       final session = await AuthStorage.getSession();
       if (!mounted) return;
-      if (session['access']?.isNotEmpty ?? false) context.go('/dashboard');
+      if (session['access']?.isNotEmpty ?? false) {
+        context.go(CustomRoutePaths.signedInHome);
+      }
     } catch (_) {
       if (mounted)
         setState(

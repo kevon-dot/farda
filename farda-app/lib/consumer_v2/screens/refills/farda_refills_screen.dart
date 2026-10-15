@@ -25,6 +25,8 @@ class FardaRefillsScreen extends StatelessWidget {
     this.onReviewVial,
     this.snapshot,
     this.onUpdateInventory,
+    this.onUpdateRefill,
+    this.onReconcileReceipt,
     this.onOpenRefillTools,
   }) : assert(controller == null || initialState == null);
 
@@ -37,6 +39,10 @@ class FardaRefillsScreen extends StatelessWidget {
   /// isolated design preview, which intentionally uses local sample state.
   final ConsumerSnapshot? snapshot;
   final Future<String?> Function(String prescriptionId, int quantity)? onUpdateInventory;
+  final Future<String?> Function(String prescriptionId, RefillStage stage,
+      {bool startNew})? onUpdateRefill;
+  final Future<String?> Function(String prescriptionId,
+      {required int quantity, required bool alreadyIncluded})? onReconcileReceipt;
   final VoidCallback? onOpenRefillTools;
 
   @override
@@ -45,6 +51,8 @@ class FardaRefillsScreen extends StatelessWidget {
       return LiveRefillsScreen(
         snapshot: snapshot!,
         onUpdateInventory: onUpdateInventory,
+        onUpdateRefill: onUpdateRefill,
+        onReconcileReceipt: onReconcileReceipt,
         onOpenRefillTools: onOpenRefillTools,
       );
     }

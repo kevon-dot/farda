@@ -186,10 +186,9 @@ class _FardaTodayScreenState extends State<FardaTodayScreen> {
       backgroundColor: Colors.transparent,
       barrierColor: _sheetBarrier,
       builder: (sheetContext) => _FardaSheet(
-        eyebrow: 'ONE FINAL CHECK',
+        eyebrow: 'YOUR RECORD',
         title: widget.liveRecords ? 'Log this dose?' : 'Log your morning dose?',
-        body:
-            'Only confirm if you already took it. This saves your own report, not proof of ingestion.',
+        body: 'Only save this if you took it. This is your report.',
         children: [
           _SheetNotice(
             icon: Icons.medication_rounded,
@@ -199,7 +198,7 @@ class _FardaTodayScreenState extends State<FardaTodayScreen> {
           const SizedBox(height: 18),
           _SheetButton(
             key: FardaTodayScreen.confirmDoseButtonKey,
-            label: 'Yes, save my entry',
+            label: 'Yes, I took it',
             onPressed: () => Navigator.of(sheetContext).pop(true),
           ),
           const SizedBox(height: 8),
@@ -207,12 +206,6 @@ class _FardaTodayScreenState extends State<FardaTodayScreen> {
             label: 'Go back',
             isSecondary: true,
             onPressed: () => Navigator.of(sheetContext).pop(false),
-          ),
-          const SizedBox(height: 10),
-          Text(
-            'Calls, notifications, and vial movement never confirm a dose for you.',
-            textAlign: TextAlign.center,
-            style: _type(size: 11, lineHeight: 15, color: _secondaryText),
           ),
         ],
       ),
@@ -295,10 +288,9 @@ class _FardaTodayScreenState extends State<FardaTodayScreen> {
       backgroundColor: Colors.transparent,
       barrierColor: _sheetBarrier,
       builder: (sheetContext) => _FardaSheet(
-        eyebrow: 'YOUR ROUTINE, YOUR RECORD',
-        title: 'More ways to check in.',
-        body:
-            'Logging a skipped dose records what happened. It is not advice to skip or change medication.',
+        eyebrow: 'YOUR RECORD',
+        title: 'More options',
+        body: 'Skipped records what happened; it does not change your plan.',
         children: [
           _SheetButton(
             key: FardaTodayScreen.recordSkippedButtonKey,
@@ -385,6 +377,10 @@ class _FardaTodayScreenState extends State<FardaTodayScreen> {
   void _handleTodayTap() {
     widget.onTodayTap?.call();
     if (!_scrollController.hasClients) return;
+    if (MediaQuery.maybeOf(context)?.disableAnimations ?? false) {
+      _scrollController.jumpTo(0);
+      return;
+    }
     _scrollController.animateTo(
       0,
       duration: const Duration(milliseconds: 320),
@@ -434,7 +430,11 @@ class _FardaTodayScreenState extends State<FardaTodayScreen> {
             constraints: const BoxConstraints(maxWidth: 390),
             child: SingleChildScrollView(
               controller: _scrollController,
-              padding: const EdgeInsets.fromLTRB(22, 8, 22, 28),
+              // The shell owns navigation in live mode. Keep enough scroll
+              // extent for actions near the end of a short routine list.
+              padding: EdgeInsets.fromLTRB(
+                22, 8, 22, widget.showBottomNavigation ? 28 : 112,
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -534,15 +534,6 @@ class _FardaTodayScreenState extends State<FardaTodayScreen> {
                   const SizedBox(height: 20),
                   const _HelpfulContext(),
                   ],
-                  const SizedBox(height: 20),
-                  Text(
-                    'Your record, not a score. No streaks to keep.',
-                    style: _type(
-                      size: 12,
-                      lineHeight: 17,
-                      color: _secondaryText,
-                    ),
-                  ),
                 ],
               ),
             ),
@@ -616,7 +607,7 @@ class _Greeting extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Good morning, $name.',
+                'Hi, $name.',
                 style: _type(
                   size: 14,
                   lineHeight: 20,
@@ -625,7 +616,7 @@ class _Greeting extends StatelessWidget {
               ),
               const SizedBox(height: 4),
               Text(
-                'Make room\nfor your day.',
+                'Today, at\nyour pace.',
                 style: _type(
                   size: 34,
                   lineHeight: 37,
@@ -637,7 +628,9 @@ class _Greeting extends StatelessWidget {
         ),
         const SizedBox(width: 16),
         AnimatedSwitcher(
-          duration: const Duration(milliseconds: 180),
+          duration: MediaQuery.maybeOf(context)?.disableAnimations ?? false
+              ? Duration.zero
+              : const Duration(milliseconds: 180),
           child: Container(
             key: ValueKey(_dateKey(selectedDate)),
             width: 60,
@@ -735,7 +728,9 @@ class _WeekDay extends StatelessWidget {
           key: Key('today_day_${_dateKey(date)}'),
           onTap: onTap,
           child: AnimatedContainer(
-            duration: const Duration(milliseconds: 180),
+            duration: MediaQuery.maybeOf(context)?.disableAnimations ?? false
+                ? Duration.zero
+                : const Duration(milliseconds: 180),
             curve: Curves.easeOut,
             constraints: const BoxConstraints(minHeight: 62),
             padding: const EdgeInsets.all(6),
@@ -814,11 +809,8 @@ class _ReminderRhythmCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 10),
-          Text(
-            'A heads-up. A moment. A real ring.',
-            style: _type(size: 14, lineHeight: 20),
-          ),
-          const SizedBox(height: 10),
+          Text('Three gentle nudges.', style: _type(size: 14, lineHeight: 20)),
+          const SizedBox(height: 12),
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -836,9 +828,11 @@ class _ReminderRhythmCard extends StatelessWidget {
               ],
             ],
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 12),
           AnimatedSwitcher(
-            duration: const Duration(milliseconds: 180),
+            duration: MediaQuery.disableAnimationsOf(context)
+                ? Duration.zero
+                : const Duration(milliseconds: 180),
             child: Text(
               footerText,
               key: ValueKey(footerText),
@@ -875,17 +869,32 @@ class _MilestoneButton extends StatelessWidget {
           '${milestone.timeLabel}, ${milestone.label}. ${milestone.accessibilityHint}',
       child: Material(
         color: Colors.transparent,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(16),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
           key: Key('today_milestone_${milestone.type.name}'),
           onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 3),
+          child: AnimatedContainer(
+            duration: MediaQuery.disableAnimationsOf(context)
+                ? Duration.zero
+                : const Duration(milliseconds: 180),
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 10),
+            decoration: BoxDecoration(
+              color: isSelected ? _card : const Color(0x80FFFFFF),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: isSelected ? const Color(0xFFB6C8E3) : _border,
+              ),
+              boxShadow: isSelected
+                  ? const [BoxShadow(color: Color(0x0F142C55), blurRadius: 8, offset: Offset(0, 3))]
+                  : null,
+            ),
             child: Column(
               children: [
                 AnimatedContainer(
-                  duration: const Duration(milliseconds: 180),
+                  duration: MediaQuery.disableAnimationsOf(context)
+                      ? Duration.zero
+                      : const Duration(milliseconds: 180),
                   width: 8,
                   height: 8,
                   decoration: BoxDecoration(

@@ -147,6 +147,102 @@ class _FardaYouScreenState extends State<FardaYouScreen> {
     _showMessage(error ?? 'Reminder preferences saved to your account.');
   }
 
+  Future<void> _editQuietHours() async {
+    if (!_preferencesAvailable || widget.controller?.saving == true) return;
+    final original = _snapshot!.preferences;
+    const commonZones = [
+      'America/Los_Angeles',
+      'America/Denver',
+      'America/Chicago',
+      'America/New_York',
+      'UTC',
+    ];
+    final zones = <String, String>{
+      'America/Los_Angeles': 'Pacific · Los Angeles',
+      'America/Denver': 'Mountain · Denver',
+      'America/Chicago': 'Central · Chicago',
+      'America/New_York': 'Eastern · New York',
+      'UTC': 'UTC',
+      if (!commonZones.contains(original.timeZone))
+        original.timeZone: original.timeZone,
+    };
+    final zone = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => SimpleDialog(
+        backgroundColor: FardaYouPalette.ivory,
+        title: const Text('Quiet-hours timezone'),
+        children: zones.entries.map((entry) => SimpleDialogOption(
+              onPressed: () => Navigator.of(dialogContext).pop(entry.key),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Text(entry.value),
+              ),
+            )).toList(),
+      ),
+    );
+    if (!mounted || zone == null) return;
+
+    TimeOfDay parse(String value) {
+      final parts = value.split(':');
+      return TimeOfDay(
+        hour: int.tryParse(parts.first) ?? 21,
+        minute: int.tryParse(parts.last) ?? 0,
+      );
+    }
+    final start = await showTimePicker(
+      context: context,
+      initialTime: parse(original.quietHoursStart),
+      helpText: 'QUIET HOURS START',
+    );
+    if (!mounted || start == null) return;
+    final end = await showTimePicker(
+      context: context,
+      initialTime: parse(original.quietHoursEnd),
+      helpText: 'QUIET HOURS END',
+    );
+    if (!mounted || end == null) return;
+    if (start == end) {
+      final allDay = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          backgroundColor: FardaYouPalette.ivory,
+          title: const Text('Keep calls quiet all day?'),
+          content: const Text(
+            'Matching start and end times silence reminder calls throughout the day. Your routine record stays available.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Go back'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('Quiet all day'),
+            ),
+          ],
+        ),
+      );
+      if (!mounted || allDay != true) return;
+    }
+
+    // A dialog can stay open while another preferences write completes.
+    // Preserve the latest confirmed switches instead of resubmitting old ones.
+    if (widget.controller?.saving == true || !_preferencesAvailable) return;
+    String format(TimeOfDay time) =>
+        '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
+    final controller = widget.controller!;
+    final error = await controller.mutate(() =>
+        controller.repository.saveReminderPreferences(
+          _snapshot!.preferences.copyWith(
+            timeZone: zone,
+            quietHoursStart: format(start),
+            quietHoursEnd: format(end),
+          ),
+        ));
+    if (!mounted) return;
+    _showMessage(error ?? 'Quiet hours saved for your account.');
+  }
+
   Future<void> _setLiveActivities(bool enabled) async {
     if (!_live) {
       setState(() {
@@ -811,7 +907,9 @@ class _FardaYouScreenState extends State<FardaYouScreen> {
         : 'No reminder time';
     final quietHours = preferences == null
         ? 'Unavailable'
-        : '${_displayTime(preferences.quietHoursStart)} – ${_displayTime(preferences.quietHoursEnd)}';
+        : preferences.quietHoursStart == preferences.quietHoursEnd
+            ? 'Calls quiet all day'
+            : '${_displayTime(preferences.quietHoursStart)} – ${_displayTime(preferences.quietHoursEnd)}';
     final page = switch (_destination) {
       FardaYouDestination.overview => FardaYouOverviewPage(
           key: const ValueKey(FardaYouDestination.overview),
@@ -864,6 +962,8 @@ class _FardaYouScreenState extends State<FardaYouScreen> {
               _snapshot?.callConsentText != null,
           canEnableLiveActivities: _snapshot?.capabilities.liveActivityDeliveryEnabled == true,
           quietHoursLabel: _live ? quietHours : '9:00 PM – 8:00 AM',
+          quietHoursTimeZone: preferences?.timeZone ?? '',
+          onEditQuietHours: _live ? _editQuietHours : null,
           onBack: _back,
           onCallRemindersChanged: _changeCallReminders,
           onLiveActivitiesChanged: _setLiveActivities,

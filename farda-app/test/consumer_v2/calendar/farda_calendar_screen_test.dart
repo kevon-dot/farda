@@ -33,13 +33,14 @@ void main() {
     );
   }
 
-  testWidgets('renders the handoff structure and local sample agenda', (
+  testWidgets('renders the concise calendar and local preview agenda', (
     tester,
   ) async {
     await pumpCalendar(tester);
 
     expect(find.text('farda.'), findsOneWidget);
-    expect(find.text('A rhythm\nthat fits you.'), findsOneWidget);
+    expect(find.text('Your days.'), findsOneWidget);
+    expect(find.text('At your pace.'), findsOneWidget);
     expect(find.text('October 2026'), findsOneWidget);
     expect(find.text('All'), findsOneWidget);
     expect(find.text('Routines'), findsOneWidget);
@@ -59,7 +60,7 @@ void main() {
     );
 
     await tester.tap(find.byTooltip('Next month'));
-    await tester.pump();
+    await tester.pumpAndSettle();
 
     expect(find.text('November 2026'), findsOneWidget);
     expect(changedMonth, DateTime(2026, 11));
@@ -78,12 +79,12 @@ void main() {
     );
 
     await tester.tap(find.text('Refills'));
-    await tester.pump();
+    await tester.pumpAndSettle();
     expect(changedFilter, ConsumerCalendarFilter.refills);
-    expect(find.text('No refill reminder is saved for this day.'), findsOneWidget);
+    expect(find.text('No refill reminders for this day.'), findsOneWidget);
 
     await tester.tap(find.text('16'));
-    await tester.pump();
+    await tester.pumpAndSettle();
 
     expect(changedDate, DateTime(2026, 10, 16));
     expect(find.text('Check in with your pharmacy'), findsOneWidget);
@@ -115,6 +116,42 @@ void main() {
     await tester.pump();
 
     expect(actedOn, same(event));
+  });
+
+  testWidgets('empty account has no sample entries or misleading legend', (
+    tester,
+  ) async {
+    await pumpCalendar(tester, events: []);
+
+    expect(find.text('A quiet day'), findsOneWidget);
+    expect(find.text('No saved calendar items for this day.'), findsOneWidget);
+    expect(find.text('Morning entry · Not yet confirmed'), findsNothing);
+    expect(find.text('Recorded'), findsNothing);
+    expect(find.text('Unconfirmed'), findsNothing);
+  });
+
+  testWidgets('selected day count and legend come only from actual events', (
+    tester,
+  ) async {
+    await pumpCalendar(tester, events: [
+      ConsumerCalendarEvent(
+        id: 'refill-1',
+        date: DateTime(2026, 10, 16),
+        type: ConsumerCalendarEventType.refill,
+        status: ConsumerCalendarEventStatus.planned,
+        eyebrow: 'Your refill reminder',
+        title: 'Check in with your pharmacy',
+        description: 'Reminder only; pickup is not confirmed.',
+      ),
+    ]);
+
+    expect(find.text('Refill'), findsOneWidget);
+    expect(find.text('Recorded'), findsNothing);
+    await tester.tap(find.text('16'));
+    await tester.pumpAndSettle();
+    expect(find.text('1 item'), findsOneWidget);
+    expect(find.text('Check in with your pharmacy'), findsOneWidget);
+    expect(find.text('A quiet day'), findsNothing);
   });
 
   testWidgets('month and date controls provide descriptive semantics', (

@@ -34,53 +34,111 @@ class FardaYouOverviewPage extends StatelessWidget {
       children: [
         if (showBrandHeader) ...[
           FardaYouBrandHeader(profileLabel: profileLabel, selected: true),
-          const SizedBox(height: 24),
+          const SizedBox(height: 16),
         ],
         LayoutBuilder(
           builder: (context, constraints) {
-            final companionSize = constraints.maxWidth < 340 ? 88.0 : 110.0;
-            return Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'YOUR SPACE',
-                        style: fardaYouText(
-                          size: 10,
-                          height: 14,
-                          weight: FontWeight.w600,
-                          color: FardaYouPalette.textSecondary,
-                          letterSpacing: 1.45,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Semantics(
-                        header: true,
-                        child: Text(
-                          'A little\nmore you.',
-                          style: fardaYouText(
-                            size: 34,
-                            height: 38,
-                            weight: FontWeight.w600,
-                            letterSpacing: -0.8,
+            final compact = constraints.maxWidth < 340;
+            return Container(
+              width: double.infinity,
+              padding: EdgeInsets.fromLTRB(
+                compact ? 18 : 22, 22, compact ? 16 : 20, 21,
+              ),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [FardaYouPalette.navy, FardaYouPalette.navyDeep],
+                ),
+                borderRadius: BorderRadius.circular(28),
+                boxShadow: const [BoxShadow(
+                  color: Color(0x25142C55),
+                  blurRadius: 24,
+                  offset: Offset(0, 10),
+                )],
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF29436C),
+                            borderRadius: BorderRadius.circular(30),
+                          ),
+                          child: Text(
+                            'YOUR SPACE',
+                            style: fardaYouText(
+                              size: 10,
+                              height: 13,
+                              weight: FontWeight.w700,
+                              color: FardaYouPalette.amber,
+                              letterSpacing: 1.3,
+                            ),
                           ),
                         ),
+                        const SizedBox(height: 16),
+                        Semantics(
+                          header: true,
+                          child: Text(
+                            'A little\nmore you.',
+                            style: fardaYouText(
+                              size: compact ? 29 : 33,
+                              height: compact ? 34 : 37,
+                              weight: FontWeight.w600,
+                              color: Colors.white,
+                              letterSpacing: -0.8,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        Text(
+                          'Your routine, your rhythm.',
+                          style: fardaYouText(
+                            size: 12,
+                            height: 17,
+                            color: const Color(0xFFD9E4F4),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (showCompanion &&
+                      MediaQuery.textScalerOf(context).scale(14) <= 18) ...[
+                    const SizedBox(width: 8),
+                    Container(
+                      width: compact ? 80 : 103,
+                      height: compact ? 96 : 116,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: FardaYouPalette.ivory,
+                        borderRadius: BorderRadius.circular(23),
                       ),
-                    ],
-                  ),
-                ),
-                if (showCompanion)
-                  FardaCompanion(
-                    size: companionSize,
-                    mood: FardaCompanionMood.quiet,
-                  ),
-              ],
+                      child: FardaCompanion(
+                        size: compact ? 76 : 99,
+                        mood: FardaCompanionMood.quiet,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
             );
           },
         ),
-        const SizedBox(height: 22),
+        const SizedBox(height: 24),
+        Text(
+          liveRecords ? 'YOUR ACCOUNT' : 'ROUTINE PREVIEW',
+          style: fardaYouText(
+            size: 10, height: 14, weight: FontWeight.w700,
+            color: FardaYouPalette.textSecondary, letterSpacing: 1.4,
+          ),
+        ),
+        const SizedBox(height: 9),
         FardaYouCard(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
           child: Column(
@@ -99,15 +157,33 @@ class FardaYouOverviewPage extends StatelessWidget {
                 title: 'Reminders that reach you',
                 subtitle: 'Notifications, Live Activities & calls',
                 icon: Icons.notifications_none_rounded,
+                showDivider: false,
                 onTap: () => onDestinationSelected(
                   FardaYouDestination.reminders,
                 ),
               ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 21),
+        Text(
+          'LOCAL PREVIEWS',
+          style: fardaYouText(
+            size: 10, height: 14, weight: FontWeight.w700,
+            color: FardaYouPalette.textSecondary, letterSpacing: 1.4,
+          ),
+        ),
+        const SizedBox(height: 9),
+        FardaYouCard(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          child: Column(
+            children: [
               FardaYouLinkRow(
                 key: FardaYouKeys.vialLink,
                 title: 'Your vial',
                 subtitle: 'Explore the setup preview',
                 icon: Icons.local_drink_outlined,
+                preview: true,
                 onTap: () => onDestinationSelected(FardaYouDestination.vial),
               ),
               FardaYouLinkRow(
@@ -115,6 +191,7 @@ class FardaYouOverviewPage extends StatelessWidget {
                 title: 'Your circle',
                 subtitle: 'Preview sharing options',
                 icon: Icons.people_outline_rounded,
+                preview: true,
                 showDivider: false,
                 onTap: () => onDestinationSelected(
                   FardaYouDestination.circle,
@@ -123,7 +200,15 @@ class FardaYouOverviewPage extends StatelessWidget {
             ],
           ),
         ),
-        const SizedBox(height: 14),
+        const SizedBox(height: 21),
+        Text(
+          'PERSONALIZE THIS VIEW',
+          style: fardaYouText(
+            size: 10, height: 14, weight: FontWeight.w700,
+            color: FardaYouPalette.textSecondary, letterSpacing: 1.4,
+          ),
+        ),
+        const SizedBox(height: 9),
         FardaYouCard(
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 4),
           child: Column(
@@ -450,6 +535,8 @@ class FardaReminderPreferencesPage extends StatelessWidget {
     this.canEnableCalls = true,
     this.canEnableLiveActivities = true,
     this.quietHoursLabel = '9:00 PM – 8:00 AM',
+    this.quietHoursTimeZone = '',
+    this.onEditQuietHours,
   });
 
   final String profileLabel;
@@ -472,6 +559,8 @@ class FardaReminderPreferencesPage extends StatelessWidget {
   final bool canEnableCalls;
   final bool canEnableLiveActivities;
   final String quietHoursLabel;
+  final String quietHoursTimeZone;
+  final VoidCallback? onEditQuietHours;
 
   @override
   Widget build(BuildContext context) {
@@ -598,12 +687,21 @@ class FardaReminderPreferencesPage extends StatelessWidget {
                       ],
                     ),
                   ),
+                  if (liveRecords && onEditQuietHours != null)
+                    TextButton(
+                      key: FardaYouKeys.quietHoursEdit,
+                      onPressed: saving || !preferencesAvailable
+                          ? null : onEditQuietHours,
+                      child: const Text('Edit'),
+                    ),
                 ],
               ),
               const SizedBox(height: 12),
               Text(
                 liveRecords
-                    ? 'Saved quiet hours for your account. Change them in account settings.'
+                    ? (preferencesAvailable
+                        ? 'Saved for your account · $quietHoursTimeZone'
+                        : 'Preferences unavailable; refresh your account')
                     : 'Quiet hours shown for this local preview.',
                 style: fardaYouText(
                   size: 12,

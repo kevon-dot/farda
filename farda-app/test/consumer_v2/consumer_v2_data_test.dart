@@ -232,7 +232,12 @@ void main() {
     await tester.ensureVisible(find.byKey(const Key('today_routine_evening-occurrence')));
     await tester.tap(find.byKey(const Key('today_routine_evening-occurrence')));
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.byKey(FardaTodayRoutineCard.snoozeButtonKey));
+    await Scrollable.ensureVisible(
+      tester.element(find.byKey(FardaTodayRoutineCard.snoozeButtonKey)),
+      alignment: 0.25,
+      alignmentPolicy: ScrollPositionAlignmentPolicy.explicit,
+    );
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(FardaTodayRoutineCard.snoozeButtonKey));
     await tester.pumpAndSettle();
     expect(repository.lastSnoozedId, 'evening-occurrence');
