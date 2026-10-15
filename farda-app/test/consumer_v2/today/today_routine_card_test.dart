@@ -40,40 +40,50 @@ void main() {
   FardaCompanionMood mood(WidgetTester tester) =>
       tester.widget<FardaCompanion>(find.byType(FardaCompanion)).mood;
 
-  testWidgets('pending routine has one prominent dose action and waving pose',
-      (tester) async {
+  testWidgets('pending routine has one prominent dose action and waving pose', (
+    tester,
+  ) async {
     await pumpCard(tester);
     expect(mood(tester), FardaCompanionMood.waving);
-    expect(find.text('9:00 AM · Not yet confirmed'), findsOneWidget);
+    expect(find.text('Not yet confirmed'), findsOneWidget);
     expect(find.byKey(FardaTodayRoutineCard.logDoseButtonKey), findsOneWidget);
-    expect(find.byKey(FardaTodayRoutineCard.correctEntryButtonKey), findsNothing);
+    expect(
+      find.byKey(FardaTodayRoutineCard.correctEntryButtonKey),
+      findsNothing,
+    );
     expect(find.text('Remind in 15 min'), findsOneWidget);
   });
 
-  testWidgets('snooze is a resting pose and never a confirmed entry',
-      (tester) async {
+  testWidgets('snooze is a resting pose and never a confirmed entry', (
+    tester,
+  ) async {
     await pumpCard(tester, snoozed: true, reduceMotion: true);
     expect(mood(tester), FardaCompanionMood.snoozed);
     expect(find.text('Reminder snoozed · Not yet confirmed'), findsOneWidget);
     expect(find.textContaining('You confirmed'), findsNothing);
     final snooze = find.descendant(
       of: find.byKey(FardaTodayRoutineCard.snoozeButtonKey),
-      matching: find.byType(TextButton),
+      matching: find.byType(OutlinedButton),
     );
-    expect(tester.widget<TextButton>(snooze).onPressed, isNull);
+    expect(tester.widget<OutlinedButton>(snooze).onPressed, isNull);
   });
 
-  testWidgets('saved and skipped records have distinct, quiet companion states',
-      (tester) async {
-    await pumpCard(tester, status: TodayDoseStatus.confirmed);
-    expect(mood(tester), FardaCompanionMood.confirmed);
-    expect(find.text('You confirmed · 9:00 AM'), findsOneWidget);
-    expect(find.byKey(FardaTodayRoutineCard.logDoseButtonKey), findsNothing);
-    expect(find.byKey(FardaTodayRoutineCard.correctEntryButtonKey), findsOneWidget);
+  testWidgets(
+    'saved and skipped records have distinct, quiet companion states',
+    (tester) async {
+      await pumpCard(tester, status: TodayDoseStatus.confirmed);
+      expect(mood(tester), FardaCompanionMood.confirmed);
+      expect(find.text('You confirmed · 9:00 AM'), findsOneWidget);
+      expect(find.byKey(FardaTodayRoutineCard.logDoseButtonKey), findsNothing);
+      expect(
+        find.byKey(FardaTodayRoutineCard.correctEntryButtonKey),
+        findsOneWidget,
+      );
 
-    await pumpCard(tester, status: TodayDoseStatus.skipped);
-    expect(mood(tester), FardaCompanionMood.skipped);
-    expect(find.text('You recorded a skipped dose'), findsOneWidget);
-    expect(find.byKey(FardaTodayRoutineCard.logDoseButtonKey), findsNothing);
-  });
+      await pumpCard(tester, status: TodayDoseStatus.skipped);
+      expect(mood(tester), FardaCompanionMood.skipped);
+      expect(find.text('You recorded a skipped dose'), findsOneWidget);
+      expect(find.byKey(FardaTodayRoutineCard.logDoseButtonKey), findsNothing);
+    },
+  );
 }

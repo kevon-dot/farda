@@ -90,8 +90,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile --ignore-scripts
       - name: Start a disposable MongoDB replica set
+        # The image owns its fresh data directories as mongodb. Start as that
+        # user so mongosh readiness probes cannot race a root entrypoint chown
+        # over their short-lived config lock files in /data/db.
         run: |
-          docker run --detach --name farda-test-mongo \
+          docker run --detach --user mongodb --name farda-test-mongo \
             --publish 127.0.0.1:27017:27017 mongo:7.0 \
             --replSet rs0 --bind_ip_all
           for attempt in $(seq 1 30); do

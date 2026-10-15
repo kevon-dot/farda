@@ -4,9 +4,11 @@ Updated October 15, 2026.
 
 [Editable Figma file](https://www.figma.com/design/BeSPZ5VOwOOlrwKFTpMA4K?node-id=9-225) · [Prototype](https://www.figma.com/proto/BeSPZ5VOwOOlrwKFTpMA4K?node-id=2-9&starting-point-node-id=2%3A9)
 
+Rendered comparison and current design evidence: [VISUAL_PARITY.md](VISUAL_PARITY.md).
+
 ## Completed in this frontend pass
 
-The Figma handoff is complete and was read back from the design file. It has 17 editable 390 × 844 screens, shared variables and components, Outfit styles, and connected prototype flows. Today, Calendar, Refills, You, Routine, Reminders, Vial, Circle, Live Activity states, reminder-call states, explicit confirmation, refill handoff, and snooze are represented.
+The Figma handoff has 21 editable 390 × 844 screens: the original 17 plus four Calendar state views. It uses shared variables and components, Outfit styles, and connected prototype flows. Today, Calendar, Refills, You, Routine, Reminders, Vial, Circle, Live Activity states, reminder-call states, explicit confirmation, refill handoff, and snooze are represented.
 
 The production Flutter project now has a consumer-v2 implementation under `farda-app/lib/consumer_v2/`:
 
@@ -14,7 +16,7 @@ The production Flutter project now has a consumer-v2 implementation under `farda
 - Routing under `/consumer/v2`, nested tab URLs, and redirects from the previous `/home`, `/plan`, `/calendar`, and `/more` paths. Signed-in sessions now enter Today; account tools remain reachable from the consumer flow.
 - A shared navy/ivory theme layer and the repository-owned companion artwork.
 - Today with date selection, an explicit two-step dose confirmation, snooze, skipped/correction flows, and reminder-milestone previews.
-- Calendar with month/date navigation, filters, status markers, agenda cards, empty states, and accessibility semantics.
+- Calendar with week-first navigation, expandable month, a state-aware companion, Today shortcut, distinct scheduled/snoozed/skipped/recorded markers, and a daily agenda that prioritizes unresolved entries. Complete-week fetching covers adjacent-month dates; local-date arithmetic preserves daylight-saving boundaries.
 - Refills with supply estimates, pharmacy handoff preparation, user-managed status, receipt, and explicit inventory reconciliation.
 - You with local flows for Routine, Reminder Preferences, Vial, Circle, Live Activity, and reminder-call previews.
 - A pure-Dart reminder-occurrence state machine covering the 8:50 heads-up, 9:00 due state, and optional 9:10 call. It enforces consent, verification, quiet hours, one call attempt, idempotency, and explicit confirmation.
@@ -26,7 +28,7 @@ The standalone design widgets do not place calls, schedule notifications, contac
 
 The authenticated `/consumer/v2` routes load one owned snapshot through `ConsumerApiRepository`. Today shows each occurrence for the selected day; taken, skipped, and snoozed actions wait for server confirmation, and a selected entry can open the existing correction form. Calendar renders fetched routine and refill-plan events. Refills now supports account-backed planning, user-reported progress, count edits, and receipt reconciliation, including an explicit choice about whether the received quantity is already counted. You displays saved routine and reminder preferences and saves supported channel toggles and quiet hours after server confirmation and explicit call consent. Vial, Circle, native-surface and privacy previews remain labeled local demonstrations. Empty accounts and failed loads do not fall back to sample medication. The standalone Figma widgets still support injected sample state for design tests. No live provider or hardware work is implied by this UI integration.
 
-The follow-up UI pass is recorded in [UX_AUDIT.md](UX_AUDIT.md): shorter copy and stronger action hierarchy; distinct neutral 3D companion states on Today; a compact Calendar hero and contextual event legend; a navy supply hero and step controls in Refills; and a navy companion hero with clear local-preview labels in You. The implementation uses shared navy/ivory control styling with restrained warm accents. All 17 editable Figma frames were aligned and screenshot checked for the navy/ivory controls, companion contrast, concise copy, and honest preview labels. They remain 390 × 844 with Outfit styles, zero image nodes, and their prototype links intact. Figma keeps editable vector companions, while Flutter uses the repository's 3D sprite; the Today variants are expressed in Flutter rather than as separate Figma frames.
+The earlier UI audit is recorded in [UX_AUDIT.md](UX_AUDIT.md). The latest rendered pass is recorded in [VISUAL_PARITY.md](VISUAL_PARITY.md): Flutter now shares native SVG character and scene exports with Figma. Calendar adds a larger companion welcome, separate day capsules, a prominent warm action card, compact upcoming cards, and quiet/saved/snoozed character moments. The implementation retains shared navy/ivory controls, restrained warm accents and truthful preview labels. Extra Calendar state frames complement the original 17 screens.
 
 ## Invariants the production services must preserve
 

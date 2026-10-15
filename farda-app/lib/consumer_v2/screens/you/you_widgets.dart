@@ -1,15 +1,17 @@
 import 'package:flutter/material.dart';
 
+import '../../design_system/farda_scene.dart';
+
 abstract final class FardaYouPalette {
-  static const ivory = Color(0xFFF8F7F2);
+  static const ivory = Color(0xFFF6F5F0);
   static const card = Color(0xFFFFFFFF);
   static const navy = Color(0xFF142C55);
   static const navyDeep = Color(0xFF0D2042);
   static const blue = Color(0xFF365C99);
-  static const paleBlue = Color(0xFFE6EDF8);
+  static const paleBlue = Color(0xFFE9EEF7);
   static const softBlue = Color(0xFFD9E4F4);
-  static const textSecondary = Color(0xFF62718A);
-  static const border = Color(0xFFE2E7EF);
+  static const textSecondary = Color(0xFF58677D);
+  static const border = Color(0xFFDCE2EB);
   static const warm = Color(0xFF80500E);
   static const warmBackground = Color(0xFFF7EAD5);
   static const amber = Color(0xFFF2C983);
@@ -75,6 +77,7 @@ class FardaYouBrandHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final largeText = MediaQuery.textScalerOf(context).scale(14) > 18;
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
@@ -83,8 +86,8 @@ class FardaYouBrandHeader extends StatelessWidget {
           child: Text(
             'farda.',
             style: fardaYouText(
-              size: 30,
-              height: 34,
+              size: largeText ? 24 : 30,
+              height: 39,
               weight: FontWeight.w600,
               letterSpacing: -1.8,
             ),
@@ -96,26 +99,21 @@ class FardaYouBrandHeader extends StatelessWidget {
           label: selected ? 'Your space, current page' : 'Open your space',
           child: Material(
             color: FardaYouPalette.paleBlue,
-            shape: const CircleBorder(
-              side: BorderSide(color: Color(0xFFD5DEEC)),
-            ),
+            borderRadius: BorderRadius.circular(16),
             child: InkWell(
-              customBorder: const CircleBorder(),
+              borderRadius: BorderRadius.circular(16),
               onTap: onProfilePressed,
               child: ConstrainedBox(
                 constraints: const BoxConstraints.tightFor(
-                  width: 48,
-                  height: 48,
+                  width: 36,
+                  height: 36,
                 ),
                 child: Center(
                   child: Text(
                     profileLabel,
                     maxLines: 1,
                     overflow: TextOverflow.fade,
-                    style: fardaYouText(
-                      size: 13,
-                      weight: FontWeight.w600,
-                    ),
+                    style: fardaYouText(size: 11, weight: FontWeight.w600),
                   ),
                 ),
               ),
@@ -137,17 +135,23 @@ class FardaYouBackButton extends StatelessWidget {
     return Semantics(
       button: true,
       label: 'Back to your space',
-      child: TextButton.icon(
+      child: TextButton(
         onPressed: onPressed,
         style: TextButton.styleFrom(
           foregroundColor: FardaYouPalette.navy,
-          minimumSize: const Size(48, 48),
-          padding: const EdgeInsets.symmetric(horizontal: 0),
+          minimumSize: const Size(48, 44),
+          padding: EdgeInsets.zero,
           alignment: Alignment.centerLeft,
-          textStyle: fardaYouText(size: 13, weight: FontWeight.w500),
+          textStyle: fardaYouText(size: 12, weight: FontWeight.w600),
         ),
-        icon: const Icon(Icons.arrow_back_rounded, size: 20),
-        label: const Text('Back'),
+        child: const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Flexible(child: Text('Back to your space')),
+            SizedBox(width: 6),
+            Icon(Icons.arrow_forward_ios_rounded, size: 12),
+          ],
+        ),
       ),
     );
   }
@@ -215,7 +219,7 @@ class FardaYouCard extends StatelessWidget {
     required this.child,
     this.padding = const EdgeInsets.all(18),
     this.color = FardaYouPalette.card,
-    this.borderColor = FardaYouPalette.border,
+    this.borderColor = Colors.transparent,
     this.radius = 24,
   });
 
@@ -232,13 +236,6 @@ class FardaYouCard extends StatelessWidget {
         color: color,
         borderRadius: BorderRadius.circular(radius),
         border: Border.all(color: borderColor),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x0A142C55),
-            offset: Offset(0, 5),
-            blurRadius: 16,
-          ),
-        ],
       ),
       child: Padding(padding: padding, child: child),
     );
@@ -250,99 +247,94 @@ class FardaYouLinkRow extends StatelessWidget {
     super.key,
     required this.title,
     required this.subtitle,
-    required this.icon,
+    required this.vectorIcon,
     required this.onTap,
-    this.showDivider = true,
     this.preview = false,
   });
 
   final String title;
   final String subtitle;
-  final IconData icon;
+  final String vectorIcon;
   final VoidCallback onTap;
-  final bool showDivider;
   final bool preview;
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Semantics(
-          button: true,
-          label: '$title. ${preview ? 'Local preview. ' : ''}$subtitle',
-          child: Material(
-            color: Colors.transparent,
-            child: InkWell(
-              onTap: onTap,
-              borderRadius: BorderRadius.circular(16),
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(minHeight: 74),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 10),
-                  child: Row(
+    return Semantics(
+      button: true,
+      label: '$title. ${preview ? 'Local preview. ' : ''}$subtitle',
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(12),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 40),
+            child: Row(
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: FardaYouPalette.paleBlue,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: FardaVectorIcon(vectorIcon),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      FardaYouIconTile(icon: icon, warm: preview),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Text(
-                              title,
-                              style: fardaYouText(
-                                size: 15,
-                                height: 20,
-                                weight: FontWeight.w600,
-                              ),
-                            ),
-                            const SizedBox(height: 3),
-                            Text(
-                              subtitle,
-                              style: fardaYouText(
-                                size: 12,
-                                height: 17,
-                                color: FardaYouPalette.textSecondary,
-                              ),
-                            ),
-                          ],
+                      Text(
+                        title,
+                        style: fardaYouText(
+                          size: 14,
+                          height: 20,
+                          weight: FontWeight.w600,
                         ),
                       ),
-                      const SizedBox(width: 8),
-                      if (preview)
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 5,
-                          ),
-                          decoration: BoxDecoration(
-                            color: FardaYouPalette.warmBackground,
-                            borderRadius: BorderRadius.circular(9),
-                          ),
-                          child: Text(
-                            'TRY',
-                            style: fardaYouText(
-                              size: 10,
-                              weight: FontWeight.w700,
-                              color: FardaYouPalette.warm,
-                              letterSpacing: 0.7,
-                            ),
-                          ),
+                      const SizedBox(height: 3),
+                      Text(
+                        subtitle,
+                        style: fardaYouText(
+                          size: 12,
+                          height: 17,
+                          color: FardaYouPalette.textSecondary,
                         ),
-                      const Icon(
-                        Icons.chevron_right_rounded,
-                        size: 23,
-                        color: FardaYouPalette.textSecondary,
                       ),
                     ],
                   ),
                 ),
-              ),
+                if (preview) ...[
+                  const SizedBox(width: 8),
+                  Container(
+                    width: 44,
+                    height: 24,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: FardaYouPalette.paleBlue,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      'TRY',
+                      style: fardaYouText(
+                        size: 10,
+                        height: 14,
+                        weight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+                const SizedBox(width: 8),
+                const FardaVectorIcon('icon-arrow', size: 16),
+              ],
             ),
           ),
         ),
-        if (showDivider)
-          const Divider(height: 1, color: FardaYouPalette.border),
-      ],
+      ),
     );
   }
 }
@@ -350,12 +342,14 @@ class FardaYouLinkRow extends StatelessWidget {
 class FardaYouIconTile extends StatelessWidget {
   const FardaYouIconTile({
     super.key,
-    required this.icon,
+    this.icon,
+    this.vectorIcon,
     this.warm = false,
     this.size = 44,
-  });
+  }) : assert(icon != null || vectorIcon != null);
 
-  final IconData icon;
+  final IconData? icon;
+  final String? vectorIcon;
   final bool warm;
   final double size;
 
@@ -365,17 +359,18 @@ class FardaYouIconTile extends StatelessWidget {
       width: size,
       height: size,
       decoration: BoxDecoration(
-        color: warm
-            ? FardaYouPalette.warmBackground
-            : FardaYouPalette.paleBlue,
+        color: warm ? FardaYouPalette.warmBackground : FardaYouPalette.paleBlue,
         borderRadius: BorderRadius.circular(size * 0.33),
       ),
       alignment: Alignment.center,
-      child: Icon(
-        icon,
-        size: size * 0.5,
-        color: warm ? FardaYouPalette.warm : FardaYouPalette.navy,
-      ),
+      child:
+          vectorIcon != null
+              ? FardaVectorIcon(vectorIcon!, size: size * 0.55)
+              : Icon(
+                icon,
+                size: size * 0.5,
+                color: warm ? FardaYouPalette.warm : FardaYouPalette.navy,
+              ),
     );
   }
 }
@@ -387,21 +382,23 @@ class FardaYouSettingRow extends StatelessWidget {
     required this.subtitle,
     required this.trailing,
     this.showDivider = true,
+    this.compact = false,
   });
 
   final String title;
   final String subtitle;
   final Widget trailing;
   final bool showDivider;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
         ConstrainedBox(
-          constraints: const BoxConstraints(minHeight: 72),
+          constraints: BoxConstraints(minHeight: compact ? 40 : 72),
           child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 11),
+            padding: EdgeInsets.symmetric(vertical: compact ? 0 : 11),
             child: Row(
               children: [
                 Expanded(
@@ -411,7 +408,7 @@ class FardaYouSettingRow extends StatelessWidget {
                       Text(
                         title,
                         style: fardaYouText(
-                          size: 15,
+                          size: compact ? 14 : 15,
                           height: 20,
                           weight: FontWeight.w600,
                         ),
@@ -455,60 +452,78 @@ class FardaYouSwitch extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final duration =
+        MediaQuery.maybeOf(context)?.disableAnimations == true
+            ? Duration.zero
+            : const Duration(milliseconds: 180);
     return Semantics(
       toggled: value,
       label: semanticLabel,
-      child: Switch.adaptive(
-        value: value,
-        onChanged: onChanged,
-        activeTrackColor: FardaYouPalette.navy,
-        activeColor: Colors.white,
-        inactiveTrackColor: const Color(0xFFB7C2D2),
-        materialTapTargetSize: MaterialTapTargetSize.padded,
+      enabled: onChanged != null,
+      child: InkWell(
+        onTap: onChanged == null ? null : () => onChanged!(!value),
+        borderRadius: BorderRadius.circular(20),
+        child: SizedBox(
+          width: 44,
+          height: 40,
+          child: Center(
+            child: AnimatedContainer(
+              duration: duration,
+              width: 44,
+              height: 28,
+              padding: const EdgeInsets.all(3),
+              decoration: BoxDecoration(
+                color: value ? FardaYouPalette.navy : const Color(0xFFDCE2EB),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: AnimatedAlign(
+                duration: duration,
+                alignment: value ? Alignment.centerRight : Alignment.centerLeft,
+                child: const DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    shape: BoxShape.circle,
+                  ),
+                  child: SizedBox.square(dimension: 22),
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
 }
 
 class FardaYouNotice extends StatelessWidget {
-  const FardaYouNotice({
-    super.key,
-    required this.text,
-    this.warm = false,
-  });
+  const FardaYouNotice({super.key, required this.text, this.warm = false});
 
   final String text;
   final bool warm;
 
   @override
   Widget build(BuildContext context) {
-    final foreground = warm
-        ? FardaYouPalette.warm
-        : const Color(0xFF385170);
+    final foreground =
+        warm ? FardaYouPalette.warm : FardaYouPalette.textSecondary;
     return Semantics(
       container: true,
       child: Container(
         width: double.infinity,
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: warm
-              ? FardaYouPalette.warmBackground
-              : FardaYouPalette.paleBlue,
+          color:
+              warm ? FardaYouPalette.warmBackground : FardaYouPalette.paleBlue,
           borderRadius: BorderRadius.circular(16),
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(Icons.info_outline_rounded, size: 19, color: foreground),
-            const SizedBox(width: 10),
+            FardaVectorIcon('icon-info', size: 18, color: foreground),
+            const SizedBox(width: 8),
             Expanded(
               child: Text(
                 text,
-                style: fardaYouText(
-                  size: 12,
-                  height: 18,
-                  color: foreground,
-                ),
+                style: fardaYouText(size: 12, height: 18, color: foreground),
               ),
             ),
           ],
@@ -555,9 +570,7 @@ class FardaYouPrimaryButton extends StatelessWidget {
             color: foregroundColor,
           ),
         ),
-        icon: icon == null
-            ? const SizedBox.shrink()
-            : Icon(icon, size: 20),
+        icon: icon == null ? const SizedBox.shrink() : Icon(icon, size: 20),
         label: Text(label),
       ),
     );
@@ -597,9 +610,7 @@ class FardaYouSecondaryButton extends StatelessWidget {
             color: foregroundColor,
           ),
         ),
-        icon: icon == null
-            ? const SizedBox.shrink()
-            : Icon(icon, size: 20),
+        icon: icon == null ? const SizedBox.shrink() : Icon(icon, size: 20),
         label: Text(label),
       ),
     );
@@ -621,7 +632,10 @@ class FardaPreviewBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: onDark ? Colors.white.withValues(alpha: 0.12) : FardaYouPalette.paleBlue,
+        color:
+            onDark
+                ? Colors.white.withValues(alpha: 0.12)
+                : FardaYouPalette.paleBlue,
         borderRadius: BorderRadius.circular(20),
       ),
       child: Text(
@@ -655,9 +669,10 @@ class FardaReminderCadence extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final foreground = onDark ? Colors.white : FardaYouPalette.navy;
-    final secondary = onDark
-        ? Colors.white.withValues(alpha: 0.72)
-        : FardaYouPalette.textSecondary;
+    final secondary =
+        onDark
+            ? Colors.white.withValues(alpha: 0.72)
+            : FardaYouPalette.textSecondary;
     final steps = [
       ('8:50', 'Heads-up'),
       ('9:00', 'Routine due'),
@@ -669,10 +684,14 @@ class FardaReminderCadence extends StatelessWidget {
       label:
           'Reminder rhythm. 8:50 heads-up, 9:00 routine due, 9:${callDelayMinutes.toString().padLeft(2, '0')} optional call.',
       child: FardaYouCard(
-        color: onDark ? Colors.white.withValues(alpha: 0.09) : FardaYouPalette.card,
-        borderColor: onDark
-            ? Colors.white.withValues(alpha: 0.16)
-            : FardaYouPalette.border,
+        color:
+            onDark
+                ? Colors.white.withValues(alpha: 0.09)
+                : FardaYouPalette.card,
+        borderColor:
+            onDark
+                ? Colors.white.withValues(alpha: 0.16)
+                : FardaYouPalette.border,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -705,9 +724,10 @@ class FardaReminderCadence extends StatelessWidget {
                       time: steps[index].$1,
                       label: steps[index].$2,
                       selected: index == activeIndex,
-                      onPressed: onStepPressed == null
-                          ? null
-                          : () => onStepPressed!(index),
+                      onPressed:
+                          onStepPressed == null
+                              ? null
+                              : () => onStepPressed!(index),
                       onDark: onDark,
                     ),
                   ),
@@ -715,9 +735,10 @@ class FardaReminderCadence extends StatelessWidget {
                     Container(
                       height: 2,
                       margin: const EdgeInsets.only(top: 9),
-                      color: onDark
-                          ? Colors.white.withValues(alpha: 0.2)
-                          : FardaYouPalette.softBlue,
+                      color:
+                          onDark
+                              ? Colors.white.withValues(alpha: 0.2)
+                              : FardaYouPalette.softBlue,
                       width: 14,
                     ),
                 ],
@@ -748,9 +769,10 @@ class _CadenceStep extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final foreground = onDark ? Colors.white : FardaYouPalette.navy;
-    final secondary = onDark
-        ? Colors.white.withValues(alpha: 0.68)
-        : FardaYouPalette.textSecondary;
+    final secondary =
+        onDark
+            ? Colors.white.withValues(alpha: 0.68)
+            : FardaYouPalette.textSecondary;
     final child = Column(
       children: [
         AnimatedContainer(
@@ -759,13 +781,15 @@ class _CadenceStep extends StatelessWidget {
           height: selected ? 20 : 14,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: selected
-                ? (onDark ? Colors.white : FardaYouPalette.navy)
-                : Colors.transparent,
+            color:
+                selected
+                    ? (onDark ? Colors.white : FardaYouPalette.navy)
+                    : Colors.transparent,
             border: Border.all(
-              color: onDark
-                  ? Colors.white.withValues(alpha: 0.72)
-                  : FardaYouPalette.blue,
+              color:
+                  onDark
+                      ? Colors.white.withValues(alpha: 0.72)
+                      : FardaYouPalette.blue,
               width: 2,
             ),
           ),

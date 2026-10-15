@@ -41,6 +41,8 @@ class TodayRoutineRecord {
     required this.timeLabel,
     required this.status,
     required this.isSnoozed,
+    this.recordedAt,
+    this.snoozedUntil,
   });
 
   final String id;
@@ -48,4 +50,6 @@ class TodayRoutineRecord {
   final String timeLabel;
   final TodayDoseStatus status;
   final bool isSnoozed;
+  final DateTime? recordedAt;
+  final DateTime? snoozedUntil;
 }

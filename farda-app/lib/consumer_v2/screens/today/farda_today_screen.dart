@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
+import '../../design_system/farda_consumer_tokens.dart' as design;
+import 'farda_companion.dart';
 import 'today_models.dart';
 import 'today_routine_card.dart';
 
@@ -11,6 +14,7 @@ class FardaTodayScreen extends StatefulWidget {
   const FardaTodayScreen({
     super.key,
     this.initialDate,
+    this.receiptClock,
     this.initialDoseStatus = TodayDoseStatus.pending,
     this.initiallySnoozed = false,
     this.userInitials = 'YO',
@@ -49,6 +53,9 @@ class FardaTodayScreen extends StatefulWidget {
 
   /// Defaults to the user's current local calendar date when omitted.
   final DateTime? initialDate;
+
+  /// Injectable clock for deterministic receipt rendering and time labels.
+  final DateTime Function()? receiptClock;
   final TodayDoseStatus initialDoseStatus;
   final bool initiallySnoozed;
   final String userInitials;
@@ -65,19 +72,19 @@ class FardaTodayScreen extends StatefulWidget {
   final VoidCallback? onLogDoseRequested;
   final VoidCallback? onSnoozed;
   final VoidCallback? onMoreOptions;
-  final ValueChanged<TodayReminderMilestone>?
-  onReminderMilestoneSelected;
+  final ValueChanged<TodayReminderMilestone>? onReminderMilestoneSelected;
   final VoidCallback? onOpenCalendar;
   final VoidCallback? onOpenRefills;
   final VoidCallback? onOpenProfile;
   final VoidCallback? onTodayTap;
   final VoidCallback? onEveningRoutineTap;
   final VoidCallback? onReviewRoutineTap;
+
   /// Returns an error to display, or null after the server accepts the write.
   final Future<String?> Function(TodayDoseStatus status)? onPersistDose;
   final Future<String?> Function()? onPersistSnooze;
   final Future<String?> Function(String id, TodayDoseStatus status)?
-      onPersistDoseForId;
+  onPersistDoseForId;
   final Future<String?> Function(String id)? onPersistSnoozeForId;
   final ValueChanged<String>? onCorrectRoutine;
 
@@ -87,6 +94,7 @@ class FardaTodayScreen extends StatefulWidget {
 
 class _FardaTodayScreenState extends State<FardaTodayScreen> {
   final ScrollController _scrollController = ScrollController();
+  final GlobalKey _savedEntryKey = GlobalKey();
 
   late DateTime _selectedDate;
   late DateTime _visibleWeekStart;
@@ -95,6 +103,16 @@ class _FardaTodayScreenState extends State<FardaTodayScreen> {
   TodayReminderMilestoneType? _previewedMilestone;
   bool _saving = false;
   String? _selectedRoutineId;
+  _TodayReceipt? _receipt;
+  bool _showCheckIn = false;
+  String? _checkInRoutineId;
+  String? _checkInLabel;
+  String? _checkInSchedule;
+  String? _receiptRoutineId;
+  String? _receiptLabel;
+  String? _receiptSchedule;
+  DateTime? _receiptAt;
+  DateTime? _receiptSnoozedUntil;
 
   TodayRoutineRecord? get _activeRoutine {
     if (!widget.liveRecords || widget.routines.isEmpty) return null;
@@ -106,7 +124,8 @@ class _FardaTodayScreenState extends State<FardaTodayScreen> {
 
   TodayDoseStatus get _activeStatus => _activeRoutine?.status ?? _doseStatus;
   bool get _activeSnoozed => _activeRoutine?.isSnoozed ?? _isSnoozed;
-  String get _activeTime => _activeRoutine?.timeLabel ?? widget.morningTimeLabel;
+  String get _activeTime =>
+      _activeRoutine?.timeLabel ?? widget.morningTimeLabel;
   String get _activeLabel =>
       _activeRoutine?.medicationLabel ?? widget.medicationLabel;
 
@@ -133,10 +152,13 @@ class _FardaTodayScreenState extends State<FardaTodayScreen> {
       _visibleWeekStart = _startOfWeek(_selectedDate);
       _selectedRoutineId =
           widget.routines.isEmpty ? null : widget.routines.first.id;
+      _receipt = null;
+      _showCheckIn = false;
     }
     if (widget.initialDoseStatus != oldWidget.initialDoseStatus) {
       _doseStatus = widget.initialDoseStatus;
-      _isSnoozed = widget.initiallySnoozed &&
+      _isSnoozed =
+          widget.initiallySnoozed &&
           widget.initialDoseStatus == TodayDoseStatus.pending;
     } else if (widget.initiallySnoozed != oldWidget.initiallySnoozed &&
         _doseStatus == TodayDoseStatus.pending) {
@@ -145,6 +167,17 @@ class _FardaTodayScreenState extends State<FardaTodayScreen> {
     if (widget.routines.isNotEmpty &&
         !widget.routines.any((routine) => routine.id == _selectedRoutineId)) {
       _selectedRoutineId = widget.routines.first.id;
+    }
+    if (widget.liveRecords && _receipt != null) {
+      for (final routine in widget.routines) {
+        if (routine.id != _receiptRoutineId) continue;
+        if (_receipt == _TodayReceipt.confirmed) {
+          _receiptAt = routine.recordedAt?.toLocal();
+        } else {
+          _receiptSnoozedUntil = routine.snoozedUntil?.toLocal();
+        }
+        break;
+      }
     }
   }
 
@@ -157,7 +190,11 @@ class _FardaTodayScreenState extends State<FardaTodayScreen> {
   void _selectDay(DateTime date) {
     final normalized = _dateOnly(date);
     if (!_isSameDay(_selectedDate, normalized)) {
-      setState(() => _selectedDate = normalized);
+      setState(() {
+        _selectedDate = normalized;
+        _receipt = null;
+        _showCheckIn = false;
+      });
     }
     widget.onDaySelected?.call(normalized);
     widget.onOpenCalendar?.call();
@@ -177,46 +214,75 @@ class _FardaTodayScreenState extends State<FardaTodayScreen> {
     _publishDoseState();
   }
 
-  Future<void> _openDoseConfirmation() async {
-    final routineId = _activeRoutine?.id;
+  void _openDoseConfirmation() {
+    if (_saving) return;
     widget.onLogDoseRequested?.call();
-    final shouldSave = await showModalBottomSheet<bool>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      barrierColor: _sheetBarrier,
-      builder: (sheetContext) => _FardaSheet(
-        eyebrow: 'YOUR RECORD',
-        title: widget.liveRecords ? 'Log this dose?' : 'Log your morning dose?',
-        body: 'Only save this if you took it. This is your report.',
-        children: [
-          _SheetNotice(
-            icon: Icons.medication_rounded,
-            title: _activeLabel,
-            detail: '$_activeTime · ${_longDate(_selectedDate)}',
-          ),
-          const SizedBox(height: 18),
-          _SheetButton(
-            key: FardaTodayScreen.confirmDoseButtonKey,
-            label: 'Yes, I took it',
-            onPressed: () => Navigator.of(sheetContext).pop(true),
-          ),
-          const SizedBox(height: 8),
-          _SheetButton(
-            label: 'Go back',
-            isSecondary: true,
-            onPressed: () => Navigator.of(sheetContext).pop(false),
-          ),
-        ],
-      ),
-    );
+    setState(() {
+      _checkInRoutineId = _activeRoutine?.id;
+      _checkInLabel = _activeLabel;
+      _checkInSchedule = _activeTime;
+      _showCheckIn = true;
+    });
+    if (_scrollController.hasClients) _scrollController.jumpTo(0);
+  }
 
-    if (!mounted || shouldSave != true) return;
+  Future<void> _confirmDose() async {
+    final routineId = _checkInRoutineId;
     if (!await _persistDose(TodayDoseStatus.confirmed, routineId)) return;
     if (!widget.liveRecords) _setDoseStatus(TodayDoseStatus.confirmed);
-    _showMessage(widget.liveRecords
-        ? 'Your entry is saved.'
-        : 'Your morning entry is saved.');
+    _showSavedReceipt(
+      _TodayReceipt.confirmed,
+      routineId: routineId,
+      label: _checkInLabel ?? _activeLabel,
+      schedule: _checkInSchedule ?? _activeTime,
+    );
+  }
+
+  void _showSavedReceipt(
+    _TodayReceipt receipt, {
+    required String? routineId,
+    required String label,
+    required String schedule,
+  }) {
+    if (!mounted) return;
+    setState(() {
+      _receipt = receipt;
+      _showCheckIn = false;
+      _receiptRoutineId = routineId;
+      _receiptLabel = label;
+      _receiptSchedule = schedule;
+      final canonical = widget.routines.where(
+        (routine) => routine.id == routineId,
+      );
+      _receiptAt =
+          widget.liveRecords
+              ? (canonical.isEmpty
+                  ? null
+                  : canonical.first.recordedAt?.toLocal())
+              : (widget.receiptClock?.call() ?? DateTime.now());
+      _receiptSnoozedUntil =
+          widget.liveRecords
+              ? (canonical.isEmpty
+                  ? null
+                  : canonical.first.snoozedUntil?.toLocal())
+              : (widget.receiptClock?.call() ?? DateTime.now()).add(
+                const Duration(minutes: 15),
+              );
+    });
+    if (_scrollController.hasClients) _scrollController.jumpTo(0);
+  }
+
+  void _returnToToday() {
+    setState(() {
+      _receipt = null;
+      _showCheckIn = false;
+      _receiptRoutineId = null;
+      _receiptLabel = null;
+      _receiptSchedule = null;
+      _receiptAt = null;
+      _receiptSnoozedUntil = null;
+    });
+    if (_scrollController.hasClients) _scrollController.jumpTo(0);
   }
 
   Future<bool> _persistDose(TodayDoseStatus status, String? routineId) async {
@@ -232,9 +298,10 @@ class _FardaTodayScreenState extends State<FardaTodayScreen> {
     if (persistById == null && persist == null) return true;
     setState(() => _saving = true);
     try {
-      final error = persistById != null && routineId != null
-          ? await persistById(routineId, status)
-          : await persist!(status);
+      final error =
+          persistById != null && routineId != null
+              ? await persistById(routineId, status)
+              : await persist!(status);
       if (!mounted) return false;
       if (error != null) {
         _showMessage(error);
@@ -248,6 +315,11 @@ class _FardaTodayScreenState extends State<FardaTodayScreen> {
 
   Future<void> _snooze() async {
     if (_saving) return;
+    final routineId = _showCheckIn ? _checkInRoutineId : _activeRoutine?.id;
+    final routineLabel =
+        _showCheckIn ? (_checkInLabel ?? _activeLabel) : _activeLabel;
+    final routineTime =
+        _showCheckIn ? (_checkInSchedule ?? _activeTime) : _activeTime;
     if (_activeSnoozed) {
       _showMessage('This reminder is already snoozed.');
       return;
@@ -255,15 +327,15 @@ class _FardaTodayScreenState extends State<FardaTodayScreen> {
     if (widget.liveRecords) {
       final persist = widget.onPersistSnooze;
       final persistById = widget.onPersistSnoozeForId;
-      final routineId = _activeRoutine?.id;
       if (persist == null && (persistById == null || routineId == null)) {
         return;
       }
       setState(() => _saving = true);
       try {
-        final error = persistById != null && routineId != null
-            ? await persistById(routineId)
-            : await persist!();
+        final error =
+            persistById != null && routineId != null
+                ? await persistById(routineId)
+                : await persist!();
         if (!mounted) return;
         if (error != null) {
           _showMessage(error);
@@ -276,7 +348,12 @@ class _FardaTodayScreenState extends State<FardaTodayScreen> {
     if (!widget.liveRecords) setState(() => _isSnoozed = true);
     widget.onSnoozed?.call();
     _publishDoseState();
-    _showMessage('Reminder snoozed. No dose was logged.');
+    _showSavedReceipt(
+      _TodayReceipt.snoozed,
+      routineId: routineId,
+      label: routineLabel,
+      schedule: routineTime,
+    );
   }
 
   Future<void> _openMoreOptions() async {
@@ -287,32 +364,36 @@ class _FardaTodayScreenState extends State<FardaTodayScreen> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       barrierColor: _sheetBarrier,
-      builder: (sheetContext) => _FardaSheet(
-        eyebrow: 'YOUR RECORD',
-        title: 'More options',
-        body: 'Skipped records what happened; it does not change your plan.',
-        children: [
-          _SheetButton(
-            key: FardaTodayScreen.recordSkippedButtonKey,
-            label: 'Record as skipped',
-            isSecondary: true,
-            onPressed: () =>
-                Navigator.of(sheetContext).pop(_MoreOption.skipped),
+      builder:
+          (sheetContext) => _FardaSheet(
+            eyebrow: 'YOUR RECORD',
+            title: 'More options',
+            body:
+                'Skipped records what happened; it does not change your plan.',
+            children: [
+              _SheetButton(
+                key: FardaTodayScreen.recordSkippedButtonKey,
+                label: 'Record as skipped',
+                isSecondary: true,
+                onPressed:
+                    () => Navigator.of(sheetContext).pop(_MoreOption.skipped),
+              ),
+              const SizedBox(height: 8),
+              _SheetButton(
+                label: 'Review my routine',
+                isSecondary: true,
+                onPressed:
+                    () => Navigator.of(
+                      sheetContext,
+                    ).pop(_MoreOption.reviewRoutine),
+              ),
+              const SizedBox(height: 8),
+              _SheetButton(
+                label: 'Cancel',
+                onPressed: () => Navigator.of(sheetContext).pop(),
+              ),
+            ],
           ),
-          const SizedBox(height: 8),
-          _SheetButton(
-            label: 'Review my routine',
-            isSecondary: true,
-            onPressed: () =>
-                Navigator.of(sheetContext).pop(_MoreOption.reviewRoutine),
-          ),
-          const SizedBox(height: 8),
-          _SheetButton(
-            label: 'Cancel',
-            onPressed: () => Navigator.of(sheetContext).pop(),
-          ),
-        ],
-      ),
     );
 
     if (!mounted || result == null) return;
@@ -330,7 +411,8 @@ class _FardaTodayScreenState extends State<FardaTodayScreen> {
 
   Future<void> _openCorrection() async {
     if (widget.liveRecords) {
-      final id = _activeRoutine?.id;
+      final id = _receiptRoutineId ?? _activeRoutine?.id;
+      if (_receipt != null) _returnToToday();
       if (id != null && widget.onCorrectRoutine != null) {
         widget.onCorrectRoutine!(id);
       } else {
@@ -343,29 +425,32 @@ class _FardaTodayScreenState extends State<FardaTodayScreen> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       barrierColor: _sheetBarrier,
-      builder: (sheetContext) => _FardaSheet(
-        eyebrow: 'CORRECT YOUR RECORD',
-        title: 'Mark this as unconfirmed?',
-        body:
-            'This removes the saved status from this routine occurrence. You can add a new entry afterward.',
-        children: [
-          _SheetButton(
-            key: FardaTodayScreen.resetDoseButtonKey,
-            label: 'Yes, correct this entry',
-            onPressed: () => Navigator.of(sheetContext).pop(true),
+      builder:
+          (sheetContext) => _FardaSheet(
+            eyebrow: 'CORRECT YOUR RECORD',
+            title: 'Mark this as unconfirmed?',
+            body:
+                'This removes the saved status from this routine occurrence. You can add a new entry afterward.',
+            children: [
+              _SheetButton(
+                key: FardaTodayScreen.resetDoseButtonKey,
+                label: 'Yes, correct this entry',
+                onPressed: () => Navigator.of(sheetContext).pop(true),
+              ),
+              const SizedBox(height: 8),
+              _SheetButton(
+                label: 'Keep my entry',
+                isSecondary: true,
+                onPressed: () => Navigator.of(sheetContext).pop(false),
+              ),
+            ],
           ),
-          const SizedBox(height: 8),
-          _SheetButton(
-            label: 'Keep my entry',
-            isSecondary: true,
-            onPressed: () => Navigator.of(sheetContext).pop(false),
-          ),
-        ],
-      ),
     );
 
     if (!mounted || shouldReset != true) return;
     _setDoseStatus(TodayDoseStatus.pending);
+    if (_receipt != null) _returnToToday();
+    if (_showCheckIn) _returnToToday();
     _showMessage('Your routine is not yet confirmed.');
   }
 
@@ -376,6 +461,7 @@ class _FardaTodayScreenState extends State<FardaTodayScreen> {
 
   void _handleTodayTap() {
     widget.onTodayTap?.call();
+    if (_receipt != null) _returnToToday();
     if (!_scrollController.hasClients) return;
     if (MediaQuery.maybeOf(context)?.disableAnimations ?? false) {
       _scrollController.jumpTo(0);
@@ -405,6 +491,397 @@ class _FardaTodayScreenState extends State<FardaTodayScreen> {
       );
   }
 
+  Widget _buildReceipt(BuildContext context) {
+    final savedAt = _receiptAt;
+    final savedTime =
+        savedAt == null
+            ? null
+            : TimeOfDay.fromDateTime(savedAt).format(context);
+    final schedule = _receiptSchedule ?? _activeTime;
+    final label = _receiptLabel ?? _activeLabel;
+    if (_receipt == _TodayReceipt.snoozed) {
+      final nextTime =
+          _receiptSnoozedUntil == null
+              ? null
+              : TimeOfDay.fromDateTime(_receiptSnoozedUntil!).format(context);
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const _ReceiptIntroduction(
+            headline: 'We’ll remind\nyou again.',
+            detail: 'Reminder snoozed. Your record is unconfirmed.',
+          ),
+          const SizedBox(height: 16),
+          design.FardaSceneCard(
+            scene: design.FardaScene.today,
+            padding: const EdgeInsets.all(18),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                const _ReceiptCompanion(size: 140),
+                const SizedBox(height: 16),
+                Text(
+                  '15 minutes',
+                  style: _type(
+                    size: 34,
+                    lineHeight: 37,
+                    weight: FontWeight.w600,
+                    color: _canvas,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  nextTime == null
+                      ? 'Reminder rescheduled'
+                      : 'Next reminder · $nextTime',
+                  style: _type(
+                    size: 18,
+                    lineHeight: 24,
+                    weight: FontWeight.w600,
+                    color: _canvas,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'Reminder time changed.\nPrescription directions stay the same.',
+                    style: _type(size: 14, lineHeight: 20, color: _canvas),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                _ReceiptButton(
+                  label: 'Back to today',
+                  onPressed: _returnToToday,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: _ReceiptLink(
+              label: 'Ready now? Log my dose',
+              dark: true,
+              onPressed: () {
+                _returnToToday();
+                _openDoseConfirmation();
+              },
+            ),
+          ),
+        ],
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _ReceiptIntroduction(
+          headline: 'You’re all set.',
+          detail:
+              widget.liveRecords
+                  ? 'You confirmed your $label entry.'
+                  : 'You confirmed your morning entry.',
+        ),
+        const SizedBox(height: 16),
+        design.FardaSceneCard(
+          scene: design.FardaScene.today,
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '${widget.liveRecords ? 'YOUR ROUTINE' : 'YOUR MORNING'} · $schedule',
+                style: _type(
+                  size: 10,
+                  lineHeight: 14,
+                  weight: FontWeight.w600,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'More room\nfor your day.',
+                          style: _type(
+                            size: 26,
+                            lineHeight: 30,
+                            weight: FontWeight.w600,
+                            color: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(height: 9),
+                        Text(
+                          'Your entry is saved.',
+                          style: _type(
+                            size: 12,
+                            lineHeight: 17,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const _ReceiptCompanion(size: 100),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Text(
+                savedTime == null
+                    ? 'You confirmed'
+                    : 'You confirmed · $savedTime',
+                style: _type(size: 12, lineHeight: 17, color: Colors.white),
+              ),
+              const SizedBox(height: 16),
+              _ReceiptButton(
+                label: 'Review my entry',
+                onPressed: () {
+                  final entry = _savedEntryKey.currentContext;
+                  if (entry == null) return;
+                  Scrollable.ensureVisible(
+                    entry,
+                    duration:
+                        MediaQuery.disableAnimationsOf(context)
+                            ? Duration.zero
+                            : const Duration(milliseconds: 240),
+                  );
+                },
+              ),
+              const SizedBox(height: 16),
+              _ReceiptLink(
+                label: 'Correct this entry',
+                onPressed: _openCorrection,
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        Container(
+          key: _savedEntryKey,
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            color: _card,
+            borderRadius: BorderRadius.circular(24),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'YOUR ${widget.liveRecords ? 'ROUTINE' : 'MORNING'} ENTRY',
+                style: _type(
+                  size: 10,
+                  lineHeight: 14,
+                  weight: FontWeight.w600,
+                  color: _secondaryText,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Taken · You confirmed',
+                style: _type(size: 18, lineHeight: 24, weight: FontWeight.w600),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                '${DateFormat.MMMMd().format(_selectedDate)}${savedTime == null ? '' : ' · $savedTime'}\nSource: your check-in',
+                style: _type(size: 14, lineHeight: 20, color: _secondaryText),
+              ),
+              const SizedBox(height: 16),
+              _ReceiptLink(
+                label: 'Correct this entry',
+                onPressed: _openCorrection,
+                dark: true,
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: _ReceiptLink(
+            label: 'Back to today',
+            onPressed: _returnToToday,
+            dark: true,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCheckIn(BuildContext context) {
+    final label = _checkInLabel ?? _activeLabel;
+    final schedule = _checkInSchedule ?? _activeTime;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          'YOUR MORNING ROUTINE',
+          style: _type(
+            size: 10,
+            lineHeight: 14,
+            weight: FontWeight.w600,
+            color: _secondaryText,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Your record.\nYour choice.',
+          style: _type(size: 34, lineHeight: 37, weight: FontWeight.w600),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Only you can confirm what happened.',
+          style: _type(size: 14, lineHeight: 20, color: _secondaryText),
+        ),
+        const SizedBox(height: 16),
+        design.FardaSceneCard(
+          scene: design.FardaScene.today,
+          padding: const EdgeInsets.all(18),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 7,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF315181),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    '$label · $schedule',
+                    style: _type(size: 12, lineHeight: 17, color: Colors.white),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 18),
+              Text(
+                'Did you take your dose?',
+                style: _type(
+                  size: 24,
+                  lineHeight: 28,
+                  weight: FontWeight.w600,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Save only what you can confirm.',
+                style: _type(size: 12, lineHeight: 17, color: Colors.white),
+              ),
+              const SizedBox(height: 18),
+              SizedBox(
+                height: 48,
+                child: FilledButton(
+                  key: FardaTodayScreen.confirmDoseButtonKey,
+                  onPressed: _saving ? null : _confirmDose,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: _canvas,
+                    foregroundColor: _navy,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                  child: Text(
+                    'Yes, I took it · save entry',
+                    style: _type(
+                      size: 14,
+                      lineHeight: 19,
+                      weight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              SizedBox(
+                height:
+                    MediaQuery.sizeOf(context).width < 350 &&
+                            MediaQuery.textScalerOf(context).scale(14) > 16
+                        ? 64
+                        : 48,
+                child: OutlinedButton(
+                  onPressed: _saving ? null : _snooze,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.white,
+                    side: const BorderSide(color: Color(0xFF6684B1)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                  child: Text(
+                    'Remind me in 15 minutes',
+                    style: _type(
+                      size: 14,
+                      lineHeight: 19,
+                      weight: FontWeight.w600,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextButton(
+                onPressed: _saving ? null : _returnToToday,
+                style: TextButton.styleFrom(
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size.fromHeight(44),
+                ),
+                child: Text(
+                  'Not now',
+                  style: _type(
+                    size: 14,
+                    lineHeight: 19,
+                    weight: FontWeight.w600,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        Container(
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            color: _card,
+            borderRadius: BorderRadius.circular(24),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'A PRIVATE CHECK-IN',
+                style: _type(
+                  size: 10,
+                  lineHeight: 14,
+                  weight: FontWeight.w600,
+                  color: _secondaryText,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Your answer shapes your record.',
+                style: _type(size: 18, lineHeight: 24, weight: FontWeight.w600),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'A reminder is not a dose confirmation. You can correct an entry later.',
+                style: _type(size: 14, lineHeight: 20, color: _secondaryText),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final week = List<DateTime>.generate(
@@ -415,17 +892,19 @@ class _FardaTodayScreenState extends State<FardaTodayScreen> {
 
     return Scaffold(
       backgroundColor: _canvas,
-      bottomNavigationBar: widget.showBottomNavigation
-          ? _TodayBottomNavigation(
-              onTodayTap: _handleTodayTap,
-              onCalendarTap: widget.onOpenCalendar,
-              onRefillsTap: widget.onOpenRefills,
-              onYouTap: widget.onOpenProfile,
-            )
-          : null,
+      bottomNavigationBar:
+          widget.showBottomNavigation
+              ? _TodayBottomNavigation(
+                onTodayTap: _handleTodayTap,
+                onCalendarTap: widget.onOpenCalendar,
+                onRefillsTap: widget.onOpenRefills,
+                onYouTap: widget.onOpenProfile,
+              )
+              : null,
       body: SafeArea(
         bottom: false,
-        child: Center(
+        child: Align(
+          alignment: Alignment.topCenter,
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 390),
             child: SingleChildScrollView(
@@ -433,7 +912,10 @@ class _FardaTodayScreenState extends State<FardaTodayScreen> {
               // The shell owns navigation in live mode. Keep enough scroll
               // extent for actions near the end of a short routine list.
               padding: EdgeInsets.fromLTRB(
-                22, 8, 22, widget.showBottomNavigation ? 28 : 112,
+                22,
+                8,
+                22,
+                widget.showBottomNavigation ? 28 : 112,
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -442,97 +924,134 @@ class _FardaTodayScreenState extends State<FardaTodayScreen> {
                     initials: widget.userInitials,
                     onProfileTap: widget.onOpenProfile,
                   ),
-                  const SizedBox(height: 20),
-                  _Greeting(
-                    name: widget.greetingName,
-                    selectedDate: _selectedDate,
-                  ),
-                  const SizedBox(height: 20),
-                  _WeekStrip(
-                    dates: week,
-                    selectedDate: _selectedDate,
-                    onSelected: _selectDay,
-                  ),
-                  const SizedBox(height: 20),
-                  if (widget.liveRecords && widget.routines.length > 1) ...[
-                    Text(
-                      'Your routines · ${widget.routines.length}',
-                      style: _type(size: 18, lineHeight: 24, weight: FontWeight.w600),
+                  if (_receipt != null) ...[
+                    const SizedBox(height: 16),
+                    _buildReceipt(context),
+                  ] else if (_showCheckIn) ...[
+                    const SizedBox(height: 16),
+                    _buildCheckIn(context),
+                  ] else ...[
+                    const SizedBox(height: 16),
+                    _Greeting(
+                      name: widget.greetingName,
+                      selectedDate: _selectedDate,
                     ),
-                    const SizedBox(height: 10),
-                    for (final routine in widget.routines) ...[
-                      _RoutineSelector(
-                        routine: routine,
-                        selected: routine.id == _activeRoutine?.id,
-                        onTap: _saving ? null : () => setState(() => _selectedRoutineId = routine.id),
+                    const SizedBox(height: 16),
+                    _WeekStrip(
+                      dates: week,
+                      selectedDate: _selectedDate,
+                      onSelected: _selectDay,
+                    ),
+                    const SizedBox(height: 16),
+                    if (widget.liveRecords && widget.routines.length > 1) ...[
+                      Text(
+                        'Your routines · ${widget.routines.length}',
+                        style: _type(
+                          size: 18,
+                          lineHeight: 24,
+                          weight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      for (final routine in widget.routines) ...[
+                        _RoutineSelector(
+                          routine: routine,
+                          selected: routine.id == _activeRoutine?.id,
+                          onTap:
+                              _saving
+                                  ? null
+                                  : () => setState(
+                                    () => _selectedRoutineId = routine.id,
+                                  ),
+                        ),
+                        const SizedBox(height: 8),
+                      ],
+                      const SizedBox(height: 12),
+                    ],
+                    if (widget.liveRecords &&
+                        widget.hasRoutine &&
+                        widget.routines.length > 1) ...[
+                      Text(
+                        _activeLabel,
+                        style: _type(
+                          size: 15,
+                          lineHeight: 21,
+                          weight: FontWeight.w600,
+                        ),
                       ),
                       const SizedBox(height: 8),
                     ],
-                    const SizedBox(height: 12),
-                  ],
-                  if (widget.liveRecords && widget.hasRoutine) ...[
-                    Text(_activeLabel,
-                        style: _type(size: 15, lineHeight: 21, weight: FontWeight.w600)),
-                    const SizedBox(height: 8),
-                  ],
-                  if (widget.hasRoutine) FardaTodayRoutineCard(
-                    timeLabel: _activeTime,
-                    status: _activeStatus,
-                    isSnoozed: _activeSnoozed,
-                    neutralCopy: widget.liveRecords,
-                    onOpenLog: _openDoseConfirmation,
-                    onSnooze: _snooze,
-                    onMoreOptions: _openMoreOptions,
-                    onCorrectEntry: _openCorrection,
-                  ) else _NavigationCard(
-                    icon: Icons.add_circle_outline,
-                    title: 'No routine on this day',
-                    detail: 'Add or review a routine in your account.',
-                    onTap: widget.onReviewRoutineTap,
-                  ),
-                  if (!widget.liveRecords) ...[
-                  const SizedBox(height: 20),
-                  _ReminderRhythmCard(
-                    selectedType: _previewedMilestone ??
-                        TodayReminderMilestoneType.routineDue,
-                    footerText: previewedMilestone?.accessibilityHint ??
-                        'Calls only when you enable them',
-                    onSelected: _selectMilestone,
-                  ),
-                  const SizedBox(height: 20),
-                  Text(
-                    'Ahead of the day',
-                    style: _type(
-                      size: 18,
-                      lineHeight: 24,
-                      weight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  _NavigationCard(
-                    icon: Icons.medication_rounded,
-                    title: 'Evening routine',
-                    detail: '8:00 PM · Manual reminder',
-                    onTap: widget.onEveningRoutineTap,
-                  ),
-                  const SizedBox(height: 20),
-                  Text(
-                    'A little head start',
-                    style: _type(
-                      size: 18,
-                      lineHeight: 24,
-                      weight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  _NavigationCard(
-                    icon: Icons.inventory_2_outlined,
-                    title: 'Let’s plan your refill',
-                    detail: 'About 6 days of supply · Estimate',
-                    onTap: widget.onOpenRefills,
-                  ),
-                  const SizedBox(height: 20),
-                  const _HelpfulContext(),
+                    if (widget.hasRoutine)
+                      FardaTodayRoutineCard(
+                        timeLabel: _activeTime,
+                        status: _activeStatus,
+                        isSnoozed: _activeSnoozed,
+                        neutralCopy: widget.liveRecords,
+                        onOpenLog: _openDoseConfirmation,
+                        onSnooze: _snooze,
+                        onMoreOptions: _openMoreOptions,
+                        onCorrectEntry: _openCorrection,
+                      )
+                    else
+                      _NavigationCard(
+                        icon: Icons.add_circle_outline,
+                        title: 'No routine on this day',
+                        detail: 'Add or review a routine in your account.',
+                        onTap: widget.onReviewRoutineTap,
+                      ),
+                    if (widget.liveRecords && widget.hasRoutine) ...[
+                      const SizedBox(height: 16),
+                      _LiveReminderRhythm(
+                        time: _activeTime,
+                        onReviewRoutineTap: widget.onReviewRoutineTap,
+                      ),
+                    ],
+                    if (!widget.liveRecords) ...[
+                      const SizedBox(height: 16),
+                      _ReminderRhythmCard(
+                        selectedType:
+                            _previewedMilestone ??
+                            TodayReminderMilestoneType.routineDue,
+                        footerText:
+                            previewedMilestone?.accessibilityHint ??
+                            'Calls are optional',
+                        onSelected: _selectMilestone,
+                      ),
+                      const SizedBox(height: 20),
+                      Text(
+                        'Ahead of the day',
+                        style: _type(
+                          size: 18,
+                          lineHeight: 24,
+                          weight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      _NavigationCard(
+                        icon: Icons.medication_rounded,
+                        title: 'Evening routine',
+                        detail: '8:00 PM · Manual reminder',
+                        onTap: widget.onEveningRoutineTap,
+                      ),
+                      const SizedBox(height: 20),
+                      Text(
+                        'A little head start',
+                        style: _type(
+                          size: 18,
+                          lineHeight: 24,
+                          weight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      _NavigationCard(
+                        icon: Icons.inventory_2_outlined,
+                        title: 'Let’s plan your refill',
+                        detail: 'About 6 days of supply · Estimate',
+                        onTap: widget.onOpenRefills,
+                      ),
+                      const SizedBox(height: 20),
+                      const _HelpfulContext(),
+                    ],
                   ],
                 ],
               ),
@@ -542,6 +1061,117 @@ class _FardaTodayScreenState extends State<FardaTodayScreen> {
       ),
     );
   }
+}
+
+enum _TodayReceipt { confirmed, snoozed }
+
+class _ReceiptIntroduction extends StatelessWidget {
+  const _ReceiptIntroduction({required this.headline, required this.detail});
+
+  final String headline;
+  final String detail;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(
+        'A LITTLE BREATHING ROOM',
+        style: _type(
+          size: 10,
+          lineHeight: 14,
+          weight: FontWeight.w600,
+          color: _secondaryText,
+        ),
+      ),
+      const SizedBox(height: 8),
+      Text(
+        headline,
+        style: _type(size: 34, lineHeight: 37, weight: FontWeight.w600),
+      ),
+      const SizedBox(height: 8),
+      Text(
+        detail,
+        style: _type(size: 14, lineHeight: 20, color: _secondaryText),
+      ),
+    ],
+  );
+}
+
+class _ReceiptCompanion extends StatelessWidget {
+  const _ReceiptCompanion({required this.size});
+  final double size;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: size,
+    height: size,
+    decoration: const BoxDecoration(color: _canvas, shape: BoxShape.circle),
+    child: FardaCompanion(size: size, mood: FardaCompanionMood.quiet),
+  );
+}
+
+class _ReceiptButton extends StatelessWidget {
+  const _ReceiptButton({required this.label, required this.onPressed});
+  final String label;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+    width: double.infinity,
+    height: 48,
+    child: FilledButton(
+      onPressed: onPressed,
+      style: FilledButton.styleFrom(
+        backgroundColor: _canvas,
+        foregroundColor: _navy,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      ),
+      child: Text(
+        label,
+        style: _type(size: 14, lineHeight: 19, weight: FontWeight.w600),
+      ),
+    ),
+  );
+}
+
+class _ReceiptLink extends StatelessWidget {
+  const _ReceiptLink({
+    required this.label,
+    required this.onPressed,
+    this.dark = false,
+  });
+  final String label;
+  final VoidCallback onPressed;
+  final bool dark;
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+    button: true,
+    child: InkWell(
+      onTap: onPressed,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            label,
+            style: _type(
+              size: 12,
+              lineHeight: 17,
+              weight: FontWeight.w600,
+              color: dark ? _navy : Colors.white,
+            ),
+          ),
+          const SizedBox(width: 6),
+          Icon(
+            Icons.chevron_right_rounded,
+            size: 14,
+            color: dark ? _navy : Colors.white,
+          ),
+        ],
+      ),
+    ),
+  );
 }
 
 class _BrandHeader extends StatelessWidget {
@@ -607,36 +1237,29 @@ class _Greeting extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Hi, $name.',
-                style: _type(
-                  size: 14,
-                  lineHeight: 20,
-                  color: _secondaryText,
-                ),
+                'Hello, $name.',
+                style: _type(size: 14, lineHeight: 20, color: _secondaryText),
               ),
               const SizedBox(height: 4),
               Text(
-                'Today, at\nyour pace.',
-                style: _type(
-                  size: 34,
-                  lineHeight: 37,
-                  weight: FontWeight.w600,
-                ),
+                'Make room\nfor your day.',
+                style: _type(size: 34, lineHeight: 37, weight: FontWeight.w600),
               ),
             ],
           ),
         ),
         const SizedBox(width: 16),
         AnimatedSwitcher(
-          duration: MediaQuery.maybeOf(context)?.disableAnimations ?? false
-              ? Duration.zero
-              : const Duration(milliseconds: 180),
+          duration:
+              MediaQuery.maybeOf(context)?.disableAnimations ?? false
+                  ? Duration.zero
+                  : const Duration(milliseconds: 180),
           child: Container(
             key: ValueKey(_dateKey(selectedDate)),
             width: 60,
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: _soft,
+              color: const Color(0xFFF8ECD8),
               borderRadius: BorderRadius.circular(24),
             ),
             child: Column(
@@ -728,11 +1351,12 @@ class _WeekDay extends StatelessWidget {
           key: Key('today_day_${_dateKey(date)}'),
           onTap: onTap,
           child: AnimatedContainer(
-            duration: MediaQuery.maybeOf(context)?.disableAnimations ?? false
-                ? Duration.zero
-                : const Duration(milliseconds: 180),
+            duration:
+                MediaQuery.maybeOf(context)?.disableAnimations ?? false
+                    ? Duration.zero
+                    : const Duration(milliseconds: 180),
             curve: Curves.easeOut,
-            constraints: const BoxConstraints(minHeight: 62),
+            constraints: const BoxConstraints(minHeight: 60),
             padding: const EdgeInsets.all(6),
             decoration: BoxDecoration(
               color: isSelected ? _navy : _card,
@@ -802,24 +1426,21 @@ class _ReminderRhythmCard extends StatelessWidget {
         children: [
           Text(
             'YOUR REMINDER RHYTHM',
-            style: _type(
-              size: 10,
-              lineHeight: 14,
-              weight: FontWeight.w600,
-            ),
+            style: _type(size: 10, lineHeight: 14, weight: FontWeight.w600),
           ),
-          const SizedBox(height: 10),
-          Text('Three gentle nudges.', style: _type(size: 14, lineHeight: 20)),
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              for (var index = 0; index < _reminderMilestones.length; index++) ...[
+              for (
+                var index = 0;
+                index < _reminderMilestones.length;
+                index++
+              ) ...[
                 Expanded(
                   child: _MilestoneButton(
                     milestone: _reminderMilestones[index],
-                    isSelected:
-                        _reminderMilestones[index].type == selectedType,
+                    isSelected: _reminderMilestones[index].type == selectedType,
                     onTap: () => onSelected(_reminderMilestones[index]),
                   ),
                 ),
@@ -828,25 +1449,75 @@ class _ReminderRhythmCard extends StatelessWidget {
               ],
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
           AnimatedSwitcher(
-            duration: MediaQuery.disableAnimationsOf(context)
-                ? Duration.zero
-                : const Duration(milliseconds: 180),
+            duration:
+                MediaQuery.disableAnimationsOf(context)
+                    ? Duration.zero
+                    : const Duration(milliseconds: 180),
             child: Text(
               footerText,
               key: ValueKey(footerText),
-              style: _type(
-                size: 10,
-                lineHeight: 14,
-                color: _secondaryText,
-              ),
+              style: _type(size: 10, lineHeight: 14, color: _secondaryText),
             ),
           ),
         ],
       ),
     );
   }
+}
+
+/// The live view only displays details backed by the selected occurrence.
+/// Delivery preferences are managed in the routine settings.
+class _LiveReminderRhythm extends StatelessWidget {
+  const _LiveReminderRhythm({required this.time, this.onReviewRoutineTap});
+
+  final String time;
+  final VoidCallback? onReviewRoutineTap;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.all(16),
+    decoration: BoxDecoration(
+      color: _soft,
+      borderRadius: BorderRadius.circular(24),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'YOUR REMINDER RHYTHM',
+          style: _type(size: 10, lineHeight: 14, weight: FontWeight.w600),
+        ),
+        const SizedBox(height: 12),
+        Text(
+          time,
+          style: _type(size: 22, lineHeight: 29, weight: FontWeight.w600),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Your scheduled routine',
+          style: _type(size: 12, lineHeight: 17, color: _secondaryText),
+        ),
+        if (onReviewRoutineTap != null) ...[
+          const SizedBox(height: 8),
+          TextButton(
+            onPressed: onReviewRoutineTap,
+            style: TextButton.styleFrom(
+              foregroundColor: _navy,
+              padding: EdgeInsets.zero,
+              alignment: Alignment.centerLeft,
+              minimumSize: const Size.fromHeight(44),
+            ),
+            child: Text(
+              'Review reminder settings',
+              style: _type(size: 12, lineHeight: 17, weight: FontWeight.w600),
+            ),
+          ),
+        ],
+      ],
+    ),
+  );
 }
 
 class _MilestoneButton extends StatelessWidget {
@@ -875,40 +1546,23 @@ class _MilestoneButton extends StatelessWidget {
           key: Key('today_milestone_${milestone.type.name}'),
           onTap: onTap,
           child: AnimatedContainer(
-            duration: MediaQuery.disableAnimationsOf(context)
-                ? Duration.zero
-                : const Duration(milliseconds: 180),
-            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 10),
-            decoration: BoxDecoration(
-              color: isSelected ? _card : const Color(0x80FFFFFF),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: isSelected ? const Color(0xFFB6C8E3) : _border,
-              ),
-              boxShadow: isSelected
-                  ? const [BoxShadow(color: Color(0x0F142C55), blurRadius: 8, offset: Offset(0, 3))]
-                  : null,
-            ),
+            duration:
+                MediaQuery.disableAnimationsOf(context)
+                    ? Duration.zero
+                    : const Duration(milliseconds: 180),
+            padding: const EdgeInsets.symmetric(horizontal: 4),
             child: Column(
               children: [
                 AnimatedContainer(
-                  duration: MediaQuery.disableAnimationsOf(context)
-                      ? Duration.zero
-                      : const Duration(milliseconds: 180),
+                  duration:
+                      MediaQuery.disableAnimationsOf(context)
+                          ? Duration.zero
+                          : const Duration(milliseconds: 180),
                   width: 8,
                   height: 8,
                   decoration: BoxDecoration(
                     color: isSelected ? _navy : _statusBlue,
                     shape: BoxShape.circle,
-                    boxShadow: isSelected
-                        ? const [
-                            BoxShadow(
-                              color: Color(0x33142C55),
-                              blurRadius: 0,
-                              spreadRadius: 3,
-                            ),
-                          ]
-                        : null,
                   ),
                 ),
                 const SizedBox(height: 5),
@@ -928,11 +1582,7 @@ class _MilestoneButton extends StatelessWidget {
                   milestone.label,
                   maxLines: 2,
                   textAlign: TextAlign.center,
-                  style: _type(
-                    size: 10,
-                    lineHeight: 14,
-                    color: _secondaryText,
-                  ),
+                  style: _type(size: 10, lineHeight: 14, color: _secondaryText),
                 ),
               ],
             ),
@@ -1003,7 +1653,11 @@ class _NavigationCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 12),
-              const Icon(Icons.arrow_forward_ios_rounded, size: 16, color: _navy),
+              const Icon(
+                Icons.arrow_forward_ios_rounded,
+                size: 16,
+                color: _navy,
+              ),
             ],
           ),
         ),
@@ -1046,30 +1700,46 @@ class _RoutineSelector extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             child: Row(
               children: [
-                Icon(
-                  switch (routine.status) {
-                    TodayDoseStatus.confirmed => Icons.check_circle_outline_rounded,
-                    TodayDoseStatus.skipped => Icons.remove_circle_outline_rounded,
-                    TodayDoseStatus.pending => Icons.schedule_rounded,
-                  },
-                  color: _navy,
-                ),
+                Icon(switch (routine.status) {
+                  TodayDoseStatus.confirmed =>
+                    Icons.check_circle_outline_rounded,
+                  TodayDoseStatus.skipped =>
+                    Icons.remove_circle_outline_rounded,
+                  TodayDoseStatus.pending => Icons.schedule_rounded,
+                }, color: _navy),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(routine.medicationLabel,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: _type(size: 14, lineHeight: 20, weight: FontWeight.w600)),
-                      Text('${routine.timeLabel} · $status',
-                          style: _type(size: 12, lineHeight: 17, color: _secondaryText)),
+                      Text(
+                        routine.medicationLabel,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: _type(
+                          size: 14,
+                          lineHeight: 20,
+                          weight: FontWeight.w600,
+                        ),
+                      ),
+                      Text(
+                        '${routine.timeLabel} · $status',
+                        style: _type(
+                          size: 12,
+                          lineHeight: 17,
+                          color: _secondaryText,
+                        ),
+                      ),
                     ],
                   ),
                 ),
-                Icon(selected ? Icons.radio_button_checked : Icons.radio_button_unchecked,
-                    size: 18, color: _navy),
+                Icon(
+                  selected
+                      ? Icons.radio_button_checked
+                      : Icons.radio_button_unchecked,
+                  size: 18,
+                  color: _navy,
+                ),
               ],
             ),
           ),
@@ -1098,11 +1768,7 @@ class _HelpfulContext extends StatelessWidget {
           Expanded(
             child: Text(
               'No vial yet? Your reminders and manual journal work on their own.',
-              style: _type(
-                size: 12,
-                lineHeight: 17,
-                color: _secondaryText,
-              ),
+              style: _type(size: 12, lineHeight: 17, color: _secondaryText),
             ),
           ),
         ],
@@ -1145,7 +1811,7 @@ class _TodayBottomNavigation extends StatelessWidget {
                     Expanded(
                       child: _BottomNavItem(
                         label: 'Today',
-                        icon: Icons.home_rounded,
+                        iconName: 'nav-today',
                         isSelected: true,
                         onTap: onTodayTap,
                       ),
@@ -1154,7 +1820,7 @@ class _TodayBottomNavigation extends StatelessWidget {
                     Expanded(
                       child: _BottomNavItem(
                         label: 'Calendar',
-                        icon: Icons.calendar_month_rounded,
+                        iconName: 'nav-calendar',
                         onTap: onCalendarTap,
                       ),
                     ),
@@ -1162,7 +1828,7 @@ class _TodayBottomNavigation extends StatelessWidget {
                     Expanded(
                       child: _BottomNavItem(
                         label: 'Refills',
-                        icon: Icons.inventory_2_outlined,
+                        iconName: 'nav-refills',
                         onTap: onRefillsTap,
                       ),
                     ),
@@ -1170,7 +1836,7 @@ class _TodayBottomNavigation extends StatelessWidget {
                     Expanded(
                       child: _BottomNavItem(
                         label: 'You',
-                        icon: Icons.person_outline_rounded,
+                        iconName: 'nav-you',
                         onTap: onYouTap,
                       ),
                     ),
@@ -1188,13 +1854,13 @@ class _TodayBottomNavigation extends StatelessWidget {
 class _BottomNavItem extends StatelessWidget {
   const _BottomNavItem({
     required this.label,
-    required this.icon,
+    required this.iconName,
     required this.onTap,
     this.isSelected = false,
   });
 
   final String label;
-  final IconData icon;
+  final String iconName;
   final bool isSelected;
   final VoidCallback? onTap;
 
@@ -1218,10 +1884,12 @@ class _BottomNavItem extends StatelessWidget {
                 color: isSelected ? _soft : Colors.transparent,
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: Icon(
-                icon,
-                size: 22,
-                color: isSelected ? _navy : _secondaryText,
+              child: Center(
+                child: design.FardaVectorIcon(
+                  iconName,
+                  size: 22,
+                  color: isSelected ? _navy : _secondaryText,
+                ),
               ),
             ),
             const SizedBox(height: 4),
@@ -1284,87 +1952,23 @@ class _FardaSheet extends StatelessWidget {
               const SizedBox(height: 22),
               Text(
                 eyebrow,
-                style: _type(
-                  size: 10,
-                  lineHeight: 14,
-                  weight: FontWeight.w600,
-                ),
+                style: _type(size: 10, lineHeight: 14, weight: FontWeight.w600),
               ),
               const SizedBox(height: 8),
               Text(
                 title,
-                style: _type(
-                  size: 28,
-                  lineHeight: 33,
-                  weight: FontWeight.w600,
-                ),
+                style: _type(size: 28, lineHeight: 33, weight: FontWeight.w600),
               ),
               const SizedBox(height: 10),
               Text(
                 body,
-                style: _type(
-                  size: 14,
-                  lineHeight: 20,
-                  color: _secondaryText,
-                ),
+                style: _type(size: 14, lineHeight: 20, color: _secondaryText),
               ),
               const SizedBox(height: 20),
               ...children,
             ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _SheetNotice extends StatelessWidget {
-  const _SheetNotice({
-    required this.icon,
-    required this.title,
-    required this.detail,
-  });
-
-  final IconData icon;
-  final String title;
-  final String detail;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: _soft,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, size: 22, color: _navy),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: _type(
-                    size: 14,
-                    lineHeight: 20,
-                    weight: FontWeight.w600,
-                  ),
-                ),
-                Text(
-                  detail,
-                  style: _type(
-                    size: 12,
-                    lineHeight: 17,
-                    color: _secondaryText,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
       ),
     );
   }

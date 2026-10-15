@@ -75,8 +75,21 @@ class ConsumerController extends ChangeNotifier {
     loading = true;
     error = null;
     notifyListeners();
-    final start = DateTime(visibleMonth.year, visibleMonth.month);
-    final end = DateTime(visibleMonth.year, visibleMonth.month + 1);
+    final monthStart = DateTime(visibleMonth.year, visibleMonth.month);
+    final monthEnd = DateTime(visibleMonth.year, visibleMonth.month + 1);
+    // Include the complete Monday–Sunday weeks at both month edges so the
+    // week selector can show real markers for its adjacent-month dates.
+    // Construct local dates rather than subtracting 24 hours across DST.
+    final start = DateTime(
+      monthStart.year,
+      monthStart.month,
+      2 - monthStart.weekday,
+    );
+    final end = DateTime(
+      monthEnd.year,
+      monthEnd.month,
+      1 + (8 - monthEnd.weekday) % 7,
+    );
     final current = day(clock());
     try {
       // Fetch the visible month and, when necessary, a separate current window.

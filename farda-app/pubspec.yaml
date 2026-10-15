@@ -56,6 +56,7 @@ flutter:
   assets:
     - assets/images/
     - assets/icons/
+    - assets/figma/
     - .env.development
     - .env.staging
     - .env.production

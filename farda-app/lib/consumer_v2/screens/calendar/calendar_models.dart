@@ -1,39 +1,37 @@
 import 'package:flutter/foundation.dart';
 
 /// Filters available on the consumer calendar.
-enum ConsumerCalendarFilter {
-  all,
-  routines,
-  refills,
-}
+enum ConsumerCalendarFilter { all, routines, refills }
 
 extension ConsumerCalendarFilterLabel on ConsumerCalendarFilter {
   String get label => switch (this) {
-        ConsumerCalendarFilter.all => 'All',
-        ConsumerCalendarFilter.routines => 'Routines',
-        ConsumerCalendarFilter.refills => 'Refills',
-      };
+    ConsumerCalendarFilter.all => 'All',
+    ConsumerCalendarFilter.routines => 'Routines',
+    ConsumerCalendarFilter.refills => 'Refills',
+  };
 }
 
 /// The kind of item shown in the selected-day agenda.
-enum ConsumerCalendarEventType {
-  routine,
-  refill,
-}
+enum ConsumerCalendarEventType { routine, refill }
 
-/// Calendar record state. Planned and pending events have no date marker;
+/// Calendar record state. Scheduled items remain separate from saved entries;
 /// unconfirmed is reserved for a past entry whose outcome remains unknown.
 enum ConsumerCalendarEventStatus {
   planned,
   pending,
+  snoozed,
   recorded,
+  skipped,
   unconfirmed,
 }
 
 /// Visual marker represented in the month grid and its legend.
 enum ConsumerCalendarMarker {
   recorded,
+  skipped,
+  snoozed,
   unconfirmed,
+  scheduled,
   refill,
 }
 
@@ -52,6 +50,7 @@ class ConsumerCalendarEvent {
     required this.eyebrow,
     required this.title,
     required this.description,
+    this.routineName,
     this.actionLabel,
   });
 
@@ -62,6 +61,9 @@ class ConsumerCalendarEvent {
   final String eyebrow;
   final String title;
   final String description;
+
+  /// The actual prescription label, separate from its day-specific status.
+  final String? routineName;
   final String? actionLabel;
 
   ConsumerCalendarMarker? get marker {
@@ -70,22 +72,22 @@ class ConsumerCalendarEvent {
     }
 
     return switch (status) {
-      ConsumerCalendarEventStatus.recorded =>
-        ConsumerCalendarMarker.recorded,
+      ConsumerCalendarEventStatus.recorded => ConsumerCalendarMarker.recorded,
+      ConsumerCalendarEventStatus.skipped => ConsumerCalendarMarker.skipped,
+      ConsumerCalendarEventStatus.snoozed => ConsumerCalendarMarker.snoozed,
       ConsumerCalendarEventStatus.unconfirmed =>
         ConsumerCalendarMarker.unconfirmed,
       ConsumerCalendarEventStatus.planned ||
-      ConsumerCalendarEventStatus.pending => null,
+      ConsumerCalendarEventStatus.pending => ConsumerCalendarMarker.scheduled,
     };
   }
 
   bool isVisibleFor(ConsumerCalendarFilter filter) => switch (filter) {
-        ConsumerCalendarFilter.all => true,
-        ConsumerCalendarFilter.routines =>
-          type == ConsumerCalendarEventType.routine,
-        ConsumerCalendarFilter.refills =>
-          type == ConsumerCalendarEventType.refill,
-      };
+    ConsumerCalendarFilter.all => true,
+    ConsumerCalendarFilter.routines =>
+      type == ConsumerCalendarEventType.routine,
+    ConsumerCalendarFilter.refills => type == ConsumerCalendarEventType.refill,
+  };
 }
 
 DateTime calendarDay(DateTime value) =>

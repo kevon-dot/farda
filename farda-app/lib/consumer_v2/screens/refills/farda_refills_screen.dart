@@ -28,6 +28,7 @@ class FardaRefillsScreen extends StatelessWidget {
     this.onUpdateRefill,
     this.onReconcileReceipt,
     this.onOpenRefillTools,
+    this.onOpenProfile,
   }) : assert(controller == null || initialState == null);
 
   final RefillStationController? controller;
@@ -35,15 +36,26 @@ class FardaRefillsScreen extends StatelessWidget {
   final ValueChanged<RefillStationState>? onStateChanged;
   final PharmacyContactCallback? onOpenPharmacyContact;
   final VoidCallback? onReviewVial;
+
   /// Non-null on the authenticated route. A null snapshot preserves the
   /// isolated design preview, which intentionally uses local sample state.
   final ConsumerSnapshot? snapshot;
-  final Future<String?> Function(String prescriptionId, int quantity)? onUpdateInventory;
-  final Future<String?> Function(String prescriptionId, RefillStage stage,
-      {bool startNew})? onUpdateRefill;
-  final Future<String?> Function(String prescriptionId,
-      {required int quantity, required bool alreadyIncluded})? onReconcileReceipt;
+  final Future<String?> Function(String prescriptionId, int quantity)?
+  onUpdateInventory;
+  final Future<String?> Function(
+    String prescriptionId,
+    RefillStage stage, {
+    bool startNew,
+  })?
+  onUpdateRefill;
+  final Future<String?> Function(
+    String prescriptionId, {
+    required int quantity,
+    required bool alreadyIncluded,
+  })?
+  onReconcileReceipt;
   final VoidCallback? onOpenRefillTools;
+  final VoidCallback? onOpenProfile;
 
   @override
   Widget build(BuildContext context) {
@@ -54,6 +66,7 @@ class FardaRefillsScreen extends StatelessWidget {
         onUpdateRefill: onUpdateRefill,
         onReconcileReceipt: onReconcileReceipt,
         onOpenRefillTools: onOpenRefillTools,
+        onOpenProfile: onOpenProfile,
       );
     }
     return RefillStationScreen(
@@ -62,6 +75,7 @@ class FardaRefillsScreen extends StatelessWidget {
       onStateChanged: onStateChanged,
       onOpenPharmacyContact: onOpenPharmacyContact,
       onReviewVial: onReviewVial,
+      onOpenProfile: onOpenProfile,
     );
   }
 }

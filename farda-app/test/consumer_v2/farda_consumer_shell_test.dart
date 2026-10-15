@@ -10,9 +10,7 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    await tester.pumpWidget(
-      const MaterialApp(home: FardaConsumerShell()),
-    );
+    await tester.pumpWidget(const MaterialApp(home: FardaConsumerShell()));
     await tester.pumpAndSettle();
   }
 
@@ -46,9 +44,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(FardaConsumerNavigationBar), findsNothing);
-    expect(find.text('Reminder settings'), findsOneWidget);
+    expect(find.byTooltip('Reminder settings'), findsOneWidget);
 
-    await tester.tap(find.text('Reminder settings'));
+    await tester.tap(find.byTooltip('Reminder settings'));
     await tester.pumpAndSettle();
 
     expect(find.byType(FardaConsumerNavigationBar), findsOneWidget);
