@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../consumer_v2/design_system/farda_consumer_tokens.dart';
@@ -480,7 +481,7 @@ class _LabelViewfinderScreenState extends State<LabelViewfinderScreen>
       );
       controller = CameraController(
         back.isEmpty ? cameras.first : back.first,
-        ResolutionPreset.high,
+        ResolutionPreset.veryHigh,
         enableAudio: false,
       );
       await controller.initialize();
@@ -625,7 +626,34 @@ class _LabelViewfinderScreenState extends State<LabelViewfinderScreen>
                                           color: Colors.white,
                                         ),
                               )
-                              : Center(child: CameraPreview(_camera!)),
+                              : ValueListenableBuilder<CameraValue>(
+                                valueListenable: _camera!,
+                                builder: (context, value, _) {
+                                  final orientation =
+                                      value.previewPauseOrientation ??
+                                      value.lockedCaptureOrientation ??
+                                      value.deviceOrientation;
+                                  final landscape =
+                                      orientation ==
+                                          DeviceOrientation.landscapeLeft ||
+                                      orientation ==
+                                          DeviceOrientation.landscapeRight;
+                                  final ratio =
+                                      landscape
+                                          ? value.aspectRatio
+                                          : 1 / value.aspectRatio;
+                                  // Fill the guide without distorting the camera feed.
+                                  // Only the preview is cropped; capture keeps the full image.
+                                  return FittedBox(
+                                    fit: BoxFit.cover,
+                                    child: SizedBox(
+                                      width: 1000,
+                                      height: 1000 / ratio,
+                                      child: CameraPreview(_camera!),
+                                    ),
+                                  );
+                                },
+                              ),
                     ),
                     IgnorePointer(
                       child: Padding(
