@@ -1,57 +1,13 @@
-import HttpStatusCodes from "@src/common/constants/HttpStatusCodes";
-import { prisma } from "@src/lib/prisma";
-import type { NextFunction, Request, Response } from "express";
+import { prisma } from '@src/lib/prisma';
+import type { NextFunction, Request, Response } from 'express';
 
-export const isAuthenticated = async (
-	req: Request,
-	res: Response,
-	next: NextFunction,
-) => {
-	try {
-		const authHeader = req.headers.authorization;
-
-		if (!authHeader || !authHeader.startsWith("Bearer ")) {
-			return res
-				.status(HttpStatusCodes.UNAUTHORIZED)
-				.json({ error: "Missing or invalid Authorization header" });
-		}
-
-		const token = authHeader.split(" ")[1];
-
-		if (!token) {
-			return res
-				.status(HttpStatusCodes.UNAUTHORIZED)
-				.json({ error: "Invalid token format" });
-		}
-
-		// Find session by token
-		const session = await prisma.session.findUnique({
-			where: { token },
-			include: { user: true },
-		});
-
-		if (!session) {
-			return res
-				.status(HttpStatusCodes.UNAUTHORIZED)
-				.json({ error: "Session not found" });
-		}
-
-		// Check expiration
-		if (new Date(session.expiresAt) < new Date()) {
-			return res
-				.status(HttpStatusCodes.UNAUTHORIZED)
-				.json({ error: "Session expired" });
-		}
-
-		// Attach user to request
-		req.user = {
-			id: session.user.id,
-		};
-
-		next();
-	} catch (error: any) {
-		return res
-			.status(HttpStatusCodes.INTERNAL_SERVER_ERROR)
-			.json({ error: error.message });
-	}
+export const isAuthenticated = async (req: Request, res: Response, next: NextFunction) => {
+  const match = /^Bearer ([^\s]+)$/i.exec(req.headers.authorization ?? '');
+  if (!match || match[1].length > 512) return res.status(401).json({ error: 'Sign in to continue', code: 'unauthorized' });
+  try {
+    const session = await prisma.session.findUnique({ where: { token: match[1] }, select: { userId: true, expiresAt: true } });
+    if (!session || session.expiresAt.getTime() <= Date.now()) return res.status(401).json({ error: 'Your session has expired. Sign in again.', code: 'unauthorized' });
+    req.user = { id: session.userId };
+    return next();
+  } catch { return res.status(503).json({ error: 'Sign-in verification is temporarily unavailable', code: 'temporarily_unavailable' }); }
 };

@@ -1,0 +1,41 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const { randomBytes } = require('node:crypto');
+const { Pool } = require('pg');
+const { createVerifyToken, SESSION_QUERY, USER_EXISTS_QUERY } = require('../middleware/verifyUserToken');
+const { response } = require('./helpers');
+
+const uri = process.env.VIAL_TEST_DATABASE_URL;
+test('PostgreSQL integration: exact mobile session mapping, expiry and revocation', { skip: !uri }, async t => {
+  const parsed = new URL(uri);
+  assert.ok(['localhost', '127.0.0.1', '[::1]'].includes(parsed.hostname), 'Disposable local PostgreSQL only');
+  assert.ok(/^\/farda_test_[A-Za-z0-9_-]+$/.test(parsed.pathname) || (parsed.pathname === '/template1' && process.env.VIAL_TEST_ALLOW_TEMPLATE1 === '1'), 'Dedicated test database or explicitly opted-in local disposable PGlite required');
+  const pool = new Pool({ connectionString: uri });
+  const client = await pool.connect();
+  const schema = 'vial_test_' + randomBytes(8).toString('hex');
+  t.after(async () => { await client.query('DROP SCHEMA "' + schema + '" CASCADE'); client.release(); await pool.end(); });
+  await client.query('CREATE SCHEMA "' + schema + '"');
+  await client.query('SET search_path TO "' + schema + '"');
+  // The host and database timezone must not alter Prisma's UTC DateTime meaning.
+  await client.query("SET TIME ZONE 'America/Los_Angeles'");
+  await client.query('CREATE TABLE "User" (id TEXT PRIMARY KEY)');
+  await client.query('CREATE TABLE "Session" (id TEXT PRIMARY KEY, "userId" TEXT NOT NULL REFERENCES "User"(id), token TEXT UNIQUE NOT NULL, "expiresAt" TIMESTAMP NOT NULL)');
+  await client.query('INSERT INTO "User" (id) VALUES ($1)', ['owner-1']);
+  assert.equal((await client.query(USER_EXISTS_QUERY, ['owner-1'])).rows.length, 1);
+  assert.equal((await client.query(USER_EXISTS_QUERY, ['unregistered'])).rows.length, 0);
+  const token = randomBytes(32).toString('hex');
+  await client.query('INSERT INTO "Session" (id, "userId", token, "expiresAt") VALUES ($1, $2, $3, (NOW() AT TIME ZONE \'UTC\') + INTERVAL \'1 hour\')', ['session-1', 'owner-1', token]);
+  const selected = await client.query(SESSION_QUERY, [token]);
+  assert.equal(selected.rows.length, 1, 'The canonical session query must find the seeded session');
+  assert.ok(+new Date(selected.rows[0].expires_at) > Date.now(), 'PostgreSQL expiry ' + String(selected.rows[0].expires_at) + ' must follow API clock ' + new Date().toISOString());
+  const auth = createVerifyToken({ query: value => client.query(SESSION_QUERY, [value]) });
+  const req = { headers: { authorization: 'Bearer ' + token } };
+  let accepted = 0;
+  await auth(req, response(), () => accepted++);
+  assert.equal(accepted, 1); assert.equal(req.user_id, 'owner-1');
+  await client.query('UPDATE "Session" SET "expiresAt" = (NOW() AT TIME ZONE \'UTC\') - INTERVAL \'1 second\'');
+  const expired = response(); await auth(req, expired, () => accepted++); assert.equal(expired.code, 401);
+  await client.query('DELETE FROM "Session"');
+  const revoked = response(); await auth(req, revoked, () => accepted++); assert.equal(revoked.code, 401);
+  assert.equal(accepted, 1);
+});

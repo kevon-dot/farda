@@ -1,88 +1,43 @@
-const mongoose = require("mongoose");
+const mongoose = require('mongoose');
+const { EVENT_TYPES } = require('../lib/validation');
 
-const EventSchema = new mongoose.Schema(
-  {
-    // ============================================
-    // Event Identification
-    // ============================================
-    idempotency_key: {
-      type: String,
-      unique: true,
-      sparse: true,
-      index: true, // Allows null values while maintaining uniqueness for non-null values
-    },
+const EventSchema = new mongoose.Schema({
+  event_id: { type: String, required: true, immutable: true },
+  device_id: { type: String, required: true, immutable: true },
+  ownership_epoch: { type: String, required: true, immutable: true },
+  owner_id: { type: String, required: true, immutable: true },
+  boot_id: { type: String, required: true, immutable: true },
+  sequence: { type: Number, required: true, min: 0, immutable: true },
+  event_type: { type: String, required: true, enum: EVENT_TYPES, immutable: true },
+  payload: { type: mongoose.Schema.Types.Mixed, required: true, immutable: true },
+  source: { type: String, required: true, enum: ['device_credential', 'phone_ble'], immutable: true },
+  evidence_type: { type: String, enum: ['vial_observation'], default: 'vial_observation', immutable: true },
+  device_timestamp: { type: Date, required: true, immutable: true },
+  server_timestamp: { type: Date, required: true, immutable: true },
+  content_hash: { type: String, required: true, immutable: true, select: false },
+  time_drift_seconds: { type: Number, required: true, immutable: true },
+}, { versionKey: false, autoIndex: false });
 
-    // ============================================
-    // Device Information
-    // ============================================
-    device_id: {
-      type: String,
-      required: true,
-      index: true, // Indexed for fast queries by device
-    },
+// Partial filters leave legacy, unowned events quarantined. Never backfill their
+// owner from the current device owner; that would leak a former owner's history.
+EventSchema.index({ device_id: 1, ownership_epoch: 1, event_id: 1 }, {
+  unique: true, name: 'observation_event_identity',
+  partialFilterExpression: { ownership_epoch: { $type: 'string' }, event_id: { $type: 'string' } },
+});
+EventSchema.index({ device_id: 1, ownership_epoch: 1, boot_id: 1, sequence: 1 }, {
+  unique: true, name: 'observation_sequence_identity',
+  partialFilterExpression: { ownership_epoch: { $type: 'string' }, boot_id: { $type: 'string' }, sequence: { $type: 'number' } },
+});
+EventSchema.index({ owner_id: 1, server_timestamp: -1 });
+EventSchema.index({ device_id: 1, ownership_epoch: 1, server_timestamp: -1 });
 
-    // ============================================
-    // Event Data
-    // ============================================
-    event_type: {
-      type: String,
-      required: true,
-      uppercase: true // Store event types in uppercase
-    },
-    payload: {
-      type: mongoose.Schema.Types.Mixed, // Flexible payload for any event data
-      default: {}
-    },
+EventSchema.pre('save', function() {
+  if (!this.isNew) throw new Error('Observations are append-only');
+});
+for (const operation of ['updateOne', 'updateMany', 'findOneAndUpdate', 'replaceOne', 'findOneAndReplace', 'deleteMany', 'findOneAndDelete']) {
+  EventSchema.pre(operation, function() { throw new Error('Observations are append-only'); });
+}
+EventSchema.pre('deleteOne', { document: true, query: true }, function() { throw new Error('Observations are append-only'); });
+EventSchema.pre('bulkWrite', function() { throw new Error('Use the validated observation ingestion path'); });
 
-    // ============================================
-    // Timestamps
-    // ============================================
-    device_timestamp: {
-      type: Date,
-      required: false,
-      default: null,
-      index: true,
-    },
-    server_timestamp: {
-      type: Date,
-      default: Date.now, // Time received by server
-      index: true,
-    },
-    time_drift_seconds: {
-      type: Number,
-      default: 0,
-    },
-
-    processed:{
-      type: Boolean,
-      default: false,
-      
-    }
-  },
-  { timestamps: { createdAt: 'createdAt', updatedAt: false } },
-); 
-
-// ============================================
-// Indexes
-// ============================================
-// Compound index for querying device events by time
-EventSchema.index({ device_id: 1, event_type: 1, server_timestamp: -1 });
-EventSchema.index({ device_id: 1, event_type: 1, device_timestamp: -1 });
-
-EventSchema.statics.getRecentEvents = function(device_id, limit = 50) {
-  return this.find({ device_id })
-    .sort({ device_timestamp: -1 })
-    .limit(limit);
-};
-
-EventSchema.statics.getEventsByTimeRange = function(device_id, startDate, endDate) {
-  return this.find({
-    device_id,
-    device_timestamp: {
-      $gte: startDate,
-      $lte: endDate
-    }
-  }).sort({ device_timestamp: -1 });
-};
-
-module.exports = mongoose.model("Event", EventSchema);
+module.exports = mongoose.model('Event', EventSchema);

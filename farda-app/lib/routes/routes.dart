@@ -1,4 +1,4 @@
-import 'package:farda/screens/_screens.dart';
+import 'package:farda/features/consumer/consumer_entry.dart';
 import 'package:farda/screens/connect_onboard/screen_setup_vial.dart';
 import 'package:farda/screens/dashboard/calendar/screen_calendar.dart';
 import 'package:farda/screens/dashboard/calibration/screen_calibration.dart';
@@ -9,7 +9,6 @@ import 'package:farda/screens/dashboard/more/screen_more.dart';
 import 'package:farda/screens/dashboard/plan/screen_plan.dart';
 import 'package:farda/screens/emoji/screen_emoji.dart';
 import 'package:farda/screens/login/screen_login.dart';
-import 'package:farda/screens/onboard/screen_onboard.dart';
 import 'package:farda/screens/otp_verify/screen_otp_verify.dart';
 import 'package:farda/screens/prescription_info/screen_prescription.dart';
 import 'package:farda/screens/subscription/screen_subscription.dart';
@@ -24,11 +23,22 @@ class AppRouter {
   static final GoRouter router = GoRouter(
     navigatorKey: _rootNavigatorKey,
     debugLogDiagnostics: true,
-    initialLocation: CustomRoutePaths.onboard,
+    initialLocation: const bool.fromEnvironment('FARDA_DEMO')
+        ? '/consumer/demo'
+        : CustomRoutePaths.onboard,
     routes: [
+      GoRoute(path: '/', redirect: (context, state) => CustomRoutePaths.onboard),
       GoRoute(
         path: CustomRoutePaths.dashboard,
-        builder: (context, state) => ScreenDashboardShell(),
+        builder: (context, state) => const ConsumerEntry(),
+      ),
+      GoRoute(
+        path: '/consumer',
+        builder: (context, state) => const ConsumerEntry(),
+      ),
+      GoRoute(
+        path: '/consumer/demo',
+        builder: (context, state) => const ConsumerEntry(demo: true),
       ),
       GoRoute(
         path: CustomRoutePaths.login,
@@ -40,7 +50,7 @@ class AppRouter {
       ),
       GoRoute(
         path: CustomRoutePaths.onboard,
-        builder: (context, state) => const ScreenOnboard(),
+        builder: (context, state) => const ConsumerWelcome(),
       ),
       GoRoute(
         path: CustomRoutePaths.screenConnectOnBoard,

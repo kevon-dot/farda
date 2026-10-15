@@ -115,10 +115,8 @@
 // ).cast<Map<String, dynamic>?>().firstOrNull;
 
 import 'package:farda/application/calender/model/dose_time_model.dart';
-import 'package:farda/components/note_dialog.dart';
 import 'package:farda/routes/routes.dart';
 import 'package:farda/screens/dashboard/calendar/calender_provider.dart';
-import 'package:farda/screens/emoji/screen_emoji.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';

@@ -12,6 +12,7 @@ export class DeviceTrackingService {
 		body?: any,
 		queryParams?: Record<string, string>,
 	) {
+		if (!env.FARDA_API_URL || !token) return { status: 503, data: { error: 'Vial service is unavailable', code: 'temporarily_unavailable' } };
 		let url = `${env.FARDA_API_URL}${path}`;
 
 		if (queryParams && Object.keys(queryParams).length > 0) {
@@ -25,8 +26,8 @@ export class DeviceTrackingService {
 		};
 
 		if (token) {
-			headers.Authorization = token.startsWith("Bearer ")
-				? token
+			headers.Authorization = /^Bearer /i.test(token)
+				? `Bearer ${token.slice(7)}`
 				: `Bearer ${token}`;
 		}
 
@@ -35,6 +36,8 @@ export class DeviceTrackingService {
 				method,
 				headers,
 				body: body ? JSON.stringify(body) : undefined,
+				signal: AbortSignal.timeout(15000),
+				redirect: 'error',
 			});
 
 			const data = await response.json().catch(() => ({}));
@@ -42,10 +45,10 @@ export class DeviceTrackingService {
 				status: response.status,
 				data,
 			};
-		} catch (error: any) {
+		} catch {
 			return {
-				status: 500,
-				data: { error: error.message || "Internal Server Error during proxy" },
+				status: 503,
+				data: { error: 'Vial service is unavailable. Try again.', code: 'temporarily_unavailable' },
 			};
 		}
 	}

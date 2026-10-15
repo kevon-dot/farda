@@ -1,19 +1,17 @@
 import env from "@src/common/constants/env";
 import twilio from "twilio";
 
-const client = twilio(env.TWILIO_ACCOUNT_SID, env.TWILIO_AUTH_TOKEN);
-
 let verifyClient: any;
 
 function getVerifyClient() {
 	if (!verifyClient) {
 		const serviceSid = env.TWILIO_VERIFY_SERVICE_SID;
-		if (!serviceSid) {
+		if (!serviceSid || !env.TWILIO_ACCOUNT_SID || !env.TWILIO_AUTH_TOKEN) {
 			throw new Error(
 				"TWILIO_VERIFY_SERVICE_SID is not set in environment variables",
 			);
 		}
-		verifyClient = client.verify.v2.services(serviceSid);
+		verifyClient = twilio(env.TWILIO_ACCOUNT_SID, env.TWILIO_AUTH_TOKEN, { timeout: 15000, autoRetry: false }).verify.v2.services(serviceSid);
 	}
 	return verifyClient;
 }

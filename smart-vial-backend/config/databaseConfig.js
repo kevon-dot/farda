@@ -1,35 +1,18 @@
 const mongoose = require('mongoose');
-const config = require('./config');
+const Device = require('../models/Device');
+const Event = require('../models/Event');
+const User = require('../models/User');
 
-
-const connectDB = async () => {
-    try{
-        const connect = await mongoose.connect(config.mongoUri.uri, {
-            useNewUrlParser: true,
-            useUnifiedTopology: true
-        });
-        console.log(`MongoDB connected: ${connect.connection.host}`);
-
-        mongoose.connection.on('error', err => {
-            console.error(`MongoDB connection error: ${err}`);
-        });
-
-        mongoose.connection.on('disconnected', () => {
-            console.warn('MongoDB disconnected. Attempting to reconnect...');
-            setTimeout(connectDB, 5000); 
-        });
-
-        process.on('SIGINT', async () => {
-            await mongoose.connection.close();
-            console.log('MongoDB connection closed due to app termination');
-            process.exit(0);
-        });
-    }
-    catch(err){
-        console.error(`MongoDB connection error: ${err}`);
-        setTimeout(connectDB, 5000); 
-        process.exit(1);
-    }
-};
+async function connectDB(uri) {
+  await mongoose.connect(uri, { serverSelectionTimeoutMS: 5000, autoIndex: false });
+  const hello = await mongoose.connection.db.admin().command({ hello: 1 });
+  if (!hello.setName && hello.msg !== 'isdbgrid') throw new Error('MongoDB transactions require a replica set or sharded deployment');
+  // Readiness requires the real unique indexes. Never syncIndexes/drop existing
+  // indexes or backfill legacy owners automatically during startup.
+  await Device.createIndexes();
+  await Event.createIndexes();
+  await User.createIndexes();
+  return mongoose.connection;
+}
 
 module.exports = connectDB;

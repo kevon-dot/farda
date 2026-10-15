@@ -1,143 +1,180 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+
+import 'package:farda/application/authentication/storage/auth_storage.dart';
 import 'package:farda/env.dart';
-import 'package:farda/routes/routes.dart';
-import 'package:farda/utilities/storage_service.dart';
 import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
+
 import 'logger_service.dart';
 
+class ApiFailure implements Exception {
+  const ApiFailure(this.kind, {this.statusCode});
+  final String kind;
+  final int? statusCode;
+  @override
+  String toString() => 'ApiFailure($kind)';
+}
+
+/// Secure compatibility client. UI callers decide navigation/recovery; this
+/// boundary awaits invalidation and never logs tokens, URLs or health payloads.
 class ApiService {
-  // Get headers with optional Bearer token
-  static Future<Map<String, String>> _buildHeaders({Map<String, String>? customHeaders, bool auth = false}) async {
-    final headers = <String, String>{
-      "Content-Type": "application/json",
-      ...?customHeaders,
-    };
+  static const timeout = Duration(seconds: 20);
+  static Future<void> Function()? onSessionExpired;
 
-    if (auth) {
-      final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('access');
-      if (token != null && token.isNotEmpty) {
-        headers["Authorization"] = "Bearer $token";
+  static Future<Map<String, String>> _buildHeaders({
+    Map<String, String>? customHeaders,
+    bool auth = false,
+  }) async {
+    final headers = <String, String>{'Content-Type': 'application/json'};
+    // An explicit old Authorization header requests authentication, but cannot
+    // inject a stale plaintext token or override the secure active session.
+    final explicitAuth =
+        customHeaders?.keys.any(
+          (key) => key.toLowerCase() == 'authorization',
+        ) ??
+        false;
+    customHeaders?.forEach((key, value) {
+      if (key.toLowerCase() != 'authorization') headers[key] = value;
+    });
+    if (auth || explicitAuth) {
+      final token = await AuthStorage.getToken();
+      if (token == null || token.isEmpty) {
+        throw const ApiFailure('session_required');
       }
+      headers['Authorization'] = 'Bearer $token';
     }
-
     return headers;
   }
 
-  // POST request
+  static Future<http.Response?> _request({
+    required String method,
+    required String endpoint,
+    dynamic body,
+    Map<String, String>? headers,
+    Map<String, String>? queryParams,
+    bool auth = false,
+  }) async {
+    try {
+      final uri = apiUri(appBaseUrl, endpoint, query: queryParams);
+      final request = http.Request(method, uri);
+      request.headers.addAll(
+        await _buildHeaders(customHeaders: headers, auth: auth),
+      );
+      if (body != null) request.body = jsonEncode(body);
+      // Avoid forwarding bearer credentials through redirects to another host.
+      request.followRedirects = false;
+      final client = http.Client();
+      try {
+        final response = await client
+            .send(request)
+            .then(http.Response.fromStream)
+            .timeout(timeout);
+        await _recordResponse(
+          method,
+          response,
+          request.headers['Authorization'],
+        );
+        return response;
+      } finally {
+        client.close();
+      }
+    } on ApiFailure {
+      rethrow;
+    } on TimeoutException {
+      Log.w('network_timeout');
+      return null;
+    } on SocketException {
+      Log.w('network_unavailable');
+      return null;
+    } on http.ClientException {
+      Log.w('network_request_failed');
+      return null;
+    }
+  }
+
+  static Map<String, dynamic>? _object(http.Response? response) {
+    if (response == null ||
+        response.statusCode < 200 ||
+        response.statusCode >= 300) {
+      return null;
+    }
+    try {
+      final decoded = jsonDecode(response.body);
+      if (decoded is Map<String, dynamic>) return decoded;
+    } on FormatException {
+      Log.w('invalid_api_json');
+    }
+    return null;
+  }
+
   static Future<Map<String, dynamic>?> post({
     required String endpoint,
     required dynamic body,
     Map<String, String>? headers,
     bool auth = false,
-  }) async {
-    final uri = Uri.parse("$appBaseUrl/$endpoint");
-    try {
-      final finalHeaders = await _buildHeaders(customHeaders: headers, auth: auth);
-      
-      Log.i("➡️ POST Request: $uri\nHeaders: $finalHeaders\nBody: ${jsonEncode(body)}");
+  }) async => _object(
+    await postResponse(
+      endpoint: endpoint,
+      body: body,
+      headers: headers,
+      auth: auth,
+    ),
+  );
 
-      final response = await http.post(
-        uri,
-        headers: finalHeaders,
-        body: jsonEncode(body),
-      );
-
-      _logResponse("POST", uri.toString(), response);
-
-      if (response.statusCode >= 200 && response.statusCode < 300) {
-        return jsonDecode(response.body);
-      } else {
-        return null;
-      }
-    } catch (e, stackTrace) {
-      Log.e("❌ POST Request Error: $uri", error: e, stackTrace: stackTrace);
-      return null;
-    }
-  }
-
-  // POST with get response
   static Future<http.Response?> postResponse({
     required String endpoint,
     required dynamic body,
     Map<String, String>? headers,
     bool auth = false,
-  }) async {
-    final uri = Uri.parse("$appBaseUrl/$endpoint");
-    try {
-      final finalHeaders = await _buildHeaders(customHeaders: headers, auth: auth);
-      
-      Log.i("➡️ POST Request: $uri\nHeaders: $finalHeaders\nBody: ${jsonEncode(body)}");
+  }) => _request(
+    method: 'POST',
+    endpoint: endpoint,
+    body: body,
+    headers: headers,
+    auth: auth,
+  );
 
-      final response = await http.post(
-        uri,
-        headers: finalHeaders,
-        body: jsonEncode(body),
-      );
+  static Future<http.Response?> patchResponse({
+    required String endpoint,
+    required dynamic body,
+    Map<String, String>? headers,
+    bool auth = true,
+  }) => _request(
+    method: 'PATCH',
+    endpoint: endpoint,
+    body: body,
+    headers: headers,
+    auth: auth,
+  );
 
-      _logResponse("POST", uri.toString(), response);
-
-      return response;
-    } catch (e, stackTrace) {
-      Log.e("❌ POST Request Error: $uri", error: e, stackTrace: stackTrace);
-      return null;
-    }
-  }
-
-  // GET request
   static Future<Map<String, dynamic>?> get({
     required String endpoint,
     Map<String, String>? headers,
     Map<String, String>? queryParams,
     bool auth = false,
-  }) async {
-    final uri = Uri.parse("$appBaseUrl/$endpoint").replace(queryParameters: queryParams);
-    try {
-      final finalHeaders = await _buildHeaders(customHeaders: headers, auth: auth);
-      
-      Log.i("➡️ GET Request: $uri\nHeaders: $finalHeaders");
-
-      final response = await http.get(
-        uri,
-        headers: finalHeaders,
-      );
-
-      _logResponse("GET", uri.toString(), response);
-
-      if (response.statusCode >= 200 && response.statusCode < 300) {
-        return jsonDecode(response.body);
-      } else {
-        return null;
-      }
-    } catch (e, stackTrace) {
-      Log.e("❌ GET Request Error: $uri", error: e, stackTrace: stackTrace);
-      return null;
-    }
-  }
+  }) async => _object(
+    await _request(
+      method: 'GET',
+      endpoint: endpoint,
+      headers: headers,
+      queryParams: queryParams,
+      auth: auth,
+    ),
+  );
 
   static Future<http.Response?> getList({
     required String endpoint,
     Map<String, String>? headers,
     Map<String, String>? queryParams,
-  }) async {
-    final uri = Uri.parse("$appBaseUrl/$endpoint").replace(queryParameters: queryParams);
-    try {
-      Log.i("➡️ GET Request: $uri\nHeaders: ${headers ?? {"Content-Type": "application/json"}}");
-
-      final response = await http.get(
-        uri,
-        headers: headers ?? {"Content-Type": "application/json"},
-      );
-
-      _logResponse("GET", uri.toString(), response);
-      return response;
-    } catch (e, stackTrace) {
-      Log.e("❌ GET Request Error: $uri", error: e, stackTrace: stackTrace);
-      return null;
-    }
-  }
+    bool auth = true,
+  }) => _request(
+    method: 'GET',
+    endpoint: endpoint,
+    headers: headers,
+    queryParams: queryParams,
+    auth: auth,
+  );
 
   static Future<Map<String, dynamic>?> postMultipart({
     required String endpoint,
@@ -145,52 +182,70 @@ class ApiService {
     required List<File> files,
     Map<String, String>? headers,
     Map<String, String>? fields,
+    bool auth = true,
   }) async {
-    final uri = Uri.parse("$appBaseUrl/$endpoint");
     try {
-      var request = http.MultipartRequest("POST", uri);
-
-      request.headers.addAll(headers ?? {"Content-Type": "multipart/form-data"});
-
-      for (int i = 0; i < files.length; i++) {
-        request.files.add(await http.MultipartFile.fromPath(
-          fileFieldName,
-          files[i].path
-        ));
+      if (files.length != 1 || await files.single.length() > 8 * 1024 * 1024) {
+        throw const ApiFailure('upload_size_invalid');
       }
-
-      if (fields != null) {
-        request.fields.addAll(fields);
+      final request = http.MultipartRequest(
+        'POST',
+        apiUri(appBaseUrl, endpoint),
+      );
+      request.followRedirects = false;
+      request.headers.addAll(
+        await _buildHeaders(customHeaders: headers, auth: auth),
+      );
+      request.headers.removeWhere(
+        (key, _) => key.toLowerCase() == 'content-type',
+      );
+      request.files.add(
+        await http.MultipartFile.fromPath(fileFieldName, files.single.path),
+      );
+      if (fields != null) request.fields.addAll(fields);
+      final client = http.Client();
+      try {
+        final response = await client
+            .send(request)
+            .then(http.Response.fromStream)
+            .timeout(timeout);
+        await _recordResponse(
+          'POST',
+          response,
+          request.headers['Authorization'],
+        );
+        return _object(response);
+      } finally {
+        client.close();
       }
-
-      Log.i("➡️ Multipart POST Request: $uri\nHeaders: ${request.headers}\nFields: $fields\nFiles count: ${files.length}");
-
-      final streamedResponse = await request.send();
-      final response = await http.Response.fromStream(streamedResponse);
-
-      _logResponse("Multipart POST", uri.toString(), response);
-
-      if (response.statusCode >= 200 && response.statusCode < 300) {
-        return jsonDecode(response.body);
-      } else {
-        return null;
-      }
-    } catch (e, stackTrace) {
-      Log.e("❌ Multipart POST request error: $uri", error: e, stackTrace: stackTrace);
+    } on ApiFailure {
+      rethrow;
+    } on TimeoutException {
+      Log.w('upload_timeout');
+      return null;
+    } on SocketException {
+      Log.w('upload_unavailable');
+      return null;
+    } on http.ClientException {
+      Log.w('upload_failed');
       return null;
     }
   }
 
-  static void _logResponse(String method, String url, http.Response response) {
+  static Future<void> _recordResponse(
+    String method,
+    http.Response response,
+    String? authorization,
+  ) async {
+    Log.network(method, response.statusCode);
     if (response.statusCode == 401) {
-      Log.w("⚠️ 401 Unauthorized - Redirecting to login [$url]");
-      StorageService.clearPrefs();
-      StorageService.deleteSecureStorage();
-      AppRouter.router.go(CustomRoutePaths.login);
-    } else if (response.statusCode >= 200 && response.statusCode < 300) {
-      Log.d("✅ $method Response [$url] | Status: ${response.statusCode}\nBody: ${response.body}");
-    } else {
-      Log.w("⚠️ $method Response Error [$url] | Status: ${response.statusCode}\nBody: ${response.body}");
+      if (authorization != null && authorization.startsWith('Bearer ')) {
+        final invalidated = await AuthStorage.invalidateToken(
+          authorization.substring(7),
+        );
+        if (invalidated) await onSessionExpired?.call();
+      }
+      throw const ApiFailure('session_expired', statusCode: 401);
     }
   }
 }

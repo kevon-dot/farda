@@ -26,7 +26,11 @@ class PrescriptionController {
     }
   }
 
-  void showImagePickerOptions(BuildContext context, ThemeData theme, FardaColors colors) {
+  void showImagePickerOptions(
+    BuildContext context,
+    ThemeData theme,
+    FardaColors colors,
+  ) {
     showModalBottomSheet(
       backgroundColor: colors.baseBlack,
       context: context,
@@ -57,25 +61,16 @@ class PrescriptionController {
 
   Future<void> handleSave(BuildContext context) async {
     final data = await provider.submitPrescriptionApi();
-    debugPrint(data.toString());
-    
+
     if (context.mounted) {
       if (data == true) {
-        CustomSnackbar.show(
-          context,
-          message: submitPrescription,
-        );
+        CustomSnackbar.show(context, message: submitPrescription);
         Navigator.push(
           context,
-          MaterialPageRoute(
-            builder: (_) => const ScreenDashboardShell(),
-          ),
+          MaterialPageRoute(builder: (_) => const ScreenDashboardShell()),
         );
       } else {
-        CustomSnackbar.show(
-          context,
-          message: failedPrescriptionSubmit,
-        );
+        CustomSnackbar.show(context, message: failedPrescriptionSubmit);
       }
     }
   }

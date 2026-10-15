@@ -1,12 +1,12 @@
 import 'dart:convert';
+
 import 'package:farda/application/calender/model/dose_time_model.dart';
 import 'package:farda/application/calender/model/mood_model.dart';
 import 'package:farda/application/calender/repo/calender_repo.dart';
 import 'package:farda/application/emoji/emoji_model.dart';
 import 'package:farda/components/_components.dart';
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:farda/application/authentication/storage/auth_storage.dart';
 
 class CalenderProvider extends ChangeNotifier {
   List<DoseTimeModel> doseTimeModel = [];
@@ -21,15 +21,13 @@ class CalenderProvider extends ChangeNotifier {
         final List<dynamic> data = jsonDecode(response.body);
 
         if (data.isNotEmpty) {
-          doseTimeModel =
-              data.map((item) => DoseTimeModel.fromJson(item)).toList();
+          doseTimeModel = data
+              .map((item) => DoseTimeModel.fromJson(item))
+              .toList();
           notifyListeners();
-          debugPrint(doseTimeModel.toString());
         }
       }
-    } catch (e) {
-      debugPrint("getDoseTimeApi error: $e");
-    }
+    } catch (e) {}
   }
 
   Future<void> getMoodApi() async {
@@ -41,14 +39,11 @@ class CalenderProvider extends ChangeNotifier {
 
         if (data.isNotEmpty) {
           moodModel = MoodModel.fromJson(data);
-          
+
           notifyListeners();
-          debugPrint(doseTimeModel.toString());
         }
       }
-    } catch (e) {
-      debugPrint("getDoseTimeApi error: $e");
-    }
+    } catch (e) {}
   }
 
   getCallAllApi() {
@@ -56,70 +51,64 @@ class CalenderProvider extends ChangeNotifier {
     getMoodApi();
   }
 
+  void selectDoes(DoseTimeModel model) {
+    selectedDoseModel = DoseTimeModel();
+    selectedDoseModel = model;
+    notifyListeners();
+  }
 
-void selectDoes(DoseTimeModel model){
-  selectedDoseModel = DoseTimeModel();
-  selectedDoseModel = model;
-  print(selectedDoseModel.id);
-  notifyListeners();
-}
-
-Future<String> setMoodApi(String emoji)async{
-  SharedPreferences preferences = await SharedPreferences.getInstance();
+  Future<String> setMoodApi(String emoji) async {
+    final session = await AuthStorage.getSession();
     final data = await CalenderRepo().setMood(getCurrentDate(), emoji);
-    if(data['message'] == "Mood created"){
+    if (data['message'] == "Mood created") {
       moodModel = MoodModel(
         date: data["date"],
         emoji: data["emoji"],
-        user: int.parse(preferences.getString("id").toString())
+        user: int.tryParse(session["id"] ?? ""),
       );
       notifyListeners();
       return "Mood Crated Successfully";
-    }else if(data["message"] == "Mood updated"){
-       moodModel = MoodModel(
+    } else if (data["message"] == "Mood updated") {
+      moodModel = MoodModel(
         date: data["date"],
         emoji: data["emoji"],
-        user: int.parse(preferences.getString("id").toString())
+        user: int.tryParse(session["id"] ?? ""),
       );
       notifyListeners();
       return "Mood Updated Sucessfully";
-    }else{
+    } else {
       return "Something worng, try again";
     }
-}
+  }
 
-
-Future<String> setNotesApi(String id, String notes)async{
+  Future<String> setNotesApi(String id, String notes) async {
     final data = await CalenderRepo().submitNote(id, notes);
-    if(data == 201){
+    if (data == 200 || data == 201) {
       return "Note Crated Successfully";
-    }else{
+    } else {
       return "Something worng, try again";
     }
-}
-
- String getModelEmoji() {
-  // Check if moodModel is null
-  if (moodModel == MoodModel()) {
-    return ''; // Return empty string if moodModel is null
   }
 
-  // Safely try to find the emoji in emojiList
-  try {
-    var emoji = emojiList.firstWhere(
-      (e) => e.name == moodModel!.emoji, 
-     // Return null if no match is found
-    );
+  String getModelEmoji() {
+    // Check if moodModel is null
+    if (moodModel == MoodModel()) {
+      return ''; // Return empty string if moodModel is null
+    }
 
-    // If emoji is found, return the emoji, otherwise return an empty string
-    return emoji?.emoji ?? ''; // Return emoji or empty string if emoji is null
-  } catch (e) {
-    return ''; // If an error occurs (e.g., no matching emoji), return an empty string
+    // Safely try to find the emoji in emojiList
+    try {
+      var emoji = emojiList.firstWhere(
+        (e) => e.name == moodModel.emoji,
+        // Return null if no match is found
+      );
+
+      // If emoji is found, return the emoji, otherwise return an empty string
+      return emoji.emoji;
+    } catch (e) {
+      return ''; // If an error occurs (e.g., no matching emoji), return an empty string
+    }
   }
-}
-
-
-
 
   List<Feeling> emojiList = [
     Feeling(emoji: '😟', name: 'Worried'),

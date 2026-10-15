@@ -9,7 +9,7 @@ class LoginProvider extends ChangeNotifier {
   String refresh = "";
   String id = "";
 
-  String countryCode = "+880";
+  String countryCode = "+1";
   String phoneNumber = "";
   bool isLoading = false;
 
@@ -32,7 +32,7 @@ class LoginProvider extends ChangeNotifier {
   // Send OTP
   Future<bool> sendOtpApi() async {
     if (!_isValidPhoneNumber()) {
-       return false;
+      return false;
     }
 
     _setLoading(true);
@@ -43,7 +43,10 @@ class LoginProvider extends ChangeNotifier {
       final response = await _authRepo.sendOtp(fullPhoneNumber);
 
       // We just check if response is not null and preferably has a message
-      if (response != null && response["message"] != null) {
+      if (response != null &&
+          (response["success"] == true ||
+              response["status"] == true ||
+              response["message"] != null)) {
         return true;
       }
       return false;
@@ -63,22 +66,17 @@ class LoginProvider extends ChangeNotifier {
     try {
       final response = await _authRepo.verifyOtp(fullPhoneNumber, otp);
 
-      if (response != null && response["status"] == true) {
-        if (response["token"] != null) {
-          access = response["token"].toString();
-          await AuthStorage.saveToken(access);
-        }
-        
-        if (response["user"] != null && response["user"]["id"] != null) {
-          id = response["user"]["id"].toString();
-        }
-
-        await AuthStorage.saveSession(
-          access: access,
-          refresh: '', // No refresh token in this response
-          id: id,
-        );
-
+      final token = response?['token'];
+      final user = response?['user'];
+      if (token is String &&
+          token.isNotEmpty &&
+          user is Map &&
+          user['id'] is String &&
+          (user['id'] as String).isNotEmpty) {
+        await AuthStorage.saveSession(access: token, id: user['id']);
+        access = token;
+        id = user['id'];
+        refresh = '';
         return true;
       }
       return false;
@@ -100,8 +98,7 @@ class LoginProvider extends ChangeNotifier {
 
   // Optional: Clear data
   Future<void> clearPrefs() async {
-    await AuthStorage.clearSession();
-    await AuthStorage.clearToken();
+    await AuthStorage.clear();
     access = "";
     refresh = "";
     id = "";
