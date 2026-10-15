@@ -182,10 +182,10 @@ class _SupplyCard extends StatelessWidget {
                         color: Colors.white, size: 19),
                   ),
                   const SizedBox(width: 10),
-                  const Text('YOUR PRESCRIPTION',
+                  const Expanded(child: Text('YOUR PRESCRIPTION',
                       style: TextStyle(color: Color(0xFFCED9EA),
                           fontFamily: 'Outfit', fontSize: 10,
-                          fontWeight: FontWeight.w600, letterSpacing: 1.2)),
+                          fontWeight: FontWeight.w600, letterSpacing: 1.2))),
                 ]),
                 const SizedBox(height: 16),
                 Text(prescription.name,
@@ -348,7 +348,7 @@ class _SupplyCard extends StatelessWidget {
                       style: FardaConsumerType.caption),
                 ],
                 const SizedBox(height: 9),
-                SizedBox(width: double.infinity, child: OutlinedButton.icon(
+                SizedBox(width: double.infinity, child: OutlinedButton(
                   style: OutlinedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
                     side: const BorderSide(color: FardaConsumerColors.border),
@@ -364,8 +364,12 @@ class _SupplyCard extends StatelessWidget {
                             ),
                           )
                       : null,
-                  icon: const Icon(Icons.edit_outlined, size: 18),
-                  label: const Text('Update my count'),
+                  child: const Row(children: [
+                    Icon(Icons.edit_outlined, size: 18),
+                    SizedBox(width: 10),
+                    Expanded(child: Text('Update my count',
+                        textAlign: TextAlign.center)),
+                  ]),
                 )),
                 if (!countEnabled) ...[
                   const SizedBox(height: 5),

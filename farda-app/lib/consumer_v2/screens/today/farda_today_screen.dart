@@ -430,7 +430,11 @@ class _FardaTodayScreenState extends State<FardaTodayScreen> {
             constraints: const BoxConstraints(maxWidth: 390),
             child: SingleChildScrollView(
               controller: _scrollController,
-              padding: const EdgeInsets.fromLTRB(22, 8, 22, 28),
+              // The shell owns navigation in live mode. Keep enough scroll
+              // extent for actions near the end of a short routine list.
+              padding: EdgeInsets.fromLTRB(
+                22, 8, 22, widget.showBottomNavigation ? 28 : 112,
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
