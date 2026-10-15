@@ -30,3 +30,22 @@ class TodayDoseSnapshot {
   final TodayDoseStatus status;
   final bool isSnoozed;
 }
+
+/// One server-backed occurrence shown on Today. The ID is the action target;
+/// multiple reminders for the same prescription remain separate records.
+@immutable
+class TodayRoutineRecord {
+  const TodayRoutineRecord({
+    required this.id,
+    required this.medicationLabel,
+    required this.timeLabel,
+    required this.status,
+    required this.isSnoozed,
+  });
+
+  final String id;
+  final String medicationLabel;
+  final String timeLabel;
+  final TodayDoseStatus status;
+  final bool isSnoozed;
+}

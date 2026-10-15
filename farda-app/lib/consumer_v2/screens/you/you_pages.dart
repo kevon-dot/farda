@@ -15,6 +15,7 @@ class FardaYouOverviewPage extends StatelessWidget {
     required this.onCompanionChanged,
     required this.onPrivatePreviewsChanged,
     required this.onPrivacyPressed,
+    this.liveRecords = false,
   });
 
   final String profileLabel;
@@ -25,6 +26,7 @@ class FardaYouOverviewPage extends StatelessWidget {
   final ValueChanged<bool> onCompanionChanged;
   final ValueChanged<bool> onPrivatePreviewsChanged;
   final VoidCallback onPrivacyPressed;
+  final bool liveRecords;
 
   @override
   Widget build(BuildContext context) {
@@ -104,14 +106,14 @@ class FardaYouOverviewPage extends StatelessWidget {
               FardaYouLinkRow(
                 key: FardaYouKeys.vialLink,
                 title: 'Your vial',
-                subtitle: 'Connect when you’re ready',
+                subtitle: 'Explore the setup preview',
                 icon: Icons.local_drink_outlined,
                 onTap: () => onDestinationSelected(FardaYouDestination.vial),
               ),
               FardaYouLinkRow(
                 key: FardaYouKeys.circleLink,
                 title: 'Your circle',
-                subtitle: 'Share on your terms',
+                subtitle: 'Preview sharing options',
                 icon: Icons.people_outline_rounded,
                 showDivider: false,
                 onTap: () => onDestinationSelected(
@@ -138,7 +140,9 @@ class FardaYouOverviewPage extends StatelessWidget {
               ),
               FardaYouSettingRow(
                 title: 'Quiet on your Lock Screen',
-                subtitle: 'Keep medication names private',
+                subtitle: liveRecords
+                    ? 'Sample Lock Screen only'
+                    : 'Keep medication names private',
                 showDivider: false,
                 trailing: FardaYouSwitch(
                   key: FardaYouKeys.privacyToggle,
@@ -157,7 +161,7 @@ class FardaYouOverviewPage extends StatelessWidget {
                     padding: EdgeInsets.zero,
                   ),
                   child: Text(
-                    'Your data & privacy controls',
+                    liveRecords ? 'How previews use data' : 'Your data & privacy controls',
                     style: fardaYouText(
                       size: 13,
                       weight: FontWeight.w500,
@@ -173,9 +177,10 @@ class FardaYouOverviewPage extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 14),
-        const FardaYouNotice(
-          text:
-              'Your routine belongs to you. You choose what to share and how we remind you. Settings in this preview stay on this screen and are not sent anywhere.',
+        FardaYouNotice(
+          text: liveRecords
+              ? 'Companion and Lock Screen privacy controls here are local previews. Reminder preferences are saved separately on the next page.'
+              : 'Your routine belongs to you. You choose what to share and how we remind you. Settings in this preview stay on this screen and are not sent anywhere.',
         ),
       ],
     );
@@ -195,6 +200,12 @@ class FardaRoutinePage extends StatelessWidget {
     required this.onEditRoutine,
     required this.onReviewLabel,
     required this.onOpenReminders,
+    this.liveRecords = false,
+    this.hasRoutine = true,
+    this.additionalRoutineCount = 0,
+    this.timeZoneLabel = 'Los Angeles time',
+    this.scheduleLabel = 'Morning routine',
+    this.directions,
   });
 
   final String profileLabel;
@@ -207,6 +218,12 @@ class FardaRoutinePage extends StatelessWidget {
   final VoidCallback onEditRoutine;
   final VoidCallback onReviewLabel;
   final VoidCallback onOpenReminders;
+  final bool liveRecords;
+  final bool hasRoutine;
+  final int additionalRoutineCount;
+  final String timeZoneLabel;
+  final String scheduleLabel;
+  final String? directions;
 
   @override
   Widget build(BuildContext context) {
@@ -225,6 +242,12 @@ class FardaRoutinePage extends StatelessWidget {
               'Reminder times belong to you. Prescription directions stay as reviewed.',
         ),
         const SizedBox(height: 22),
+        if (liveRecords && !hasRoutine) ...[
+          const FardaYouNotice(text: 'No routine is saved for this account yet. Add one in account settings.'),
+          const SizedBox(height: 12),
+          FardaYouSecondaryButton(label: 'Open account settings',
+              icon: Icons.add_rounded, onPressed: onEditRoutine),
+        ] else ...[
         FardaYouCard(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -248,7 +271,7 @@ class FardaRoutinePage extends StatelessWidget {
                           ),
                         ),
                         Text(
-                          'Morning routine',
+                          scheduleLabel,
                           style: fardaYouText(
                             size: 12,
                             height: 17,
@@ -290,7 +313,7 @@ class FardaRoutinePage extends StatelessWidget {
                 ],
               ),
               Text(
-                'Every day · Los Angeles time',
+                'Every day · $timeZoneLabel',
                 style: fardaYouText(
                   size: 12,
                   height: 17,
@@ -299,7 +322,11 @@ class FardaRoutinePage extends StatelessWidget {
               ),
               const SizedBox(height: 5),
               Text(
-                'Directions copied from your reviewed label.',
+                liveRecords
+                    ? (directions?.isNotEmpty == true
+                        ? directions!
+                        : 'Check your original prescription label for directions.')
+                    : 'Directions copied from your reviewed label.',
                 style: fardaYouText(
                   size: 12,
                   height: 17,
@@ -310,7 +337,7 @@ class FardaRoutinePage extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 14),
-        FardaYouCard(
+        if (!liveRecords) FardaYouCard(
           child: Row(
             children: [
               const FardaYouIconTile(icon: Icons.dark_mode_outlined),
@@ -342,10 +369,14 @@ class FardaRoutinePage extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 16),
+        if (liveRecords && additionalRoutineCount > 0) ...[
+          FardaYouNotice(text: '$additionalRoutineCount more routine(s) are saved. Open account settings to review them.'),
+          const SizedBox(height: 12),
+        ],
         FardaYouSecondaryButton(
           label: labelReviewed
               ? 'Review label confirmation'
-              : 'Review a prescription label',
+              : liveRecords ? 'Review in account settings' : 'Review a prescription label',
           icon: Icons.document_scanner_outlined,
           onPressed: onReviewLabel,
         ),
@@ -354,6 +385,7 @@ class FardaRoutinePage extends StatelessWidget {
           text:
               'Scans can help with typing. Unclear directions stay blank until you check the original label or ask your pharmacy. Farda does not generate dosing instructions.',
         ),
+        ],
         if (showCompanion) ...[
           const SizedBox(height: 18),
           Row(
@@ -412,6 +444,12 @@ class FardaReminderPreferencesPage extends StatelessWidget {
     required this.onEditDelay,
     required this.onOpenLivePreview,
     required this.onOpenCallPreview,
+    this.liveRecords = false,
+    this.preferencesAvailable = true,
+    this.saving = false,
+    this.canEnableCalls = true,
+    this.canEnableLiveActivities = true,
+    this.quietHoursLabel = '9:00 PM – 8:00 AM',
   });
 
   final String profileLabel;
@@ -428,6 +466,12 @@ class FardaReminderPreferencesPage extends StatelessWidget {
   final VoidCallback onEditDelay;
   final VoidCallback onOpenLivePreview;
   final VoidCallback onOpenCallPreview;
+  final bool liveRecords;
+  final bool preferencesAvailable;
+  final bool saving;
+  final bool canEnableCalls;
+  final bool canEnableLiveActivities;
+  final String quietHoursLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -439,51 +483,74 @@ class FardaReminderPreferencesPage extends StatelessWidget {
         ],
         FardaYouBackButton(onPressed: onBack),
         const SizedBox(height: 4),
-        const FardaYouPageHeader(
+        FardaYouPageHeader(
           eyebrow: 'Choose your rhythm',
-          title: 'A heads-up.\nThen a real ring.',
-          supportingText:
-              'A little before. Right on time. A call when you want one.',
+          title: liveRecords
+              ? 'Reminders on\nyour terms.'
+              : 'A heads-up.\nThen a real ring.',
+          supportingText: liveRecords
+              ? 'Choose the reminder channels available for your account.'
+              : 'A little before. Right on time. A call when you want one.',
         ),
         const SizedBox(height: 20),
-        FardaReminderCadence(callDelayMinutes: callDelayMinutes),
-        const SizedBox(height: 14),
+        if (!liveRecords) ...[
+          FardaReminderCadence(callDelayMinutes: callDelayMinutes),
+          const SizedBox(height: 14),
+        ],
         FardaYouCard(
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 4),
           child: Column(
             children: [
               FardaYouSettingRow(
                 title: 'Phone-call reminders',
-                subtitle: callReminders
-                    ? 'Enabled in this local preview only'
-                    : 'Off until you explicitly opt in',
+                subtitle: liveRecords
+                    ? (preferencesAvailable
+                        ? (callReminders
+                            ? 'On for your account'
+                            : canEnableCalls
+                                ? 'Off until you opt in'
+                                : 'Verify your phone in account settings')
+                        : 'Preferences unavailable; refresh your account')
+                    : (callReminders ? 'Enabled in this local preview only' : 'Off until you explicitly opt in'),
                 trailing: FardaYouSwitch(
                   key: FardaYouKeys.callToggle,
                   value: callReminders,
-                  onChanged: onCallRemindersChanged,
+                  onChanged: saving || !preferencesAvailable ||
+                          (liveRecords && !callReminders && !canEnableCalls)
+                      ? null : onCallRemindersChanged,
                   semanticLabel: 'Phone-call reminders',
                 ),
               ),
               FardaYouSettingRow(
                 title: 'Live Activities',
-                subtitle: 'Start 10 minutes before your routine',
+                subtitle: liveRecords
+                    ? (liveActivities
+                        ? 'On for your account'
+                        : canEnableLiveActivities
+                            ? 'Off for your account'
+                            : 'Delivery is unavailable for this account')
+                    : 'Preview starts 10 minutes before your routine',
                 trailing: FardaYouSwitch(
                   key: FardaYouKeys.liveActivityToggle,
                   value: liveActivities,
-                  onChanged: onLiveActivitiesChanged,
+                  onChanged: saving || !preferencesAvailable ||
+                          (liveRecords && !liveActivities && !canEnableLiveActivities)
+                      ? null : onLiveActivitiesChanged,
                   semanticLabel: 'Live Activities',
                 ),
               ),
               FardaYouSettingRow(
                 title: 'Private previews',
-                subtitle: 'Keep medication names off Lock Screens',
+                subtitle: liveRecords
+                    ? 'Sample Lock Screen only'
+                    : 'Keep medication names off Lock Screens',
                 trailing: FardaYouSwitch(
                   value: privatePreviews,
                   onChanged: onPrivatePreviewsChanged,
                   semanticLabel: 'Private Lock Screen previews',
                 ),
               ),
-              FardaYouSettingRow(
+              if (!liveRecords) FardaYouSettingRow(
                 title: 'Call after $callDelayMinutes minutes',
                 subtitle: 'Only if this routine is still unconfirmed',
                 showDivider: false,
@@ -521,7 +588,7 @@ class FardaReminderPreferencesPage extends StatelessWidget {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          '9:00 PM – 8:00 AM',
+                          quietHoursLabel,
                           style: fardaYouText(
                             size: 22,
                             height: 27,
@@ -535,7 +602,9 @@ class FardaReminderPreferencesPage extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               Text(
-                'Calls wait during quiet hours. The production version still needs timezone and delivery handling.',
+                liveRecords
+                    ? 'Saved quiet hours for your account. Change them in account settings.'
+                    : 'Quiet hours shown for this local preview.',
                 style: fardaYouText(
                   size: 12,
                   height: 18,

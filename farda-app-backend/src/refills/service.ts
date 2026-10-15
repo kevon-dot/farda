@@ -172,6 +172,11 @@ export class RefillService {
 			const current = await tx.inventoryBalance.findUnique({
 				where: { prescriptionId },
 			});
+			if (!current && input.revision !== undefined)
+				throw new ConsumerError(
+					409,
+					"Supply changed. Refresh the count before saving.",
+				);
 			if (current && input.revision !== current.revision)
 				throw new ConsumerError(
 					409,

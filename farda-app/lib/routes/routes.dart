@@ -27,7 +27,9 @@ class AppRouter {
       ),
       GoRoute(
         path: CustomRoutePaths.dashboard,
-        builder: (context, state) => const ConsumerEntry(),
+        builder: (context, state) => ConsumerEntry(
+          initialTab: state.uri.queryParameters['tab'] == 'refills' ? 2 : 0,
+        ),
       ),
       GoRoute(
         path: CustomRoutePaths.consumer,
@@ -53,14 +55,12 @@ class AppRouter {
           final index = CustomRoutePaths.consumerV2Tabs.indexOf(
             state.pathParameters['tab']!,
           );
-          // Refills and You keep their existing authenticated controls until
-          // the Figma presentation is wired to the same repository.
-          if (index >= 2) return ConsumerEntry(initialTab: index);
           return ConsumerV2Entry(
             initialIndex: index,
             onTabSelected: (selected) =>
                 context.go(CustomRoutePaths.consumerV2TabPath(selected)),
             onOpenAccount: () => context.go(CustomRoutePaths.dashboard),
+            onOpenRefillTools: () => context.go('${CustomRoutePaths.dashboard}?tab=refills'),
           );
         },
       ),

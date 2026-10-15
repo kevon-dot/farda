@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 
 import 'package:farda/features/consumer/consumer_controller.dart';
+import 'package:farda/features/consumer/consumer_forms.dart';
+import 'package:farda/features/consumer/consumer_widgets.dart';
 import 'package:farda/features/consumer/data/consumer_models.dart';
 
 import 'design_system/farda_consumer_tokens.dart';
@@ -23,12 +25,14 @@ class FardaConsumerShell extends StatefulWidget {
     this.onTabSelected,
     this.controller,
     this.onOpenAccount,
+    this.onOpenRefillTools,
   });
 
   final int initialIndex;
   final ValueChanged<int>? onTabSelected;
   final ConsumerController? controller;
   final VoidCallback? onOpenAccount;
+  final VoidCallback? onOpenRefillTools;
 
   @override
   State<FardaConsumerShell> createState() => _FardaConsumerShellState();
@@ -134,6 +138,37 @@ class _FardaConsumerShellState extends State<FardaConsumerShell> {
     ));
   }
 
+  ConsumerOccurrence? _currentOccurrence(String id) {
+    for (final item in widget.controller?.snapshot?.occurrences ?? <ConsumerOccurrence>[]) {
+      if (item.id == id && item.status != OccurrenceStatus.cancelled) return item;
+    }
+    return null;
+  }
+
+  Future<void> _correct(String id) async {
+    final controller = widget.controller;
+    final occurrence = _currentOccurrence(id);
+    if (controller == null || occurrence == null) return;
+    await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: ConsumerPalette.cream,
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.sizeOf(context).height * .94,
+        maxWidth: 600,
+      ),
+      builder: (_) => Theme(
+        data: ConsumerPalette.theme,
+        child: ConsumerEntryForm(
+          controller: controller,
+          occurrence: occurrence,
+          medicationName: controller.snapshot?.prescription(occurrence.prescriptionId)?.name ?? 'Your routine',
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final consumerTheme = FardaConsumerTheme.from(Theme.of(context));
@@ -145,6 +180,13 @@ class _FardaConsumerShellState extends State<FardaConsumerShell> {
             .where((item) => item.status != OccurrenceStatus.cancelled)
             .toList();
     final occurrence = selected.isEmpty ? null : selected.first;
+    final routines = selected.map((item) => TodayRoutineRecord(
+      id: item.id,
+      medicationLabel: snapshot?.prescription(item.prescriptionId)?.name ?? 'Your routine',
+      timeLabel: DateFormat.jm().format(item.scheduledFor.toLocal()),
+      status: _todayStatus(item),
+      isSnoozed: item.snoozedUntil?.isAfter(DateTime.now()) ?? false,
+    )).toList();
     return Theme(
       data: consumerTheme,
       child: AnnotatedRegion<SystemUiOverlayStyle>(
@@ -161,11 +203,11 @@ class _FardaConsumerShellState extends State<FardaConsumerShell> {
             index: _selectedIndex,
             children: [
               FardaTodayScreen(
-                key: ValueKey(occurrence?.id ??
-                    'empty-${controller?.selectedDate.toIso8601String()}'),
+                key: ValueKey(controller?.selectedDate.toIso8601String() ?? 'preview'),
                 showBottomNavigation: false,
                 liveRecords: controller != null,
                 hasRoutine: controller == null || occurrence != null,
+                routines: routines,
                 initialDate: controller?.selectedDate,
                 initialDoseStatus: occurrence == null
                     ? TodayDoseStatus.pending
@@ -179,18 +221,18 @@ class _FardaConsumerShellState extends State<FardaConsumerShell> {
                     ? 'Your routine'
                     : snapshot?.prescription(occurrence.prescriptionId)?.name ??
                         'Your routine',
-                additionalRoutineCount: selected.length > 1
-                    ? selected.length - 1
-                    : 0,
                 onDaySelected: controller?.selectDay,
-                onPersistDose: occurrence == null
-                    ? null
-                    : (status) => _record(occurrence, status),
-                onPersistSnooze: occurrence == null
-                    ? null
-                    : () => controller!.mutate(() => controller.repository
-                        .snoozeOccurrence(occurrence.id,
-                            const Duration(minutes: 15))),
+                onPersistDoseForId: controller == null ? null : (id, status) {
+                  final current = _currentOccurrence(id);
+                  if (current == null) return Future.value('This routine is no longer available. Refresh and try again.');
+                  return _record(current, status);
+                },
+                onPersistSnoozeForId: controller == null ? null : (id) {
+                  final current = _currentOccurrence(id);
+                  if (current == null) return Future.value('This routine is no longer available. Refresh and try again.');
+                  return controller.mutate(() => controller.repository.snoozeOccurrence(id, const Duration(minutes: 15)));
+                },
+                onCorrectRoutine: controller == null ? null : _correct,
                 onReviewRoutineTap: widget.onOpenAccount,
                 onOpenCalendar: () => _selectTab(1),
                 onOpenRefills: () => _selectTab(2),
@@ -208,8 +250,18 @@ class _FardaConsumerShellState extends State<FardaConsumerShell> {
                         controller.load();
                       },
               ),
-              const FardaRefillsScreen(),
+              FardaRefillsScreen(
+                snapshot: snapshot,
+                onUpdateInventory: controller == null
+                    ? null
+                    : (id, quantity) => controller.mutate(
+                          () => controller.repository.updateInventory(id, quantity),
+                        ),
+                onOpenRefillTools: widget.onOpenRefillTools,
+              ),
               FardaYouScreen(
+                controller: controller,
+                onOpenAccount: widget.onOpenAccount,
                 onNativePreviewChanged: (isNativePreview) {
                   if (_hideBottomNavigation == isNativePreview) return;
                   setState(
