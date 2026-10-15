@@ -10,8 +10,9 @@ import 'data/consumer_demo_repository.dart';
 import 'data/consumer_repository.dart';
 
 class ConsumerEntry extends StatefulWidget {
-  const ConsumerEntry({super.key, this.demo = false});
+  const ConsumerEntry({super.key, this.demo = false, this.initialTab = 0});
   final bool demo;
+  final int initialTab;
   @override
   State<ConsumerEntry> createState() => _ConsumerEntryState();
 }
@@ -39,6 +40,7 @@ class _ConsumerEntryState extends State<ConsumerEntry> {
   Widget build(BuildContext context) => ConsumerApp(
     key: ValueKey(_generation),
     repository: _repository,
+    initialTab: widget.initialTab,
     onResetDemo:
         widget.demo
             ? () => setState(() {

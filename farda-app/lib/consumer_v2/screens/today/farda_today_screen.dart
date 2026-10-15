@@ -17,6 +17,9 @@ class FardaTodayScreen extends StatefulWidget {
     this.greetingName = 'you',
     this.morningTimeLabel = '9:00 AM',
     this.medicationLabel = 'Morning routine',
+    this.hasRoutine = true,
+    this.liveRecords = false,
+    this.additionalRoutineCount = 0,
     this.showBottomNavigation = true,
     this.onDaySelected,
     this.onDoseChanged,
@@ -30,6 +33,8 @@ class FardaTodayScreen extends StatefulWidget {
     this.onTodayTap,
     this.onEveningRoutineTap,
     this.onReviewRoutineTap,
+    this.onPersistDose,
+    this.onPersistSnooze,
   }) : assert(
          !initiallySnoozed || initialDoseStatus == TodayDoseStatus.pending,
          'Only a pending routine can be snoozed.',
@@ -47,6 +52,9 @@ class FardaTodayScreen extends StatefulWidget {
   final String greetingName;
   final String morningTimeLabel;
   final String medicationLabel;
+  final bool hasRoutine;
+  final bool liveRecords;
+  final int additionalRoutineCount;
   final bool showBottomNavigation;
 
   final ValueChanged<DateTime>? onDaySelected;
@@ -62,6 +70,9 @@ class FardaTodayScreen extends StatefulWidget {
   final VoidCallback? onTodayTap;
   final VoidCallback? onEveningRoutineTap;
   final VoidCallback? onReviewRoutineTap;
+  /// Returns an error to display, or null after the server accepts the write.
+  final Future<String?> Function(TodayDoseStatus status)? onPersistDose;
+  final Future<String?> Function()? onPersistSnooze;
 
   @override
   State<FardaTodayScreen> createState() => _FardaTodayScreenState();
@@ -75,6 +86,7 @@ class _FardaTodayScreenState extends State<FardaTodayScreen> {
   late TodayDoseStatus _doseStatus;
   late bool _isSnoozed;
   TodayReminderMilestoneType? _previewedMilestone;
+  bool _saving = false;
 
   @override
   void initState() {
@@ -143,7 +155,7 @@ class _FardaTodayScreenState extends State<FardaTodayScreen> {
       barrierColor: _sheetBarrier,
       builder: (sheetContext) => _FardaSheet(
         eyebrow: 'ONE FINAL CHECK',
-        title: 'Log your morning dose?',
+        title: widget.liveRecords ? 'Log this dose?' : 'Log your morning dose?',
         body:
             'Only confirm if you already took it. This saves your own report, not proof of ingestion.',
         children: [
@@ -175,14 +187,52 @@ class _FardaTodayScreenState extends State<FardaTodayScreen> {
     );
 
     if (!mounted || shouldSave != true) return;
+    if (!await _persistDose(TodayDoseStatus.confirmed)) return;
     _setDoseStatus(TodayDoseStatus.confirmed);
-    _showMessage('Your morning entry is saved.');
+    _showMessage(widget.liveRecords
+        ? 'Your entry is saved.'
+        : 'Your morning entry is saved.');
   }
 
-  void _snooze() {
+  Future<bool> _persistDose(TodayDoseStatus status) async {
+    if (_saving) return false;
+    final persist = widget.onPersistDose;
+    if (widget.liveRecords && persist == null) return false;
+    if (persist == null) return true;
+    setState(() => _saving = true);
+    try {
+      final error = await persist(status);
+      if (!mounted) return false;
+      if (error != null) {
+        _showMessage(error);
+        return false;
+      }
+      return true;
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _snooze() async {
+    if (_saving) return;
     if (_isSnoozed) {
       _showMessage('This reminder is already snoozed for 15 minutes.');
       return;
+    }
+    if (widget.liveRecords) {
+      final persist = widget.onPersistSnooze;
+      if (persist == null) return;
+      setState(() => _saving = true);
+      try {
+        final error = await persist();
+        if (!mounted) return;
+        if (error != null) {
+          _showMessage(error);
+          return;
+        }
+      } finally {
+        if (mounted) setState(() => _saving = false);
+      }
     }
     setState(() => _isSnoozed = true);
     widget.onSnoozed?.call();
@@ -229,6 +279,7 @@ class _FardaTodayScreenState extends State<FardaTodayScreen> {
     if (!mounted || result == null) return;
     switch (result) {
       case _MoreOption.skipped:
+        if (!await _persistDose(TodayDoseStatus.skipped)) return;
         _setDoseStatus(TodayDoseStatus.skipped);
         _showMessage('Saved as skipped. You can correct this any time.');
         break;
@@ -239,6 +290,10 @@ class _FardaTodayScreenState extends State<FardaTodayScreen> {
   }
 
   Future<void> _openCorrection() async {
+    if (widget.liveRecords) {
+      widget.onReviewRoutineTap?.call();
+      return;
+    }
     final shouldReset = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
@@ -347,15 +402,31 @@ class _FardaTodayScreenState extends State<FardaTodayScreen> {
                     onSelected: _selectDay,
                   ),
                   const SizedBox(height: 20),
-                  FardaTodayRoutineCard(
+                  if (widget.hasRoutine) FardaTodayRoutineCard(
                     timeLabel: widget.morningTimeLabel,
                     status: _doseStatus,
                     isSnoozed: _isSnoozed,
+                    neutralCopy: widget.liveRecords,
                     onOpenLog: _openDoseConfirmation,
                     onSnooze: _snooze,
                     onMoreOptions: _openMoreOptions,
                     onCorrectEntry: _openCorrection,
+                  ) else _NavigationCard(
+                    icon: Icons.add_circle_outline,
+                    title: 'No routine on this day',
+                    detail: 'Add or review a routine in your account.',
+                    onTap: widget.onReviewRoutineTap,
                   ),
+                  if (widget.liveRecords && widget.additionalRoutineCount > 0) ...[
+                    const SizedBox(height: 12),
+                    _NavigationCard(
+                      icon: Icons.list_alt_rounded,
+                      title: '${widget.additionalRoutineCount} more routine${widget.additionalRoutineCount == 1 ? '' : 's'}',
+                      detail: 'Open your record to review every occurrence.',
+                      onTap: widget.onReviewRoutineTap,
+                    ),
+                  ],
+                  if (!widget.liveRecords) ...[
                   const SizedBox(height: 20),
                   _ReminderRhythmCard(
                     selectedType: _previewedMilestone ??
@@ -398,6 +469,7 @@ class _FardaTodayScreenState extends State<FardaTodayScreen> {
                   ),
                   const SizedBox(height: 20),
                   const _HelpfulContext(),
+                  ],
                   const SizedBox(height: 20),
                   Text(
                     'Your record, not a score. No streaks to keep.',

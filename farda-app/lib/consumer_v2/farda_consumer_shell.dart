@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:intl/intl.dart';
+
+import 'package:farda/features/consumer/consumer_controller.dart';
+import 'package:farda/features/consumer/data/consumer_models.dart';
 
 import 'design_system/farda_consumer_tokens.dart';
 import 'screens/calendar/farda_calendar_screen.dart';
+import 'screens/today/today_models.dart';
 import 'screens/refills/farda_refills_screen.dart';
 import 'screens/today/farda_today_screen.dart';
 import 'screens/you/farda_you_screen.dart';
@@ -16,10 +21,14 @@ class FardaConsumerShell extends StatefulWidget {
     super.key,
     this.initialIndex = 0,
     this.onTabSelected,
+    this.controller,
+    this.onOpenAccount,
   });
 
   final int initialIndex;
   final ValueChanged<int>? onTabSelected;
+  final ConsumerController? controller;
+  final VoidCallback? onOpenAccount;
 
   @override
   State<FardaConsumerShell> createState() => _FardaConsumerShellState();
@@ -59,9 +68,83 @@ class _FardaConsumerShellState extends State<FardaConsumerShell> {
     widget.onTabSelected?.call(index);
   }
 
+  TodayDoseStatus _todayStatus(ConsumerOccurrence occurrence) =>
+      switch (occurrence.status) {
+        OccurrenceStatus.taken => TodayDoseStatus.confirmed,
+        OccurrenceStatus.skipped => TodayDoseStatus.skipped,
+        _ => TodayDoseStatus.pending,
+      };
+
+  List<ConsumerCalendarEvent> _calendarEvents(ConsumerSnapshot snapshot) {
+    final events = <ConsumerCalendarEvent>[];
+    for (final occurrence in snapshot.occurrences) {
+      if (occurrence.status == OccurrenceStatus.cancelled) continue;
+      final local = occurrence.scheduledFor.toLocal();
+      final name = snapshot.prescription(occurrence.prescriptionId)?.name ??
+          'Your routine';
+      final status = switch (occurrence.status) {
+        OccurrenceStatus.taken || OccurrenceStatus.skipped =>
+          ConsumerCalendarEventStatus.recorded,
+        OccurrenceStatus.unconfirmed when local.isBefore(DateTime.now()) =>
+          ConsumerCalendarEventStatus.unconfirmed,
+        _ => ConsumerCalendarEventStatus.pending,
+      };
+      events.add(ConsumerCalendarEvent(
+        id: occurrence.id,
+        date: local,
+        type: ConsumerCalendarEventType.routine,
+        status: status,
+        eyebrow: DateFormat.jm().format(local),
+        title: name,
+        description: switch (occurrence.status) {
+          OccurrenceStatus.taken => 'You recorded this dose as taken.',
+          OccurrenceStatus.skipped => 'You recorded this dose as skipped.',
+          _ => 'No dose has been confirmed.',
+        },
+      ));
+    }
+    for (final inventory in snapshot.inventory) {
+      final date = inventory.plannedFor;
+      if (date == null) continue;
+      events.add(ConsumerCalendarEvent(
+        id: inventory.refillId ?? inventory.prescriptionId,
+        date: date.toLocal(),
+        type: ConsumerCalendarEventType.refill,
+        status: ConsumerCalendarEventStatus.planned,
+        eyebrow: 'REFILL PLAN',
+        title: snapshot.prescription(inventory.prescriptionId)?.name ??
+            'Your refill',
+        description: 'A plan you recorded; no pharmacy order was placed.',
+      ));
+    }
+    return events;
+  }
+
+  Future<String?> _record(ConsumerOccurrence occurrence,
+      TodayDoseStatus status) async {
+    final controller = widget.controller!;
+    return controller.mutate(() => controller.repository.recordOccurrence(
+      ConsumerOccurrenceUpdate(
+        id: occurrence.id,
+        status: status == TodayDoseStatus.confirmed
+            ? OccurrenceStatus.taken
+            : OccurrenceStatus.skipped,
+        expectedRevision: occurrence.revision,
+      ),
+    ));
+  }
+
   @override
   Widget build(BuildContext context) {
     final consumerTheme = FardaConsumerTheme.from(Theme.of(context));
+    final controller = widget.controller;
+    final snapshot = controller?.snapshot;
+    final selected = controller == null
+        ? <ConsumerOccurrence>[]
+        : controller.occurrencesFor(controller.selectedDate)
+            .where((item) => item.status != OccurrenceStatus.cancelled)
+            .toList();
+    final occurrence = selected.isEmpty ? null : selected.first;
     return Theme(
       data: consumerTheme,
       child: AnnotatedRegion<SystemUiOverlayStyle>(
@@ -78,12 +161,53 @@ class _FardaConsumerShellState extends State<FardaConsumerShell> {
             index: _selectedIndex,
             children: [
               FardaTodayScreen(
+                key: ValueKey(occurrence?.id ??
+                    'empty-${controller?.selectedDate.toIso8601String()}'),
                 showBottomNavigation: false,
+                liveRecords: controller != null,
+                hasRoutine: controller == null || occurrence != null,
+                initialDate: controller?.selectedDate,
+                initialDoseStatus: occurrence == null
+                    ? TodayDoseStatus.pending
+                    : _todayStatus(occurrence),
+                initiallySnoozed: occurrence?.snoozedUntil
+                        ?.isAfter(DateTime.now()) ?? false,
+                morningTimeLabel: occurrence == null
+                    ? '9:00 AM'
+                    : DateFormat.jm().format(occurrence.scheduledFor.toLocal()),
+                medicationLabel: occurrence == null
+                    ? 'Your routine'
+                    : snapshot?.prescription(occurrence.prescriptionId)?.name ??
+                        'Your routine',
+                additionalRoutineCount: selected.length > 1
+                    ? selected.length - 1
+                    : 0,
+                onDaySelected: controller?.selectDay,
+                onPersistDose: occurrence == null
+                    ? null
+                    : (status) => _record(occurrence, status),
+                onPersistSnooze: occurrence == null
+                    ? null
+                    : () => controller!.mutate(() => controller.repository
+                        .snoozeOccurrence(occurrence.id,
+                            const Duration(minutes: 15))),
+                onReviewRoutineTap: widget.onOpenAccount,
                 onOpenCalendar: () => _selectTab(1),
                 onOpenRefills: () => _selectTab(2),
                 onOpenProfile: () => _selectTab(3),
               ),
-              const FardaCalendarScreen(),
+              FardaCalendarScreen(
+                events: snapshot == null ? null : _calendarEvents(snapshot),
+                initialSelectedDate: controller?.selectedDate,
+                initialVisibleMonth: controller?.visibleMonth,
+                onSelectedDateChanged: controller?.selectDay,
+                onVisibleMonthChanged: controller == null
+                    ? null
+                    : (month) {
+                        controller.visibleMonth = month;
+                        controller.load();
+                      },
+              ),
               const FardaRefillsScreen(),
               FardaYouScreen(
                 onNativePreviewChanged: (isNativePreview) {

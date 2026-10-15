@@ -15,6 +15,7 @@ class ConsumerApp extends StatefulWidget {
   const ConsumerApp({
     super.key,
     required this.repository,
+    this.initialTab = 0,
     this.onSignIn,
     this.onSignOut,
     this.onOpenHardware,
@@ -23,6 +24,7 @@ class ConsumerApp extends StatefulWidget {
     this.onResetDemo,
   });
   final ConsumerRepository repository;
+  final int initialTab;
   final VoidCallback? onSignIn;
   final Future<void> Function()? onSignOut;
   final VoidCallback? onOpenHardware;
@@ -44,6 +46,7 @@ class ConsumerAppState extends State<ConsumerApp> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     controller = ConsumerController(widget.repository)..addListener(_changed);
+    controller.tab = widget.initialTab.clamp(0, 3).toInt();
     widget.onControllerReady?.call(controller);
     _links = widget.routineLinks?.listen(openRoutine);
     controller.load();

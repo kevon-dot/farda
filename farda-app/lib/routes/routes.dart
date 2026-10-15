@@ -1,4 +1,4 @@
-import 'package:farda/consumer_v2/farda_consumer_shell.dart';
+import 'package:farda/consumer_v2/consumer_v2_entry.dart';
 import 'package:farda/features/consumer/consumer_entry.dart';
 import 'package:farda/screens/connect_onboard/screen_setup_vial.dart';
 import 'package:farda/screens/dashboard/calibration/screen_calibration.dart';
@@ -49,14 +49,20 @@ class AppRouter {
               ? null
               : CustomRoutePaths.consumerV2Today;
         },
-        builder: (context, state) => FardaConsumerShell(
-          initialIndex: CustomRoutePaths.consumerV2Tabs.indexOf(
+        builder: (context, state) {
+          final index = CustomRoutePaths.consumerV2Tabs.indexOf(
             state.pathParameters['tab']!,
-          ),
-          onTabSelected: (index) {
-            context.go(CustomRoutePaths.consumerV2TabPath(index));
-          },
-        ),
+          );
+          // Refills and You keep their existing authenticated controls until
+          // the Figma presentation is wired to the same repository.
+          if (index >= 2) return ConsumerEntry(initialTab: index);
+          return ConsumerV2Entry(
+            initialIndex: index,
+            onTabSelected: (selected) =>
+                context.go(CustomRoutePaths.consumerV2TabPath(selected)),
+            onOpenAccount: () => context.go(CustomRoutePaths.dashboard),
+          );
+        },
       ),
       GoRoute(
         path: CustomRoutePaths.login,
