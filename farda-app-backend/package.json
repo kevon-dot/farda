@@ -1,21 +1,28 @@
 {
 	"name": "farda-app-backend",
 	"version": "1.0.0",
+	"packageManager": "pnpm@11.25.0",
 	"scripts": {
-		"build": "npm run lint && tsc --project tsconfig.prod.json",
+		"build": "npm run generate && npm run typecheck && tsc --project tsconfig.prod.json",
+		"generate": "prisma generate",
+		"typecheck": "tsc --project tsconfig.prod.json --noEmit",
+		"start": "node -r module-alias/register dist/main.js",
 		"dev": "cross-env NODE_ENV=development tsx watch --clear-screen=false --exclude \"src/**/*.test.ts\" ./src/main.ts",
 		"test": "vitest run",
-		"my-prisma:restart:lin": "rm -rf ./prisma/migrations && prisma migrate reset && prisma migrate dev --name init && prisma generate"
+		"db:migrate": "prisma migrate deploy",
+		"db:validate": "prisma validate"
 	},
 	"engines": {
-		"node": ">=16.0.0"
+		"node": "^22.12.0 || ^24.0.0"
 	},
 	"_moduleAliases": {
 		"@src": "dist"
 	},
 	"dependencies": {
+		"@js-temporal/polyfill": "0.5.1",
 		"@prisma/adapter-pg": "^7.4.0",
 		"@prisma/client": "^7.4.0",
+		"@prisma/client-runtime-utils": "7.4.0",
 		"@types/multer": "^2.1.0",
 		"better-auth": "^1.4.18",
 		"cookie-parser": "^1.4.7",
@@ -36,13 +43,16 @@
 	},
 	"devDependencies": {
 		"@biomejs/biome": "2.4.0",
+		"@types/cookie-parser": "1.4.10",
 		"@types/express": "^5.0.6",
+		"@types/jsonfile": "6.1.4",
 		"@types/morgan": "^1.9.10",
 		"@types/node": "^25.2.3",
 		"@types/pg": "^8.16.0",
 		"cross-env": "^10.1.0",
 		"prisma": "^7.4.0",
 		"tsx": "^4.21.0",
+		"typescript": "5.9.3",
 		"vitest": "^3.0.5"
 	}
 }

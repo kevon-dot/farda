@@ -5,10 +5,33 @@ on:
     branches: ['**']
   pull_request:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   backend-main:
-    name: Main API (tests)
+    name: Main API (build, migrations, tests)
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: farda_test_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/farda_test_ci
+      TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/farda_test_ci
+      FARDA_VOICE_ENABLED: 'false'
     defaults:
       run:
         working-directory: farda-app-backend
@@ -16,20 +39,41 @@ jobs:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
         with:
-          version: 10
+          version: 11.25.0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: pnpm
           cache-dependency-path: farda-app-backend/pnpm-lock.yaml
       - name: Install dependencies
-        run: pnpm install --no-frozen-lockfile --ignore-scripts
-      - name: Run unit tests
+        run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Generate database client
+        run: pnpm exec prisma generate
+      - name: Apply migrations to disposable database
+        run: pnpm exec prisma migrate deploy
+      - name: Compile the API
+        run: pnpm build
+      - name: Run unit and database tests
         run: pnpm test
 
   backend-vial:
     name: Vial API (tests)
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: farda_test_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      VIAL_TEST_MONGODB_URI: mongodb://127.0.0.1:27017/farda_test_ci?replicaSet=rs0
+      VIAL_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/farda_test_ci
     defaults:
       run:
         working-directory: smart-vial-backend
@@ -37,19 +81,38 @@ jobs:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
         with:
-          version: 10
+          version: 11.25.0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: pnpm
           cache-dependency-path: smart-vial-backend/pnpm-lock.yaml
       - name: Install dependencies
-        run: pnpm install --no-frozen-lockfile --ignore-scripts
-      - name: Run unit tests
+        run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Start a disposable MongoDB replica set
+        run: |
+          docker run --detach --name farda-test-mongo \
+            --publish 127.0.0.1:27017:27017 mongo:7.0 \
+            --replSet rs0 --bind_ip_all
+          for attempt in $(seq 1 30); do
+            if docker exec farda-test-mongo mongosh --quiet --eval 'db.adminCommand({ping: 1})'; then break; fi
+            sleep 1
+          done
+          docker exec farda-test-mongo mongosh --quiet --eval \
+            'rs.initiate({_id: "rs0", members: [{_id: 0, host: "127.0.0.1:27017"}]})'
+          for attempt in $(seq 1 30); do
+            if docker exec farda-test-mongo mongosh --quiet --eval 'quit(db.hello().isWritablePrimary ? 0 : 1)'; then exit 0; fi
+            sleep 1
+          done
+          exit 1
+      - name: Run unit and transaction tests
         run: pnpm test
+      - name: MongoDB diagnostics on failure
+        if: failure()
+        run: docker logs farda-test-mongo
 
   mobile-app:
-    name: Mobile app (tests)
+    name: Mobile app (analysis, tests, Android build)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -59,6 +122,12 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+          flutter-version: '3.47.7'
+          cache: true
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
       - name: Materialize env asset files
         # pubspec.yaml declares .env.* as bundled assets. Real env files are
         # gitignored (they may hold secrets), so generate non-secret copies
@@ -68,6 +137,48 @@ jobs:
           cp .env.example .env.staging
           cp .env.example .env.production
       - name: Install dependencies
-        run: flutter pub get
+        run: flutter pub get --enforce-lockfile
+      - name: Analyze application
+        run: flutter analyze --no-fatal-infos
       - name: Run unit tests
         run: flutter test
+      - name: Build Android review APK
+        run: flutter build apk --debug --dart-define=FARDA_DEMO=true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: farda-android-review
+          path: farda-app/build/app/outputs/flutter-apk/app-debug.apk
+          if-no-files-found: error
+
+  mobile-ios:
+    name: iOS app and Live Activity (unsigned simulator build)
+    runs-on: macos-15
+    defaults:
+      run:
+        working-directory: farda-app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.47.7'
+          cache: true
+      - name: Materialize public configuration placeholders
+        run: |
+          cp .env.example .env.development
+          cp .env.example .env.staging
+          cp .env.example .env.production
+      - name: Install dependencies
+        run: flutter pub get --enforce-lockfile
+      - name: Build app and embedded Live Activity extension
+        run: flutter build ios --simulator --debug --no-codesign
+
+  consumer-prototype:
+    name: Consumer prototype state transitions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test prototypes/consumer-v2/mock.test.mjs

@@ -11,7 +11,7 @@ The Figma handoff is complete and was read back from the design file. It has 17 
 The production Flutter project now has a consumer-v2 implementation under `farda-app/lib/consumer_v2/`:
 
 - A four-tab `FardaConsumerShell` for Today, Calendar, Refills, and You.
-- Compatibility routing from the existing `/dashboard` entry point, nested tab URLs, and redirects for the previous `/home`, `/plan`, `/calendar`, and `/more` paths.
+- Routing under `/consumer/v2`, nested tab URLs, and redirects from the previous `/home`, `/plan`, `/calendar`, and `/more` paths. The API-backed consumer flow remains at `/dashboard` during service integration.
 - A shared navy/ivory theme layer and the repository-owned companion artwork.
 - Today with date selection, an explicit two-step dose confirmation, snooze, skipped/correction flows, and reminder-milestone previews.
 - Calendar with month/date navigation, filters, status markers, agenda cards, empty states, and accessibility semantics.

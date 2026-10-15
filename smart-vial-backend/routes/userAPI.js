@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const verifyToken = require("../middleware/verifyUserToken");
+const { ingestPhoneObservation } = require('../controllers/ingestion.controller');
 const {
   saveUser,
   claimDevice,
@@ -18,6 +19,9 @@ router.post("/save", verifyToken, saveUser);
 
 // Claim device
 router.post("/claim", verifyToken, claimDevice);
+
+// Owner-authenticated BLE inbox. Receipt is emitted only after transaction commit.
+router.post('/devices/:device_id/observations', verifyToken, ingestPhoneObservation);
 
 // Get all devices for a user
 router.get("/devices", verifyToken, getUserDevices);

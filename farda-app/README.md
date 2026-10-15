@@ -1,6 +1,6 @@
 # Farda Flutter app
 
-The consumer-v2 navy experience is mounted at `/dashboard` and implemented in `lib/consumer_v2/`.
+The consumer-v2 navy experience is mounted at `/consumer/v2` and implemented in `lib/consumer_v2/`. The API-backed consumer flow remains at `/dashboard` while the v2 presentation layer is connected to those services.
 
 ## Main frontend areas
 

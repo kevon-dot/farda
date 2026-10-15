@@ -1,15 +1,11 @@
 import 'package:clipboard/clipboard.dart';
 import 'package:farda/components/_components.dart';
-import 'package:farda/components/custom_snackbar.dart';
-import 'package:farda/routes/routes.dart';
-import 'package:farda/screens/connect_onboard/screen_setup_vial.dart';
 import 'package:farda/screens/login/login_provider.dart';
 
 import 'package:farda/screens/otp_verify/otp_verify_controller.dart';
 import 'package:farda/theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
-import 'package:go_router/go_router.dart';
 import 'package:otp_text_field/otp_field.dart';
 import 'package:otp_text_field/otp_field_style.dart';
 import 'package:otp_text_field/style.dart';
@@ -23,20 +19,14 @@ class ScreenOtpVerify extends StatefulWidget {
 }
 
 class _ScreenOtpVerifyState extends State<ScreenOtpVerify> {
-  String _otp = "";
   OtpFieldController otpController = OtpFieldController();
 
   void _pasteFromClipboard() async {
     final text = await FlutterClipboard.paste();
+    if (!mounted) return;
     if (text.length == 6 && RegExp(r'^\d+$').hasMatch(text)) {
       otpController.set(['', '', '', '', '', '']);
       otpController.set(text.split(''));
-      setState(() {
-        _otp = text;
-      });
-      debugPrint("OTP Pasted: $text");
-    } else {
-      debugPrint("Clipboard content is not a valid 6-digit OTP");
     }
   }
 
@@ -46,7 +36,6 @@ class _ScreenOtpVerifyState extends State<ScreenOtpVerify> {
     final colors = theme.extension<FardaColors>()!;
     final spacing = theme.extension<Spacing>()!;
     final loginProvider = context.watch<LoginProvider>();
-
 
     return ExtendedScaffold(
       resize: true,
@@ -75,7 +64,8 @@ class _ScreenOtpVerifyState extends State<ScreenOtpVerify> {
                       ),
                     ),
                     TextSpan(
-                      text: '${loginProvider.countryCode}${loginProvider.phoneNumber}',
+                      text:
+                          '${loginProvider.countryCode}${loginProvider.phoneNumber}',
                       style: TextStyle(
                         fontSize: 15.sp,
                         fontWeight: FontWeight.w600,
@@ -105,8 +95,8 @@ class _ScreenOtpVerifyState extends State<ScreenOtpVerify> {
                       textFieldAlignment: MainAxisAlignment.spaceAround,
                       fieldStyle: FieldStyle.box,
                       controller: otpController,
-                      onChanged: (pin) => _otp = pin,
-                      onCompleted: (pin) => OtpVerifyController.onSubmitPin(context, pin),
+                      onCompleted: (pin) =>
+                          OtpVerifyController.onSubmitPin(context, pin),
                       otpFieldStyle: OtpFieldStyle(
                         focusBorderColor: colors.baseBlack,
                         enabledBorderColor: colors.slate.shade200,

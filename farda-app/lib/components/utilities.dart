@@ -700,13 +700,12 @@ class _HalfCirclePainter extends CustomPainter {
   final double progress;
   final Color backgroundColor;
   final Color progressColor;
-  final double strokeWidth;
+  static const double strokeWidth = 8;
 
   _HalfCirclePainter({
     required this.progress,
     required this.backgroundColor,
     required this.progressColor,
-    this.strokeWidth = 8,
   });
 
   @override

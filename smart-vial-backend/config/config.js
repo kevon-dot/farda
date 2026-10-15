@@ -1,35 +1,24 @@
-const path = require("path");
-require("dotenv").config({ path: path.join(__dirname, "..", ".env") });
+const path = require('node:path');
+require('dotenv').config({ path: path.join(__dirname, '..', '.env'), quiet: true });
 
-module.exports = {
-  port: process.env.PORT || 5000,
-  nodeEnv: process.env.NODE_ENV || "development",
+function readConfig(env = process.env) {
+  return {
+    port: Number(env.PORT || 5000),
+    nodeEnv: env.NODE_ENV || 'development',
+    mongoUri: env.MONGODB_URI || env.MONGO_URI,
+    databaseUrl: env.DATABASE_URL,
+    corsOrigins: (env.CORS_ORIGINS || '').split(',').map(value => value.trim()).filter(Boolean),
+    // No fleet key, JWT fallback or automatic provisioning is supported.
+  };
+}
 
-  mongoUri: {
-    uri: process.env.MONGODB_URI || "mongodb://localhost:27017/myapp",
-  },
+function validateConfig(config) {
+  const missing = ['mongoUri', 'databaseUrl'].filter(key => !config[key]);
+  if (missing.length) throw new Error('Missing required configuration: ' + missing.join(', '));
+  if (!/^mongodb(?:\+srv)?:\/\//.test(config.mongoUri)) throw new Error('Invalid MongoDB connection configuration');
+  if (!/^postgres(?:ql)?:\/\//.test(config.databaseUrl)) throw new Error('Invalid PostgreSQL connection configuration');
+  if (!Number.isInteger(config.port) || config.port < 1 || config.port > 65535) throw new Error('Invalid PORT');
+  return config;
+}
 
-  jwt: {
-    secret: process.env.JWT_SECRET || "dev-secret-change-in-production",
-    expiresIn: process.env.JWT_EXPIRES_IN || "30d",
-  },
-
-  device: {
-    apiKey: process.env.DEVICE_API_KEY || "our-device-api-key-change-this-in-production",
-  },
-
-  cors: {
-    origins: process.env.CORS_ORIGINS
-      ? process.env.CORS_ORIGINS.split(",")
-      : ["http://localhost:5000"],
-  },
-
-  rateLimit: {
-    windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000, // 15 minutes
-    maxRequests: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100, // limit each IP to 100 requests per windowMs
-  },
-
-  tymeSync: {
-    toleranceSecons: parseInt(process.env.TYME_SYNC_TOLERANCE_SECONDS) || 300, // 5 minutes
-  },
-};
+module.exports = { ...readConfig(), readConfig, validateConfig };

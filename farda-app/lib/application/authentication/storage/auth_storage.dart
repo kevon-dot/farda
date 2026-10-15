@@ -1,41 +1,42 @@
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:farda/utilities/platform_secure_store.dart';
+import 'session_store.dart';
+export 'session_store.dart';
 
 class AuthStorage {
-  static const _secureStorage = FlutterSecureStorage();
-
-  // Secure Storage
-  static Future<void> saveToken(String token) async {
-    await _secureStorage.write(key: 'token', value: token);
-  }
-
-  static Future<String?> getToken() async {
-    return await _secureStorage.read(key: 'token');
-  }
-
-  static Future<void> clearToken() async {
-    await _secureStorage.delete(key: 'token');
-  }
-
-  // Shared Preferences (for non-sensitive data, user info, access etc)
-  static Future<void> saveSession({required String access, required String refresh, required String id}) async {
+  static final SessionStore _sessions = SessionStore(
+    const PlatformSecureStore(),
+    purgeLegacyPreferences: _purgeLegacyPreferences,
+  );
+  static Future<void> _purgeLegacyPreferences() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('access', access);
-    await prefs.setString('refresh', refresh);
-    await prefs.setString('id', id);
+    for (final key in ['access', 'refresh', 'id', 'token']) {
+      await prefs.remove(key);
+    }
   }
 
+  static SessionStore get sessionStore => _sessions;
+  static Future<StoredSession?> readSession() => _sessions.read();
+  static Future<void> saveSession({
+    required String access,
+    String refresh = '',
+    required String id,
+  }) => _sessions.save(StoredSession(token: access, userId: id));
   static Future<Map<String, String?>> getSession() async {
-    final prefs = await SharedPreferences.getInstance();
-    return {
-      'access': prefs.getString('access'),
-      'refresh': prefs.getString('refresh'),
-      'id': prefs.getString('id'),
-    };
+    final session = await readSession();
+    return {'access': session?.token, 'refresh': null, 'id': session?.userId};
   }
 
-  static Future<void> clearSession() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.clear();
+  static Future<String?> getToken() async => (await readSession())?.token;
+  static Future<void> saveToken(String token) async {
+    final session = await readSession();
+    if (session == null) throw StateError('Use saveSession with the user ID');
+    await saveSession(access: token, id: session.userId);
   }
+
+  static Future<bool> invalidateToken(String token) =>
+      _sessions.invalidateToken(token);
+  static Future<void> clear() => _sessions.clear();
+  static Future<void> clearSession() => clear();
+  static Future<void> clearToken() => clear();
 }

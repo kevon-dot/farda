@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "test": "node --test",
+    "test": "node --test tests/*.test.js",
+    "test:integration": "node --test tests/mongo.integration.test.js tests/session.integration.test.js",
     "dev": "node Server.js"
   },
   "keywords": [

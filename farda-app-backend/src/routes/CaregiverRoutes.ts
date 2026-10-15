@@ -19,7 +19,7 @@ const CaregiverRoutes = {
 	removeCaregiver: async (req: Request, res: Response) => {
 		const { deviceId } = req.params;
 		const result = await DeviceTrackingService.proxyRequest(
-			`/api/user/devices/${deviceId}/caregiver`,
+			`/api/user/devices/${encodeURIComponent(String(deviceId))}/caregiver`,
 			"DELETE",
 			extractToken(req),
 		);
@@ -41,7 +41,7 @@ const CaregiverRoutes = {
 		// but standard REST APIs shouldn't pass bodies in GET requests. We will pass it as query or pass body if fetch allows.
 		// Fetch API technically allows GET with a body if it's explicitly done, but let's handle it as in the Postman collection.
 		const result = await DeviceTrackingService.proxyRequest(
-			`/api/caregiver/devices/${deviceId}/summary`,
+			`/api/caregiver/devices/${encodeURIComponent(String(deviceId))}/summary`,
 			"GET", // The postman collection had it as a GET request.
 			extractToken(req),
 			undefined,

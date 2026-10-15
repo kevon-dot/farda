@@ -28,7 +28,7 @@ const DeviceUserRoutes = {
 	unclaimDevice: async (req: Request, res: Response) => {
 		const { deviceId } = req.params;
 		const result = await DeviceTrackingService.proxyRequest(
-			`/api/user/devices/${deviceId}/unclaim`,
+			`/api/user/devices/${encodeURIComponent(String(deviceId))}/unclaim`,
 			"DELETE",
 			extractToken(req),
 		);
@@ -38,7 +38,7 @@ const DeviceUserRoutes = {
 	getDeviceEvents: async (req: Request, res: Response) => {
 		const { deviceId } = req.params;
 		const result = await DeviceTrackingService.proxyRequest(
-			`/api/user/devices/${deviceId}/events`,
+			`/api/user/devices/${encodeURIComponent(String(deviceId))}/events`,
 			"GET",
 			extractToken(req),
 		);
@@ -48,7 +48,7 @@ const DeviceUserRoutes = {
 	deleteDeviceEvents: async (req: Request, res: Response) => {
 		const { deviceId } = req.params;
 		const result = await DeviceTrackingService.proxyRequest(
-			`/api/user/devices/${deviceId}/events`,
+			`/api/user/devices/${encodeURIComponent(String(deviceId))}/events`,
 			"DELETE",
 			extractToken(req),
 		);
@@ -58,7 +58,7 @@ const DeviceUserRoutes = {
 	searchDeviceEvents: async (req: Request, res: Response) => {
 		const { deviceId } = req.params;
 		const result = await DeviceTrackingService.proxyRequest(
-			`/api/user/devices/${deviceId}/events/search`,
+			`/api/user/devices/${encodeURIComponent(String(deviceId))}/events/search`,
 			"GET",
 			extractToken(req),
 			undefined,

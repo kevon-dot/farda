@@ -1,3 +1,5 @@
+> Historical documentation. Use [Vial service contract v1](VIAL_CONTRACT_V1.md) for current authentication, enrollment, ingestion and deployment requirements. Fleet keys and ID-only claims are unsupported.
+
 # Deployment Guide
 
 Production deployment guide for Smart Vial Backend.
