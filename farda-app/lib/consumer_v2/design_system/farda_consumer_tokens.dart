@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
+export 'farda_scene.dart';
+
 /// Semantic tokens from the editable consumer-v2 Figma file.
 ///
 /// Keeping these separate from the legacy app theme lets the new experience
@@ -179,14 +181,16 @@ abstract final class FardaConsumerTheme {
       ),
       switchTheme: SwitchThemeData(
         thumbColor: WidgetStateProperty.resolveWith(
-          (states) => states.contains(WidgetState.selected)
-              ? FardaConsumerColors.card
-              : FardaConsumerColors.textSecondary,
+          (states) =>
+              states.contains(WidgetState.selected)
+                  ? FardaConsumerColors.card
+                  : FardaConsumerColors.textSecondary,
         ),
         trackColor: WidgetStateProperty.resolveWith(
-          (states) => states.contains(WidgetState.selected)
-              ? FardaConsumerColors.brand
-              : FardaConsumerColors.border,
+          (states) =>
+              states.contains(WidgetState.selected)
+                  ? FardaConsumerColors.brand
+                  : FardaConsumerColors.border,
         ),
       ),
     );
@@ -216,13 +220,14 @@ class FardaConsumerCard extends StatelessWidget {
       color: color,
       borderRadius: BorderRadius.circular(radius),
       clipBehavior: Clip.antiAlias,
-      child: onTap == null
-          ? content
-          : InkWell(
-              onTap: onTap,
-              borderRadius: BorderRadius.circular(radius),
-              child: content,
-            ),
+      child:
+          onTap == null
+              ? content
+              : InkWell(
+                onTap: onTap,
+                borderRadius: BorderRadius.circular(radius),
+                child: content,
+              ),
     );
   }
 }
@@ -259,7 +264,9 @@ class FardaBrandHeader extends StatelessWidget {
               child: const SizedBox(
                 width: 44,
                 height: 44,
-                child: Center(child: Text('YO', style: FardaConsumerType.label)),
+                child: Center(
+                  child: Text('YO', style: FardaConsumerType.label),
+                ),
               ),
             ),
           ),
@@ -277,51 +284,36 @@ class FardaCompanion extends StatelessWidget {
     this.pose = FardaCompanionPose.wave,
     this.size = 100,
     this.useVectorForWave = true,
+    this.floating = false,
   });
 
   final FardaCompanionPose pose;
   final double size;
+  // Retained for source compatibility; every pose now uses the exact Figma SVG.
   final bool useVectorForWave;
+  final bool floating;
 
   @override
   Widget build(BuildContext context) {
-    if (pose == FardaCompanionPose.wave && useVectorForWave) {
-      return ExcludeSemantics(
-        child: SvgPicture.asset(
-          'assets/images/farda_companion_wave.svg',
-          width: size,
-          height: size,
-        ),
-      );
-    }
-
-    final alignment = switch (pose) {
-      FardaCompanionPose.wave => Alignment.centerLeft,
-      FardaCompanionPose.calendar => Alignment.center,
-      FardaCompanionPose.quiet => Alignment.centerRight,
-    };
-
-    return ExcludeSemantics(
-      child: ClipRect(
-        child: SizedBox(
-          width: size,
-          height: size,
-          child: OverflowBox(
-            alignment: alignment,
-            minWidth: size * 3,
-            maxWidth: size * 3,
-            minHeight: size,
-            maxHeight: size,
-            child: Image.asset(
-              'assets/images/farda_companion_trio.png',
-              width: size * 3,
-              height: size,
-              fit: BoxFit.fill,
-              filterQuality: FilterQuality.high,
-            ),
-          ),
-        ),
+    final artwork = ExcludeSemantics(
+      child: SvgPicture.asset(
+        'assets/figma/companion-${pose.name}.svg',
+        width: size,
+        height: size,
       ),
+    );
+    if (!floating || MediaQuery.disableAnimationsOf(context)) return artwork;
+    // A quiet arrival motion, replayed when the expression changes. It settles
+    // instead of continuously competing with the user's task.
+    return TweenAnimationBuilder<double>(
+      key: ValueKey(pose),
+      tween: Tween(begin: 3, end: 0),
+      duration: const Duration(milliseconds: 3600),
+      curve: Curves.easeInOut,
+      child: artwork,
+      builder:
+          (context, offset, child) =>
+              Transform.translate(offset: Offset(0, offset), child: child),
     );
   }
 }

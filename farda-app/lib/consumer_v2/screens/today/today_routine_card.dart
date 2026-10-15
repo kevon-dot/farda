@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../design_system/farda_consumer_tokens.dart' as design;
 import 'farda_companion.dart';
 import 'today_models.dart';
 
@@ -36,32 +37,20 @@ class FardaTodayRoutineCard extends StatelessWidget {
     final isPending = status == TodayDoseStatus.pending;
     final reduceMotion =
         MediaQuery.maybeOf(context)?.disableAnimations ?? false;
-    final switchDuration = reduceMotion
-        ? Duration.zero
-        : const Duration(milliseconds: 220);
+    final switchDuration =
+        reduceMotion ? Duration.zero : const Duration(milliseconds: 220);
 
     return Semantics(
       container: true,
       label: neutralCopy ? 'Selected routine' : 'Morning routine',
-      child: Container(
-        width: double.infinity,
+      child: design.FardaSceneCard(
+        scene: design.FardaScene.today,
         padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: _navy,
-          borderRadius: BorderRadius.circular(24),
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x26142C55),
-              offset: Offset(0, 9),
-              blurRadius: 20,
-            ),
-          ],
-        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              isPending ? 'YOUR ROUTINE' : 'YOUR RECORD',
+              '${neutralCopy ? 'YOUR ROUTINE' : 'YOUR MORNING'} · $timeLabel',
               style: _fardaTodayText(
                 size: 10,
                 lineHeight: 14,
@@ -69,45 +58,64 @@ class FardaTodayRoutineCard extends StatelessWidget {
                 color: Colors.white,
               ),
             ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: AnimatedSwitcher(
-                    duration: switchDuration,
-                    child: Text(
-                      copy.headline,
-                      key: ValueKey(copy.headline),
-                      style: _fardaTodayText(
-                        size: 26,
-                        lineHeight: 30,
-                        weight: FontWeight.w600,
-                        color: Colors.white,
-                      ),
+            const SizedBox(height: 12),
+            ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 104),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        AnimatedSwitcher(
+                          duration: switchDuration,
+                          child: Text(
+                            copy.headline,
+                            key: ValueKey(copy.headline),
+                            style: _fardaTodayText(
+                              size: isPending ? 28 : 26,
+                              lineHeight: 30,
+                              weight: FontWeight.w600,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 9),
+                        Text(
+                          copy.support,
+                          style: _fardaTodayText(
+                            size: 12,
+                            lineHeight: 17,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                ),
-                Container(
-                  width: 112,
-                  height: 112,
-                  decoration: const BoxDecoration(
-                    color: Color(0xFFE9EEF7),
-                    shape: BoxShape.circle,
+                  Container(
+                    width: 104,
+                    height: 104,
+                    decoration: const BoxDecoration(
+                      color: _canvas,
+                      shape: BoxShape.circle,
+                    ),
+                    child: FardaCompanion(
+                      size: 104,
+                      mood: switch (status) {
+                        TodayDoseStatus.confirmed =>
+                          FardaCompanionMood.confirmed,
+                        TodayDoseStatus.skipped => FardaCompanionMood.skipped,
+                        TodayDoseStatus.pending when isSnoozed =>
+                          FardaCompanionMood.snoozed,
+                        TodayDoseStatus.pending => FardaCompanionMood.waving,
+                      },
+                    ),
                   ),
-                  child: FardaCompanion(
-                    size: 112,
-                    mood: switch (status) {
-                      TodayDoseStatus.confirmed => FardaCompanionMood.confirmed,
-                      TodayDoseStatus.skipped => FardaCompanionMood.skipped,
-                      TodayDoseStatus.pending when isSnoozed =>
-                        FardaCompanionMood.snoozed,
-                      TodayDoseStatus.pending => FardaCompanionMood.waving,
-                    },
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
             AnimatedSwitcher(
               duration: switchDuration,
               child: Text(
@@ -120,7 +128,7 @@ class FardaTodayRoutineCard extends StatelessWidget {
                 ),
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
             if (isPending) ...[
               _RoutineButton(
                 key: logDoseButtonKey,
@@ -128,24 +136,20 @@ class FardaTodayRoutineCard extends StatelessWidget {
                 backgroundColor: _canvas,
                 onPressed: onOpenLog,
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 12),
               LayoutBuilder(
                 builder: (context, constraints) {
-                  final textScale = MediaQuery.textScalerOf(
-                    context,
-                  ).scale(14);
+                  final textScale = MediaQuery.textScalerOf(context).scale(14);
                   final shouldStack =
                       constraints.maxWidth < 300 || textScale > 18;
                   final snooze = _RoutineSecondaryAction(
                     key: snoozeButtonKey,
-                    icon: Icons.snooze_rounded,
                     label: isSnoozed ? 'Snoozed 15 min' : 'Remind in 15 min',
                     onPressed: isSnoozed ? null : onSnooze,
                   );
                   final more = _RoutineSecondaryAction(
                     key: moreOptionsButtonKey,
-                    icon: Icons.more_horiz_rounded,
-                    label: 'Options',
+                    label: 'More options',
                     onPressed: onMoreOptions,
                   );
 
@@ -181,12 +185,10 @@ class FardaTodayRoutineCard extends StatelessWidget {
 class _RoutineSecondaryAction extends StatelessWidget {
   const _RoutineSecondaryAction({
     super.key,
-    required this.icon,
     required this.label,
     required this.onPressed,
   });
 
-  final IconData icon;
   final String label;
   final VoidCallback? onPressed;
 
@@ -194,20 +196,23 @@ class _RoutineSecondaryAction extends StatelessWidget {
   Widget build(BuildContext context) {
     return SizedBox(
       height: 48,
-      child: TextButton.icon(
+      child: OutlinedButton(
         onPressed: onPressed,
-        icon: Icon(icon, size: 18),
-        label: FittedBox(fit: BoxFit.scaleDown, child: Text(label)),
-        style: TextButton.styleFrom(
+        style: OutlinedButton.styleFrom(
           foregroundColor: Colors.white,
           disabledForegroundColor: const Color(0xFFBFCBE0),
-          padding: const EdgeInsets.symmetric(horizontal: 6),
+          side: const BorderSide(color: Color(0xFF365C99)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 8),
           textStyle: _fardaTodayText(
-            size: 13,
-            lineHeight: 18,
+            size: 14,
+            lineHeight: 19,
             weight: FontWeight.w600,
           ),
         ),
+        child: FittedBox(fit: BoxFit.scaleDown, child: Text(label)),
       ),
     );
   }
@@ -255,6 +260,7 @@ class _RoutineButton extends StatelessWidget {
 class _RoutineCopy {
   const _RoutineCopy({
     required this.headline,
+    required this.support,
     required this.statusLine,
   });
 
@@ -265,29 +271,34 @@ class _RoutineCopy {
   ) {
     if (status == TodayDoseStatus.confirmed) {
       return _RoutineCopy(
-        headline: 'A little more\nroom today.',
+        headline: 'More room\nfor your day.',
+        support: 'Your entry is saved.',
         statusLine: 'You confirmed · $timeLabel',
       );
     }
     if (status == TodayDoseStatus.skipped) {
       return const _RoutineCopy(
         headline: 'Your record.\nYour call.',
+        support: 'Saved as skipped.',
         statusLine: 'You recorded a skipped dose',
       );
     }
     if (isSnoozed) {
       return _RoutineCopy(
         headline: 'A little\nbreathing room.',
+        support: 'Your plan stays the same.',
         statusLine: 'Reminder snoozed · Not yet confirmed',
       );
     }
     return _RoutineCopy(
-      headline: 'A moment\nfor your routine.',
-      statusLine: '$timeLabel · Not yet confirmed',
+      headline: 'A moment\nfor you.',
+      support: 'Your routine, your pace.',
+      statusLine: 'Not yet confirmed',
     );
   }
 
   final String headline;
+  final String support;
   final String statusLine;
 }
 

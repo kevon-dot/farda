@@ -84,63 +84,85 @@ class _FardaConsumerShellState extends State<FardaConsumerShell> {
     for (final occurrence in snapshot.occurrences) {
       if (occurrence.status == OccurrenceStatus.cancelled) continue;
       final local = occurrence.scheduledFor.toLocal();
-      final name = snapshot.prescription(occurrence.prescriptionId)?.name ??
+      final name =
+          snapshot.prescription(occurrence.prescriptionId)?.name ??
           'Your routine';
       final status = switch (occurrence.status) {
-        OccurrenceStatus.taken || OccurrenceStatus.skipped =>
-          ConsumerCalendarEventStatus.recorded,
+        OccurrenceStatus.taken ||
+        OccurrenceStatus.skipped => ConsumerCalendarEventStatus.recorded,
         OccurrenceStatus.unconfirmed when local.isBefore(DateTime.now()) =>
           ConsumerCalendarEventStatus.unconfirmed,
         _ => ConsumerCalendarEventStatus.pending,
       };
-      events.add(ConsumerCalendarEvent(
-        id: occurrence.id,
-        date: local,
-        type: ConsumerCalendarEventType.routine,
-        status: status,
-        eyebrow: DateFormat.jm().format(local),
-        title: name,
-        description: switch (occurrence.status) {
-          OccurrenceStatus.taken => 'You recorded this dose as taken.',
-          OccurrenceStatus.skipped => 'You recorded this dose as skipped.',
-          _ => 'No dose has been confirmed.',
-        },
-      ));
+      events.add(
+        ConsumerCalendarEvent(
+          id: occurrence.id,
+          date: local,
+          type: ConsumerCalendarEventType.routine,
+          status: status,
+          eyebrow: '$name · ${DateFormat.jm().format(local)}',
+          title: switch (occurrence.status) {
+            OccurrenceStatus.taken => 'Recorded as taken',
+            OccurrenceStatus.skipped => 'Recorded as skipped',
+            _ => 'Not yet confirmed',
+          },
+          actionLabel:
+              status == ConsumerCalendarEventStatus.recorded
+                  ? 'Review entry'
+                  : 'Add an entry',
+          description: switch (occurrence.status) {
+            OccurrenceStatus.taken => 'You recorded this dose as taken.',
+            OccurrenceStatus.skipped => 'You recorded this dose as skipped.',
+            _ => 'No dose has been confirmed.',
+          },
+        ),
+      );
     }
     for (final inventory in snapshot.inventory) {
       final date = inventory.plannedFor;
       if (date == null) continue;
-      events.add(ConsumerCalendarEvent(
-        id: inventory.refillId ?? inventory.prescriptionId,
-        date: date.toLocal(),
-        type: ConsumerCalendarEventType.refill,
-        status: ConsumerCalendarEventStatus.planned,
-        eyebrow: 'REFILL PLAN',
-        title: snapshot.prescription(inventory.prescriptionId)?.name ??
-            'Your refill',
-        description: 'A plan you recorded; no pharmacy order was placed.',
-      ));
+      events.add(
+        ConsumerCalendarEvent(
+          id: inventory.refillId ?? inventory.prescriptionId,
+          date: date.toLocal(),
+          type: ConsumerCalendarEventType.refill,
+          status: ConsumerCalendarEventStatus.planned,
+          eyebrow: 'REFILL PLAN',
+          title:
+              snapshot.prescription(inventory.prescriptionId)?.name ??
+              'Your refill',
+          description: 'A plan you recorded; no pharmacy order was placed.',
+          actionLabel: 'Open refill station',
+        ),
+      );
     }
     return events;
   }
 
-  Future<String?> _record(ConsumerOccurrence occurrence,
-      TodayDoseStatus status) async {
+  Future<String?> _record(
+    ConsumerOccurrence occurrence,
+    TodayDoseStatus status,
+  ) async {
     final controller = widget.controller!;
-    return controller.mutate(() => controller.repository.recordOccurrence(
-      ConsumerOccurrenceUpdate(
-        id: occurrence.id,
-        status: status == TodayDoseStatus.confirmed
-            ? OccurrenceStatus.taken
-            : OccurrenceStatus.skipped,
-        expectedRevision: occurrence.revision,
+    return controller.mutate(
+      () => controller.repository.recordOccurrence(
+        ConsumerOccurrenceUpdate(
+          id: occurrence.id,
+          status:
+              status == TodayDoseStatus.confirmed
+                  ? OccurrenceStatus.taken
+                  : OccurrenceStatus.skipped,
+          expectedRevision: occurrence.revision,
+        ),
       ),
-    ));
+    );
   }
 
   ConsumerOccurrence? _currentOccurrence(String id) {
-    for (final item in widget.controller?.snapshot?.occurrences ?? <ConsumerOccurrence>[]) {
-      if (item.id == id && item.status != OccurrenceStatus.cancelled) return item;
+    for (final item
+        in widget.controller?.snapshot?.occurrences ?? <ConsumerOccurrence>[]) {
+      if (item.id == id && item.status != OccurrenceStatus.cancelled)
+        return item;
     }
     return null;
   }
@@ -158,14 +180,19 @@ class _FardaConsumerShellState extends State<FardaConsumerShell> {
         maxHeight: MediaQuery.sizeOf(context).height * .94,
         maxWidth: 600,
       ),
-      builder: (_) => Theme(
-        data: ConsumerPalette.theme,
-        child: ConsumerEntryForm(
-          controller: controller,
-          occurrence: occurrence,
-          medicationName: controller.snapshot?.prescription(occurrence.prescriptionId)?.name ?? 'Your routine',
-        ),
-      ),
+      builder:
+          (_) => Theme(
+            data: ConsumerPalette.theme,
+            child: ConsumerEntryForm(
+              controller: controller,
+              occurrence: occurrence,
+              medicationName:
+                  controller.snapshot
+                      ?.prescription(occurrence.prescriptionId)
+                      ?.name ??
+                  'Your routine',
+            ),
+          ),
     );
   }
 
@@ -174,19 +201,30 @@ class _FardaConsumerShellState extends State<FardaConsumerShell> {
     final consumerTheme = FardaConsumerTheme.from(Theme.of(context));
     final controller = widget.controller;
     final snapshot = controller?.snapshot;
-    final selected = controller == null
-        ? <ConsumerOccurrence>[]
-        : controller.occurrencesFor(controller.selectedDate)
-            .where((item) => item.status != OccurrenceStatus.cancelled)
-            .toList();
+    final selected =
+        controller == null
+            ? <ConsumerOccurrence>[]
+            : controller
+                .occurrencesFor(controller.selectedDate)
+                .where((item) => item.status != OccurrenceStatus.cancelled)
+                .toList();
     final occurrence = selected.isEmpty ? null : selected.first;
-    final routines = selected.map((item) => TodayRoutineRecord(
-      id: item.id,
-      medicationLabel: snapshot?.prescription(item.prescriptionId)?.name ?? 'Your routine',
-      timeLabel: DateFormat.jm().format(item.scheduledFor.toLocal()),
-      status: _todayStatus(item),
-      isSnoozed: item.snoozedUntil?.isAfter(DateTime.now()) ?? false,
-    )).toList();
+    final routines =
+        selected
+            .map(
+              (item) => TodayRoutineRecord(
+                id: item.id,
+                medicationLabel:
+                    snapshot?.prescription(item.prescriptionId)?.name ??
+                    'Your routine',
+                timeLabel: DateFormat.jm().format(item.scheduledFor.toLocal()),
+                status: _todayStatus(item),
+                isSnoozed: item.snoozedUntil?.isAfter(DateTime.now()) ?? false,
+                recordedAt: item.recordedAt,
+                snoozedUntil: item.snoozedUntil,
+              ),
+            )
+            .toList();
     return Theme(
       data: consumerTheme,
       child: AnnotatedRegion<SystemUiOverlayStyle>(
@@ -203,35 +241,61 @@ class _FardaConsumerShellState extends State<FardaConsumerShell> {
             index: _selectedIndex,
             children: [
               FardaTodayScreen(
-                key: ValueKey(controller?.selectedDate.toIso8601String() ?? 'preview'),
+                key: ValueKey(
+                  controller?.selectedDate.toIso8601String() ?? 'preview',
+                ),
                 showBottomNavigation: false,
                 liveRecords: controller != null,
                 hasRoutine: controller == null || occurrence != null,
                 routines: routines,
                 initialDate: controller?.selectedDate,
-                initialDoseStatus: occurrence == null
-                    ? TodayDoseStatus.pending
-                    : _todayStatus(occurrence),
-                initiallySnoozed: occurrence?.snoozedUntil
-                        ?.isAfter(DateTime.now()) ?? false,
-                morningTimeLabel: occurrence == null
-                    ? '9:00 AM'
-                    : DateFormat.jm().format(occurrence.scheduledFor.toLocal()),
-                medicationLabel: occurrence == null
-                    ? 'Your routine'
-                    : snapshot?.prescription(occurrence.prescriptionId)?.name ??
-                        'Your routine',
+                initialDoseStatus:
+                    occurrence == null
+                        ? TodayDoseStatus.pending
+                        : _todayStatus(occurrence),
+                initiallySnoozed:
+                    occurrence?.snoozedUntil?.isAfter(DateTime.now()) ?? false,
+                morningTimeLabel:
+                    occurrence == null
+                        ? '9:00 AM'
+                        : DateFormat.jm().format(
+                          occurrence.scheduledFor.toLocal(),
+                        ),
+                medicationLabel:
+                    occurrence == null
+                        ? 'Your routine'
+                        : snapshot
+                                ?.prescription(occurrence.prescriptionId)
+                                ?.name ??
+                            'Your routine',
                 onDaySelected: controller?.selectDay,
-                onPersistDoseForId: controller == null ? null : (id, status) {
-                  final current = _currentOccurrence(id);
-                  if (current == null) return Future.value('This routine is no longer available. Refresh and try again.');
-                  return _record(current, status);
-                },
-                onPersistSnoozeForId: controller == null ? null : (id) {
-                  final current = _currentOccurrence(id);
-                  if (current == null) return Future.value('This routine is no longer available. Refresh and try again.');
-                  return controller.mutate(() => controller.repository.snoozeOccurrence(id, const Duration(minutes: 15)));
-                },
+                onPersistDoseForId:
+                    controller == null
+                        ? null
+                        : (id, status) {
+                          final current = _currentOccurrence(id);
+                          if (current == null)
+                            return Future.value(
+                              'This routine is no longer available. Refresh and try again.',
+                            );
+                          return _record(current, status);
+                        },
+                onPersistSnoozeForId:
+                    controller == null
+                        ? null
+                        : (id) {
+                          final current = _currentOccurrence(id);
+                          if (current == null)
+                            return Future.value(
+                              'This routine is no longer available. Refresh and try again.',
+                            );
+                          return controller.mutate(
+                            () => controller.repository.snoozeOccurrence(
+                              id,
+                              const Duration(minutes: 15),
+                            ),
+                          );
+                        },
                 onCorrectRoutine: controller == null ? null : _correct,
                 onReviewRoutineTap: widget.onOpenAccount,
                 onOpenCalendar: () => _selectTab(1),
@@ -239,41 +303,61 @@ class _FardaConsumerShellState extends State<FardaConsumerShell> {
                 onOpenProfile: () => _selectTab(3),
               ),
               FardaCalendarScreen(
+                onProfilePressed: () => _selectTab(3),
+                onEventAction: (event) {
+                  if (event.type == ConsumerCalendarEventType.refill) {
+                    _selectTab(2);
+                  } else if (controller != null) {
+                    _correct(event.id);
+                  } else {
+                    _selectTab(0);
+                  }
+                },
                 events: snapshot == null ? null : _calendarEvents(snapshot),
                 initialSelectedDate: controller?.selectedDate,
                 initialVisibleMonth: controller?.visibleMonth,
                 onSelectedDateChanged: controller?.selectDay,
-                onVisibleMonthChanged: controller == null
-                    ? null
-                    : (month) {
-                        controller.visibleMonth = month;
-                        controller.load();
-                      },
+                onVisibleMonthChanged:
+                    controller == null
+                        ? null
+                        : (month) {
+                          controller.visibleMonth = month;
+                          controller.load();
+                        },
               ),
               FardaRefillsScreen(
+                onOpenProfile: () => _selectTab(3),
                 snapshot: snapshot,
-                onUpdateInventory: controller == null
-                    ? null
-                    : (id, quantity) => controller.mutate(
-                          () => controller.repository.updateInventory(id, quantity),
-                        ),
-                onUpdateRefill: controller == null
-                    ? null
-                    : (id, stage, {startNew = false}) => controller.mutate(
-                          () => controller.repository.updateRefill(
-                            id, stage, startNew: startNew,
-                          ),
-                        ),
-                onReconcileReceipt: controller == null
-                    ? null
-                    : (id, {required quantity, required alreadyIncluded}) =>
-                        controller.mutate(
-                          () => controller.repository.reconcileReceipt(
+                onUpdateInventory:
+                    controller == null
+                        ? null
+                        : (id, quantity) => controller.mutate(
+                          () => controller.repository.updateInventory(
                             id,
-                            quantity: quantity,
-                            alreadyIncluded: alreadyIncluded,
+                            quantity,
                           ),
                         ),
+                onUpdateRefill:
+                    controller == null
+                        ? null
+                        : (id, stage, {startNew = false}) => controller.mutate(
+                          () => controller.repository.updateRefill(
+                            id,
+                            stage,
+                            startNew: startNew,
+                          ),
+                        ),
+                onReconcileReceipt:
+                    controller == null
+                        ? null
+                        : (id, {required quantity, required alreadyIncluded}) =>
+                            controller.mutate(
+                              () => controller.repository.reconcileReceipt(
+                                id,
+                                quantity: quantity,
+                                alreadyIncluded: alreadyIncluded,
+                              ),
+                            ),
                 onOpenRefillTools: widget.onOpenRefillTools,
               ),
               FardaYouScreen(
@@ -281,19 +365,18 @@ class _FardaConsumerShellState extends State<FardaConsumerShell> {
                 onOpenAccount: widget.onOpenAccount,
                 onNativePreviewChanged: (isNativePreview) {
                   if (_hideBottomNavigation == isNativePreview) return;
-                  setState(
-                    () => _hideBottomNavigation = isNativePreview,
-                  );
+                  setState(() => _hideBottomNavigation = isNativePreview);
                 },
               ),
             ],
           ),
-          bottomNavigationBar: _hideBottomNavigation
-              ? null
-              : FardaConsumerNavigationBar(
-                  selectedIndex: _selectedIndex,
-                  onSelected: _selectTab,
-                ),
+          bottomNavigationBar:
+              _hideBottomNavigation
+                  ? null
+                  : FardaConsumerNavigationBar(
+                    selectedIndex: _selectedIndex,
+                    onSelected: _selectTab,
+                  ),
         ),
       ),
     );
@@ -310,11 +393,11 @@ class FardaConsumerNavigationBar extends StatelessWidget {
   final int selectedIndex;
   final ValueChanged<int> onSelected;
 
-  static const _items = <({String label, IconData icon})>[
-    (label: 'Today', icon: Icons.home_outlined),
-    (label: 'Calendar', icon: Icons.calendar_today_outlined),
-    (label: 'Refills', icon: Icons.sync_rounded),
-    (label: 'You', icon: Icons.person_outline_rounded),
+  static const _items = <({String label, String asset})>[
+    (label: 'Today', asset: 'nav-today'),
+    (label: 'Calendar', asset: 'nav-calendar'),
+    (label: 'Refills', asset: 'nav-refills'),
+    (label: 'You', asset: 'nav-you'),
   ];
 
   @override
@@ -328,9 +411,9 @@ class FardaConsumerNavigationBar extends StatelessWidget {
       ),
       child: SafeArea(
         top: false,
-        minimum: const EdgeInsets.fromLTRB(22, 8, 22, 6),
+        minimum: const EdgeInsets.fromLTRB(22, 11, 22, 2),
         child: SizedBox(
-          height: 62,
+          height: 38 + MediaQuery.textScalerOf(context).scale(10) * 1.4,
           child: Row(
             children: List.generate(_items.length, (index) {
               final item = _items[index];
@@ -342,44 +425,49 @@ class FardaConsumerNavigationBar extends StatelessWidget {
                   label: '${item.label} tab',
                   child: InkWell(
                     onTap: () => onSelected(index),
-                    borderRadius: BorderRadius.circular(
-                      FardaConsumerRadius.sm,
-                    ),
+                    borderRadius: BorderRadius.circular(FardaConsumerRadius.sm),
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         AnimatedContainer(
-                          duration: const Duration(milliseconds: 160),
+                          duration:
+                              MediaQuery.disableAnimationsOf(context)
+                                  ? Duration.zero
+                                  : const Duration(milliseconds: 180),
                           curve: Curves.easeOut,
-                          width: 38,
-                          height: 32,
+                          width: 36,
+                          height: 34,
                           decoration: BoxDecoration(
-                            color: selected
-                                ? FardaConsumerColors.soft
-                                : Colors.transparent,
+                            color:
+                                selected
+                                    ? FardaConsumerColors.soft
+                                    : Colors.transparent,
                             borderRadius: BorderRadius.circular(
                               FardaConsumerRadius.sm,
                             ),
                           ),
-                          child: Icon(
-                            item.icon,
-                            size: 22,
-                            color: selected
-                                ? FardaConsumerColors.brand
-                                : FardaConsumerColors.textSecondary,
+                          child: Center(
+                            child: FardaVectorIcon(
+                              item.asset,
+                              size: 22,
+                              color:
+                                  selected
+                                      ? FardaConsumerColors.brand
+                                      : FardaConsumerColors.textSecondary,
+                            ),
                           ),
                         ),
-                        const SizedBox(height: 2),
+                        const SizedBox(height: 4),
                         Text(
                           item.label,
                           maxLines: 1,
                           style: FardaConsumerType.label.copyWith(
-                            fontWeight: selected
-                                ? FontWeight.w600
-                                : FontWeight.w400,
-                            color: selected
-                                ? FardaConsumerColors.brand
-                                : FardaConsumerColors.textSecondary,
+                            fontWeight:
+                                selected ? FontWeight.w600 : FontWeight.w400,
+                            color:
+                                selected
+                                    ? FardaConsumerColors.brand
+                                    : FardaConsumerColors.textSecondary,
                           ),
                         ),
                       ],

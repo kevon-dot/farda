@@ -6,9 +6,8 @@ import 'package:intl/intl.dart';
 import '../../design_system/farda_consumer_tokens.dart';
 import 'calendar_models.dart';
 
-typedef ConsumerCalendarEventCallback = void Function(
-  ConsumerCalendarEvent event,
-);
+typedef ConsumerCalendarEventCallback =
+    void Function(ConsumerCalendarEvent event);
 
 /// The consumer-v2 calendar translated from the Figma handoff (node 2:12).
 ///
@@ -73,9 +72,7 @@ class _FardaCalendarScreenState extends State<FardaCalendarScreen> {
     super.initState();
     _today = calendarDay(widget.today ?? DateTime.now());
     _selectedDate = calendarDay(widget.initialSelectedDate ?? _today);
-    _visibleMonth = calendarMonth(
-      widget.initialVisibleMonth ?? _selectedDate,
-    );
+    _visibleMonth = calendarMonth(widget.initialVisibleMonth ?? _selectedDate);
     _filter = widget.initialFilter;
   }
 
@@ -136,7 +133,8 @@ class _FardaCalendarScreenState extends State<FardaCalendarScreen> {
 
   void _returnToToday() {
     final changedMonth =
-        _visibleMonth.year != _today.year || _visibleMonth.month != _today.month;
+        _visibleMonth.year != _today.year ||
+        _visibleMonth.month != _today.month;
     setState(() {
       _selectedDate = _today;
       _visibleMonth = calendarMonth(_today);
@@ -166,10 +164,38 @@ class _FardaCalendarScreenState extends State<FardaCalendarScreen> {
                       profileLabel: widget.profileLabel,
                       onProfilePressed: widget.onProfilePressed,
                     ),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 11),
                   ],
                   const _PageIntroduction(),
-                  const SizedBox(height: 18),
+                  const SizedBox(height: 16),
+                  AnimatedSwitcher(
+                    duration:
+                        MediaQuery.disableAnimationsOf(context)
+                            ? Duration.zero
+                            : const Duration(milliseconds: 220),
+                    child: _SelectedDayAgenda(
+                      key: ValueKey(
+                        '${_selectedDate.toIso8601String()}-${_filter.name}',
+                      ),
+                      selectedDate: _selectedDate,
+                      filter: _filter,
+                      events: _events,
+                      onEventAction: widget.onEventAction,
+                      emptyActionLabel:
+                          _filter != ConsumerCalendarFilter.all
+                              ? 'Show all entries'
+                              : !isSameCalendarDay(_selectedDate, _today)
+                              ? 'Back to today'
+                              : 'Your routines',
+                      onEmptyAction:
+                          _filter != ConsumerCalendarFilter.all
+                              ? () => _selectFilter(ConsumerCalendarFilter.all)
+                              : !isSameCalendarDay(_selectedDate, _today)
+                              ? _returnToToday
+                              : widget.onProfilePressed,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
                   _CalendarCard(
                     visibleMonth: _visibleMonth,
                     selectedDate: _selectedDate,
@@ -179,28 +205,27 @@ class _FardaCalendarScreenState extends State<FardaCalendarScreen> {
                     onNextMonth: () => _changeMonth(1),
                     onDateSelected: _selectDate,
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 7),
                   _FilterRow(
                     selectedFilter: _filter,
                     onFilterSelected: _selectFilter,
                     onTodayPressed: _returnToToday,
                   ),
                   const SizedBox(height: 16),
-                  AnimatedSwitcher(
-                    duration: MediaQuery.disableAnimationsOf(context)
-                        ? Duration.zero
-                        : const Duration(milliseconds: 190),
-                    transitionBuilder: (child, animation) => FadeTransition(
-                      opacity: animation,
-                      child: child,
-                    ),
-                    child: _SelectedDayAgenda(
-                      key: ValueKey('${_selectedDate.toIso8601String()}-${_filter.name}'),
-                      selectedDate: _selectedDate,
-                      filter: _filter,
-                      events: _events,
-                      onEventAction: widget.onEventAction,
-                    ),
+                  const Row(
+                    children: [
+                      FardaCompanion(
+                        pose: FardaCompanionPose.calendar,
+                        size: 78,
+                      ),
+                      SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'Your days, without judgment.',
+                          style: FardaConsumerType.caption,
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -239,9 +264,10 @@ class _BrandHeader extends StatelessWidget {
         ),
         Semantics(
           button: onProfilePressed != null,
-          label: onProfilePressed == null
-              ? 'Your profile, $profileLabel'
-              : 'Open your profile',
+          label:
+              onProfilePressed == null
+                  ? 'Your profile, $profileLabel'
+                  : 'Open your profile',
           onTap: onProfilePressed,
           child: ExcludeSemantics(
             child: Material(
@@ -277,84 +303,50 @@ class _BrandHeader extends StatelessWidget {
 
 class _PageIntroduction extends StatelessWidget {
   const _PageIntroduction();
-
   @override
-  Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [_FardaCalendarColors.navy, Color(0xFF294B80)],
-        ),
-        borderRadius: BorderRadius.circular(26),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 16, 12, 16),
-        child: Row(
-          children: [
-            Expanded(
-              child: Semantics(
-                header: true,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'YOUR CALENDAR',
-                      style: _FardaCalendarType.style(
-                        size: 10,
-                        lineHeight: 14,
-                        weight: FontWeight.w600,
-                        color: _FardaCalendarColors.selectedMark,
-                        letterSpacing: 1.3,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Your days.',
-                      style: _FardaCalendarType.style(
-                        size: 29,
-                        lineHeight: 34,
-                        weight: FontWeight.w600,
-                        color: _FardaCalendarColors.white,
-                        letterSpacing: -0.6,
-                      ),
-                    ),
-                    const SizedBox(height: 5),
-                    Text(
-                      'At your pace.',
-                      style: _FardaCalendarType.style(
-                        size: 13,
-                        lineHeight: 18,
-                        color: _FardaCalendarColors.selectedMark,
-                      ),
-                    ),
-                  ],
+  Widget build(BuildContext context) => FardaSceneCard(
+    scene: FardaScene.calendar,
+    padding: const EdgeInsets.all(18),
+    child: ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: 90),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'YOUR DAYS',
+                  style: FardaConsumerType.label.copyWith(color: Colors.white),
                 ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            const SizedBox(
-              width: 100,
-              height: 100,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: _FardaCalendarColors.paleBlue,
-                ),
-                child: Center(
-                  child: FardaCompanion(
-                    pose: FardaCompanionPose.calendar,
-                    size: 90,
+                const SizedBox(height: 8),
+                Text(
+                  'Find your\nrhythm.',
+                  style: FardaConsumerType.heading.copyWith(
+                    fontSize: 27,
+                    height: 30 / 27,
+                    color: Colors.white,
                   ),
                 ),
-              ),
+              ],
             ),
-          ],
-        ),
+          ),
+          const SizedBox(width: 10),
+          const DecoratedBox(
+            decoration: BoxDecoration(
+              color: FardaConsumerColors.canvas,
+              shape: BoxShape.circle,
+            ),
+            child: FardaCompanion(
+              pose: FardaCompanionPose.calendar,
+              size: 86,
+              floating: true,
+            ),
+          ),
+        ],
       ),
-    );
-  }
+    ),
+  );
 }
 
 class _CalendarCard extends StatelessWidget {
@@ -367,7 +359,6 @@ class _CalendarCard extends StatelessWidget {
     required this.onNextMonth,
     required this.onDateSelected,
   });
-
   final DateTime visibleMonth;
   final DateTime selectedDate;
   final DateTime today;
@@ -375,69 +366,46 @@ class _CalendarCard extends StatelessWidget {
   final VoidCallback onPreviousMonth;
   final VoidCallback onNextMonth;
   final ValueChanged<DateTime> onDateSelected;
-
   @override
   Widget build(BuildContext context) {
-    final visibleMarkers = ConsumerCalendarMarker.values.where((marker) {
-      return events.any((event) =>
-          event.date.year == visibleMonth.year &&
-          event.date.month == visibleMonth.month &&
-          event.marker == marker);
-    }).toList(growable: false);
-
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: _FardaCalendarColors.white,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: _FardaCalendarColors.line),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x0A142C55),
-            offset: Offset(0, 5),
-            blurRadius: 15,
+    final markers = ConsumerCalendarMarker.values
+        .where(
+          (marker) => events.any(
+            (event) =>
+                event.date.year == visibleMonth.year &&
+                event.date.month == visibleMonth.month &&
+                event.marker == marker,
           ),
-        ],
+        )
+        .toList(growable: false);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
       ),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(13, 16, 13, 15),
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            return SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: SizedBox(
-                width: math.max(320.0, constraints.maxWidth).toDouble(),
-                child: Column(
-                  children: [
-                    _MonthNavigation(
-                      visibleMonth: visibleMonth,
-                      onPreviousMonth: onPreviousMonth,
-                      onNextMonth: onNextMonth,
-                    ),
-                    const SizedBox(height: 16),
-                    const _WeekdayLabels(),
-                    const SizedBox(height: 7),
-                    _MonthGrid(
-                      visibleMonth: visibleMonth,
-                      selectedDate: selectedDate,
-                      today: today,
-                      events: events,
-                      onDateSelected: onDateSelected,
-                    ),
-                    if (visibleMarkers.isNotEmpty) ...[
-                      const SizedBox(height: 12),
-                      const Divider(
-                        height: 1,
-                        color: _FardaCalendarColors.line,
-                      ),
-                      const SizedBox(height: 13),
-                      _CalendarLegend(markers: visibleMarkers),
-                    ],
-                  ],
-                ),
-              ),
-            );
-          },
-        ),
+      child: Column(
+        children: [
+          _MonthNavigation(
+            visibleMonth: visibleMonth,
+            onPreviousMonth: onPreviousMonth,
+            onNextMonth: onNextMonth,
+          ),
+          const SizedBox(height: 4),
+          const _WeekdayLabels(),
+          const SizedBox(height: 4),
+          _MonthGrid(
+            visibleMonth: visibleMonth,
+            selectedDate: selectedDate,
+            today: today,
+            events: events,
+            onDateSelected: onDateSelected,
+          ),
+          if (markers.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            _CalendarLegend(markers: markers),
+          ],
+        ],
       ),
     );
   }
@@ -479,7 +447,7 @@ class _MonthNavigation extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: _FardaCalendarType.style(
-                  size: 19,
+                  size: 18,
                   lineHeight: 24,
                   weight: FontWeight.w600,
                 ),
@@ -521,10 +489,9 @@ class _CalendarIconButton extends StatelessWidget {
         child: IconButton(
           onPressed: onPressed,
           tooltip: tooltip,
-          constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+          constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
           style: IconButton.styleFrom(
             foregroundColor: _FardaCalendarColors.navy,
-            side: const BorderSide(color: _FardaCalendarColors.line),
             shape: const CircleBorder(),
           ),
           icon: Icon(icon, size: 22),
@@ -550,7 +517,7 @@ class _WeekdayLabels extends StatelessWidget {
                   child: Text(
                     label,
                     style: _FardaCalendarType.style(
-                      size: 11,
+                      size: 10,
                       lineHeight: 14,
                       color: _FardaCalendarColors.muted,
                     ),
@@ -592,12 +559,13 @@ class _MonthGrid extends StatelessWidget {
       label: DateFormat('MMMM yyyy').format(visibleMonth),
       child: GridView.builder(
         shrinkWrap: true,
+        padding: EdgeInsets.zero,
         physics: const NeverScrollableScrollPhysics(),
         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: 7,
           mainAxisSpacing: 2,
           crossAxisSpacing: 2,
-          childAspectRatio: 1,
+          mainAxisExtent: 44,
         ),
         itemCount: cellCount,
         itemBuilder: (context, index) {
@@ -606,11 +574,7 @@ class _MonthGrid extends StatelessWidget {
             return const SizedBox.shrink();
           }
 
-          final date = DateTime(
-            visibleMonth.year,
-            visibleMonth.month,
-            day,
-          );
+          final date = DateTime(visibleMonth.year, visibleMonth.month, day);
           final markers = _markersForDate(events, date);
           return _CalendarDay(
             date: date,
@@ -642,9 +606,10 @@ class _CalendarDay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final statusDescription = markers.isEmpty
-        ? ''
-        : '. ${markers.map(_markerSemanticLabel).join(', ')}';
+    final statusDescription =
+        markers.isEmpty
+            ? ''
+            : '. ${markers.map(_markerSemanticLabel).join(', ')}';
     final todayDescription = today ? '. Today' : '';
     final fullLabel =
         '${DateFormat('EEEE, MMMM d, yyyy').format(date)}$todayDescription$statusDescription';
@@ -656,18 +621,23 @@ class _CalendarDay extends StatelessWidget {
       onTap: onPressed,
       child: ExcludeSemantics(
         child: AnimatedContainer(
-          duration: MediaQuery.disableAnimationsOf(context)
-              ? Duration.zero
-              : const Duration(milliseconds: 170),
+          duration:
+              MediaQuery.disableAnimationsOf(context)
+                  ? Duration.zero
+                  : const Duration(milliseconds: 170),
           curve: Curves.easeOutCubic,
           decoration: BoxDecoration(
-            color: selected
-                ? _FardaCalendarColors.navy
-                : _FardaCalendarColors.transparent,
+            color:
+                selected
+                    ? _FardaCalendarColors.navy
+                    : _FardaCalendarColors.transparent,
             borderRadius: BorderRadius.circular(13),
-            border: today && !selected
-                ? Border.all(color: _FardaCalendarColors.todayOutline)
-                : null,
+            border:
+                selected
+                    ? Border.all(color: _FardaCalendarColors.sand, width: 2)
+                    : today
+                    ? Border.all(color: _FardaCalendarColors.todayOutline)
+                    : null,
           ),
           child: Material(
             type: MaterialType.transparency,
@@ -685,9 +655,10 @@ class _CalendarDay extends StatelessWidget {
                       style: _FardaCalendarType.style(
                         size: 14,
                         lineHeight: 18,
-                        color: selected
-                            ? _FardaCalendarColors.white
-                            : _FardaCalendarColors.navy,
+                        color:
+                            selected
+                                ? _FardaCalendarColors.white
+                                : _FardaCalendarColors.navy,
                       ),
                     ),
                     const SizedBox(height: 3),
@@ -696,9 +667,11 @@ class _CalendarDay extends StatelessWidget {
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          for (var index = 0;
-                              index < markers.length;
-                              index++) ...[
+                          for (
+                            var index = 0;
+                            index < markers.length;
+                            index++
+                          ) ...[
                             if (index > 0) const SizedBox(width: 3),
                             _StatusMark(
                               marker: markers[index],
@@ -791,34 +764,32 @@ class _StatusMark extends StatelessWidget {
     final selectedColor = _FardaCalendarColors.selectedMark;
     return switch (marker) {
       ConsumerCalendarMarker.recorded => Container(
-          width: size,
-          height: size,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: selected
-                ? selectedColor
-                : _FardaCalendarColors.accentBlue,
-          ),
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: selected ? selectedColor : _FardaCalendarColors.accentBlue,
         ),
+      ),
       ConsumerCalendarMarker.unconfirmed => Container(
-          width: size + 1,
-          height: size + 1,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            border: Border.all(
-              color: selected ? selectedColor : _FardaCalendarColors.muted,
-              width: 1,
-            ),
+        width: size + 1,
+        height: size + 1,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          border: Border.all(
+            color: selected ? selectedColor : _FardaCalendarColors.muted,
+            width: 1,
           ),
         ),
+      ),
       ConsumerCalendarMarker.refill => Container(
-          width: size,
-          height: size,
-          decoration: BoxDecoration(
-            color: selected ? selectedColor : _FardaCalendarColors.amber,
-            borderRadius: BorderRadius.circular(1),
-          ),
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          color: selected ? selectedColor : _FardaCalendarColors.amber,
+          borderRadius: BorderRadius.circular(1),
         ),
+      ),
     };
   }
 }
@@ -878,58 +849,52 @@ class _FilterChip extends StatelessWidget {
     required this.selected,
     required this.onPressed,
   });
-
   final ConsumerCalendarFilter filter;
   final bool selected;
   final VoidCallback onPressed;
 
   @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      button: true,
-      selected: selected,
-      label: 'Show ${filter.label.toLowerCase()} calendar items',
-      onTap: onPressed,
-      child: ExcludeSemantics(
-        child: Material(
-          color: selected
-              ? _FardaCalendarColors.navy
-              : _FardaCalendarColors.transparent,
-          shape: StadiumBorder(
-            side: BorderSide(
-              color: selected
-                  ? _FardaCalendarColors.navy
-                  : _FardaCalendarColors.line,
-            ),
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: InkWell(
-            onTap: onPressed,
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(minHeight: 44),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 13),
-                child: Center(
-                  widthFactor: 1,
-                  child: Text(
-                    filter.label,
-                    style: _FardaCalendarType.style(
-                      size: 12,
-                      lineHeight: 17,
-                      weight: selected ? FontWeight.w600 : FontWeight.w400,
-                      color: selected
-                          ? _FardaCalendarColors.white
-                          : _FardaCalendarColors.navy,
-                    ),
-                  ),
+  Widget build(BuildContext context) => Semantics(
+    button: true,
+    selected: selected,
+    label: 'Show ${filter.label.toLowerCase()} calendar items',
+    onTap: onPressed,
+    child: ExcludeSemantics(
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(16),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 44, minWidth: 44),
+          child: Center(
+            widthFactor: 1,
+            child: AnimatedContainer(
+              duration:
+                  MediaQuery.disableAnimationsOf(context)
+                      ? Duration.zero
+                      : const Duration(milliseconds: 180),
+              padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 6),
+              decoration: BoxDecoration(
+                color:
+                    selected
+                        ? FardaConsumerColors.brand
+                        : FardaConsumerColors.soft,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Text(
+                filter.label,
+                style: FardaConsumerType.label.copyWith(
+                  color:
+                      selected
+                          ? FardaConsumerColors.textInverse
+                          : FardaConsumerColors.brand,
                 ),
               ),
             ),
           ),
         ),
       ),
-    );
-  }
+    ),
+  );
 }
 
 class _SelectedDayAgenda extends StatelessWidget {
@@ -939,224 +904,135 @@ class _SelectedDayAgenda extends StatelessWidget {
     required this.filter,
     required this.events,
     required this.onEventAction,
+    required this.emptyActionLabel,
+    required this.onEmptyAction,
   });
-
   final DateTime selectedDate;
   final ConsumerCalendarFilter filter;
   final List<ConsumerCalendarEvent> events;
   final ConsumerCalendarEventCallback? onEventAction;
-
+  final String emptyActionLabel;
+  final VoidCallback? onEmptyAction;
   @override
   Widget build(BuildContext context) {
-    final selectedEvents = events
+    final selected = events
         .where(
           (event) =>
               isSameCalendarDay(event.date, selectedDate) &&
               event.isVisibleFor(filter),
         )
         .toList(growable: false);
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: Semantics(
-                header: true,
-                liveRegion: true,
-                child: Text(
-                  DateFormat('EEEE, MMMM d').format(selectedDate),
-                  style: _FardaCalendarType.style(
-                    size: 17,
-                    lineHeight: 23,
-                    weight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ),
-            if (selectedEvents.isNotEmpty)
-              Semantics(
-                label: '${selectedEvents.length} calendar ${selectedEvents.length == 1 ? 'item' : 'items'}',
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: _FardaCalendarColors.paleBlue,
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: ExcludeSemantics(
-                    child: Text(
-                      '${selectedEvents.length} ${selectedEvents.length == 1 ? 'item' : 'items'}',
-                      style: _FardaCalendarType.style(
-                        size: 11,
-                        lineHeight: 15,
-                        weight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        if (selectedEvents.isEmpty)
-          _EmptyAgendaCard(filter: filter)
-        else
-          for (var index = 0; index < selectedEvents.length; index++) ...[
-            _EventCard(
-              event: selectedEvents[index],
-              onAction: selectedEvents[index].actionLabel == null ||
-                      onEventAction == null
-                  ? null
-                  : () => onEventAction!(selectedEvents[index]),
-            ),
-            if (index != selectedEvents.length - 1)
-              const SizedBox(height: 10),
-          ],
-      ],
-    );
-  }
-}
-
-class _EventCard extends StatelessWidget {
-  const _EventCard({required this.event, required this.onAction});
-
-  final ConsumerCalendarEvent event;
-  final VoidCallback? onAction;
-
-  @override
-  Widget build(BuildContext context) {
-    final marker = event.marker;
+    if (selected.isEmpty)
+      return _EmptyAgendaCard(
+        filter: filter,
+        actionLabel: emptyActionLabel,
+        onAction: onEmptyAction,
+      );
     return Semantics(
       container: true,
-      label: '${event.eyebrow}. ${event.title}. ${event.description}',
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: _FardaCalendarColors.white,
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: _FardaCalendarColors.line),
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x08142C55),
-              offset: Offset(0, 4),
-              blurRadius: 12,
+      label:
+          '${selected.length} calendar ${selected.length == 1 ? 'item' : 'items'}',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (var i = 0; i < selected.length; i++) ...[
+            if (i > 0) const SizedBox(height: 10),
+            _EventCard(
+              event: selected[i],
+              date: selectedDate,
+              onAction:
+                  onEventAction == null || selected[i].actionLabel == null
+                      ? null
+                      : () => onEventAction!(selected[i]),
             ),
           ],
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(18),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: event.type == ConsumerCalendarEventType.refill
-                      ? _FardaCalendarColors.sand
-                      : _FardaCalendarColors.paleBlue,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Center(
-                  child: marker == null
-                      ? const Icon(
-                          Icons.schedule_rounded,
-                          size: 20,
-                          color: _FardaCalendarColors.navy,
-                        )
-                      : _StatusMark(
-                          marker: marker,
-                          selected: false,
-                          size: 9,
-                        ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    ExcludeSemantics(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            event.eyebrow.toUpperCase(),
-                            style: _FardaCalendarType.style(
-                              size: 10,
-                              lineHeight: 14,
-                              weight: FontWeight.w600,
-                              color: _FardaCalendarColors.muted,
-                              letterSpacing: 0.8,
-                            ),
-                          ),
-                          const SizedBox(height: 5),
-                          Text(
-                            event.title,
-                            style: _FardaCalendarType.style(
-                              size: 18,
-                              lineHeight: 24,
-                              weight: FontWeight.w600,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            event.description,
-                            style: _FardaCalendarType.style(
-                              size: 12,
-                              lineHeight: 17,
-                              color: _FardaCalendarColors.muted,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    if (event.actionLabel != null && onAction != null) ...[
-                      const SizedBox(height: 8),
-                      Semantics(
-                        button: true,
-                        label: event.actionLabel,
-                        onTap: onAction,
-                        child: ExcludeSemantics(
-                          child: TextButton.icon(
-                            onPressed: onAction,
-                            style: TextButton.styleFrom(
-                              foregroundColor: _FardaCalendarColors.navy,
-                              minimumSize: const Size(44, 44),
-                              padding: EdgeInsets.zero,
-                              tapTargetSize: MaterialTapTargetSize.padded,
-                              alignment: Alignment.centerLeft,
-                              textStyle: _FardaCalendarType.style(
-                                size: 12,
-                                lineHeight: 17,
-                                weight: FontWeight.w600,
-                              ),
-                            ),
-                            iconAlignment: IconAlignment.end,
-                            icon: const Icon(
-                              Icons.chevron_right_rounded,
-                              size: 16,
-                            ),
-                            label: Text(event.actionLabel!),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
+        ],
       ),
     );
   }
 }
 
-class _EmptyAgendaCard extends StatelessWidget {
-  const _EmptyAgendaCard({required this.filter});
+class _EventCard extends StatelessWidget {
+  const _EventCard({
+    required this.event,
+    required this.date,
+    required this.onAction,
+  });
+  final ConsumerCalendarEvent event;
+  final DateTime date;
+  final VoidCallback? onAction;
 
+  @override
+  Widget build(BuildContext context) => Semantics(
+    container: true,
+    button: onAction != null,
+    label: '${event.title}. ${event.description}',
+    child: Material(
+      color: FardaConsumerColors.warm,
+      borderRadius: BorderRadius.circular(24),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onAction,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '${DateFormat('EEE, MMM d').format(date).toUpperCase()} · ${event.eyebrow}',
+                style: FardaConsumerType.label.copyWith(
+                  color: FardaConsumerColors.textSecondary,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(event.title, style: FardaConsumerType.title),
+              if (onAction != null &&
+                  event.type == ConsumerCalendarEventType.refill) ...[
+                const SizedBox(height: 4),
+                Text(event.description, style: FardaConsumerType.caption),
+              ],
+              if (onAction != null) ...[
+                const SizedBox(height: 8),
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Flexible(
+                        child: Text(
+                          event.actionLabel!,
+                          style: FardaConsumerType.caption.copyWith(
+                            color: FardaConsumerColors.brand,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      const FardaVectorIcon('icon-arrow', size: 14),
+                    ],
+                  ),
+                ),
+              ] else ...[
+                const SizedBox(height: 4),
+                Text(event.description, style: FardaConsumerType.caption),
+              ],
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+class _EmptyAgendaCard extends StatelessWidget {
+  const _EmptyAgendaCard({
+    required this.filter,
+    required this.actionLabel,
+    required this.onAction,
+  });
   final ConsumerCalendarFilter filter;
+  final String actionLabel;
+  final VoidCallback? onAction;
 
   @override
   Widget build(BuildContext context) {
@@ -1165,55 +1041,39 @@ class _EmptyAgendaCard extends StatelessWidget {
       ConsumerCalendarFilter.routines => 'No routine entries for this day.',
       ConsumerCalendarFilter.refills => 'No refill reminders for this day.',
     };
-
-    return Semantics(
-      container: true,
-      label: message,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: _FardaCalendarColors.paleBlue,
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(18),
-          child: ExcludeSemantics(
-            child: Row(
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: FardaConsumerColors.soft,
+        borderRadius: BorderRadius.circular(24),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const FardaCompanion(pose: FardaCompanionPose.calendar, size: 48),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Icon(
-                  Icons.calendar_today_rounded,
-                  size: 20,
-                  color: _FardaCalendarColors.accentBlue,
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'A quiet day',
-                        style: _FardaCalendarType.style(
-                          size: 16,
-                          lineHeight: 21,
-                          weight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        message,
-                        style: _FardaCalendarType.style(
-                          size: 12,
-                          lineHeight: 17,
-                          color: _FardaCalendarColors.muted,
-                        ),
-                      ),
-                    ],
+                const Text('A quiet day', style: FardaConsumerType.bodyStrong),
+                const SizedBox(height: 4),
+                Text(message, style: FardaConsumerType.caption),
+                if (onAction != null)
+                  TextButton(
+                    onPressed: onAction,
+                    style: TextButton.styleFrom(
+                      padding: EdgeInsets.zero,
+                      minimumSize: const Size(44, 44),
+                      alignment: Alignment.centerLeft,
+                    ),
+                    child: Text(actionLabel),
                   ),
-                ),
               ],
             ),
           ),
-        ),
+        ],
       ),
     );
   }
@@ -1228,7 +1088,6 @@ class _FardaCalendarColors {
   static const ivory = Color(0xFFF6F5F0);
   static const white = Color(0xFFFFFFFF);
   static const muted = Color(0xFF58677D);
-  static const line = Color(0xFFDCE2EB);
   static const amber = Color(0xFF80500E);
   static const sand = Color(0xFFF8ECD8);
   static const todayOutline = Color(0xFF7897C4);
@@ -1274,10 +1133,10 @@ List<ConsumerCalendarMarker> _markersForDate(
 }
 
 String _markerSemanticLabel(ConsumerCalendarMarker marker) => switch (marker) {
-      ConsumerCalendarMarker.recorded => 'Recorded entry',
-      ConsumerCalendarMarker.unconfirmed => 'Unconfirmed entry',
-      ConsumerCalendarMarker.refill => 'Refill reminder',
-    };
+  ConsumerCalendarMarker.recorded => 'Recorded entry',
+  ConsumerCalendarMarker.unconfirmed => 'Unconfirmed entry',
+  ConsumerCalendarMarker.refill => 'Refill reminder',
+};
 
 List<ConsumerCalendarEvent> _prototypeEvents(DateTime today) {
   return [
@@ -1307,7 +1166,7 @@ List<ConsumerCalendarEvent> _prototypeEvents(DateTime today) {
       type: ConsumerCalendarEventType.routine,
       status: ConsumerCalendarEventStatus.pending,
       eyebrow: '9:00 AM · Morning',
-      title: 'Morning entry · Not yet confirmed',
+      title: 'Not yet confirmed',
       description: 'You can add or correct your record.',
       actionLabel: 'Add an entry',
     ),
@@ -1318,8 +1177,7 @@ List<ConsumerCalendarEvent> _prototypeEvents(DateTime today) {
       status: ConsumerCalendarEventStatus.planned,
       eyebrow: 'Your refill planning reminder',
       title: 'Check in with your pharmacy',
-      description:
-          'Your chosen reminder date, not a promised pickup date.',
+      description: 'Your chosen reminder date, not a promised pickup date.',
       actionLabel: 'Open refill station',
     ),
   ];

@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:farda/consumer_v2/design_system/farda_consumer_tokens.dart';
 
 import 'refill_station_state.dart';
+import 'refills_figma_parts.dart';
+import 'refills_handoff_screen.dart';
 
 typedef PharmacyContactCallback = void Function(RefillStationState state);
 
@@ -28,6 +31,7 @@ class RefillStationScreen extends StatefulWidget {
     this.onStateChanged,
     this.onOpenPharmacyContact,
     this.onReviewVial,
+    this.onOpenProfile,
   }) : assert(controller == null || initialState == null);
 
   final RefillStationController? controller;
@@ -35,6 +39,7 @@ class RefillStationScreen extends StatefulWidget {
   final ValueChanged<RefillStationState>? onStateChanged;
   final PharmacyContactCallback? onOpenPharmacyContact;
   final VoidCallback? onReviewVial;
+  final VoidCallback? onOpenProfile;
 
   @override
   State<RefillStationScreen> createState() => _RefillStationScreenState();
@@ -153,10 +158,7 @@ class _RefillStationScreenState extends State<RefillStationScreen> {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
-          borderSide: const BorderSide(
-            color: _RefillPalette.blue,
-            width: 2,
-          ),
+          borderSide: const BorderSide(color: _RefillPalette.blue, width: 2),
         ),
       ),
     );
@@ -175,37 +177,93 @@ class _RefillStationScreenState extends State<RefillStationScreen> {
                     ScrollViewKeyboardDismissBehavior.onDrag,
                 slivers: [
                   SliverPadding(
-                    padding: const EdgeInsets.fromLTRB(22, 10, 22, 40),
+                    padding: const EdgeInsets.fromLTRB(22, 8, 22, 40),
                     sliver: SliverList.list(
                       children: [
-                        _TopBar(onInfo: _showAboutDialog),
-                        const SizedBox(height: 30),
-                        const _PageHeading(),
-                        const SizedBox(height: 24),
-                        _SupplyHero(
+                        RefillsPageHeader(onOpenProfile: widget.onOpenProfile),
+                        const SizedBox(height: 16),
+                        const RefillsIntro(),
+                        const SizedBox(height: 16),
+                        RefillsSupplyHero(
                           key: RefillStationKeys.supplySummary,
-                          state: state,
+                          headline: 'ESTIMATED SUPPLY',
+                          value: '${state.estimatedDays}',
+                          unit: state.estimatedDays == 1 ? 'day' : 'days',
+                          detail: 'From your count + daily schedule.',
+                          fraction:
+                              (state.estimatedDays / 10)
+                                  .clamp(0.0, 1.0)
+                                  .toDouble(),
                         ),
-                        const SizedBox(height: 24),
-                        _SectionTitle(
-                          title: 'Your medication supply',
-                          trailing: TextButton(
-                            onPressed: _showCountSheet,
-                            child: const Text('Update count'),
-                          ),
-                        ),
-                        _MedicationSupplyCard(state: state),
-                        const SizedBox(height: 28),
-                        const _SectionTitle(title: 'Your refill journey'),
-                        _JourneyCard(
-                          key: RefillStationKeys.journey,
-                          state: state,
-                          onAction:
+                        const SizedBox(height: 16),
+                        RefillsPrimaryAction(
+                          key: RefillStationKeys.primaryAction,
+                          onPressed:
                               state.stage == RefillJourneyStage.reconciled &&
                                       widget.onReviewVial == null
                                   ? null
                                   : _handleJourneyAction,
+                          label: switch (state.stage) {
+                            RefillJourneyStage.planAhead => 'Plan my refill',
+                            RefillJourneyStage.handoffPrepared =>
+                              'I contacted my pharmacy',
+                            RefillJourneyStage.pharmacyContacted =>
+                              'Update pharmacy status',
+                            RefillJourneyStage.ready => 'I received my refill',
+                            RefillJourneyStage.received =>
+                              'Add the supply I received',
+                            RefillJourneyStage.reconciled =>
+                              widget.onReviewVial == null
+                                  ? 'Supply reconciled'
+                                  : 'Review my vial',
+                          },
                         ),
+                        const SizedBox(height: 16),
+                        const RefillsSafetyBanner(),
+                        const SizedBox(height: 16),
+                        const Text(
+                          'Your refill journey',
+                          style: TextStyle(
+                            fontFamily: 'Outfit',
+                            fontSize: 18,
+                            height: 24 / 18,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF142C55),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        RefillsJourneyCard(
+                          key: RefillStationKeys.journey,
+                          medicationName: state.medicationName,
+                          pharmacyLabel:
+                              '${state.pharmacyName} · Rx ending ${state.rxLastFour}',
+                          activeStep: switch (state.stage) {
+                            RefillJourneyStage.planAhead => 1,
+                            RefillJourneyStage.handoffPrepared => 1,
+                            RefillJourneyStage.pharmacyContacted => 2,
+                            RefillJourneyStage.ready => 3,
+                            RefillJourneyStage.received ||
+                            RefillJourneyStage.reconciled => 4,
+                          },
+                          onOpenDetails:
+                              () => _showHandoffSheet(advance: false),
+                        ),
+                        const SizedBox(height: 8),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: TextButton.icon(
+                            onPressed: _showCountSheet,
+                            iconAlignment: IconAlignment.end,
+                            icon: const FardaVectorIcon(
+                              'icon-arrow-small',
+                              size: 14,
+                            ),
+                            label: const Text('Update my count'),
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+                        const _SectionTitle(title: 'Your medication supply'),
+                        _MedicationSupplyCard(state: state),
                         if (state.stage.index >=
                             RefillJourneyStage.handoffPrepared.index) ...[
                           const SizedBox(height: 16),
@@ -216,7 +274,8 @@ class _RefillStationScreenState extends State<RefillStationScreen> {
                             onOpenContact:
                                 widget.onOpenPharmacyContact == null
                                     ? null
-                                    : () => widget.onOpenPharmacyContact!(state),
+                                    : () =>
+                                        widget.onOpenPharmacyContact!(state),
                           ),
                         ],
                         if (state.hasReceipt) ...[
@@ -244,6 +303,10 @@ class _RefillStationScreenState extends State<RefillStationScreen> {
                             ),
                           ),
                         ),
+                        TextButton(
+                          onPressed: _showAboutDialog,
+                          child: const Text('About the refill station'),
+                        ),
                         const SizedBox(height: 72),
                       ],
                     ),
@@ -260,7 +323,7 @@ class _RefillStationScreenState extends State<RefillStationScreen> {
   void _handleJourneyAction() {
     switch (_controller.state.stage) {
       case RefillJourneyStage.planAhead:
-        _showHandoffSheet(advance: true);
+        _showHandoffView();
         return;
       case RefillJourneyStage.handoffPrepared:
         if (_controller.markPharmacyContacted()) {
@@ -283,6 +346,26 @@ class _RefillStationScreenState extends State<RefillStationScreen> {
         return;
     }
   }
+
+  Future<void> _showHandoffView() => Navigator.of(context).push<void>(
+    MaterialPageRoute(
+      builder:
+          (_) => RefillsHandoffScreen(
+            medicationName: _controller.state.medicationName,
+            rxLabel: 'Rx ending ${_controller.state.rxLastFour} · Saved by you',
+            actionLabel: 'Prepare pharmacy handoff',
+            onSavePlan: () async {
+              _controller.prepareHandoff();
+              return null;
+            },
+            onOpenContact:
+                widget.onOpenPharmacyContact == null
+                    ? null
+                    : () => widget.onOpenPharmacyContact!(_controller.state),
+            onOpenProfile: widget.onOpenProfile,
+          ),
+    ),
+  );
 
   Future<void> _showHandoffSheet({required bool advance}) async {
     final state = _controller.state;
@@ -452,15 +535,17 @@ class _RefillStationScreenState extends State<RefillStationScreen> {
               }
               if (!checked) {
                 setSheetState(
-                  () => error =
-                      'Confirm the medication and count before adding supply.',
+                  () =>
+                      error =
+                          'Confirm the medication and count before adding supply.',
                 );
                 return;
               }
               if (!_controller.reconcileReceivedSupply(quantity)) {
                 setSheetState(
-                  () => error =
-                      'That count could not be added. Review the current inventory and try again.',
+                  () =>
+                      error =
+                          'That count could not be added. Review the current inventory and try again.',
                 );
                 return;
               }
@@ -695,254 +780,10 @@ class _RefillStationScreenState extends State<RefillStationScreen> {
   }
 }
 
-class _TopBar extends StatelessWidget {
-  const _TopBar({required this.onInfo});
-
-  final VoidCallback onInfo;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Semantics(
-          header: true,
-          child: const Text(
-            'farda',
-            style: TextStyle(
-              fontSize: 23,
-              fontWeight: FontWeight.w700,
-              letterSpacing: -0.7,
-            ),
-          ),
-        ),
-        const Spacer(),
-        IconButton(
-          tooltip: 'About the refill station',
-          onPressed: onInfo,
-          icon: const Icon(Icons.info_outline_rounded),
-        ),
-      ],
-    );
-  }
-}
-
-class _PageHeading extends StatelessWidget {
-  const _PageHeading();
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'ONE LESS LAST-MINUTE THING',
-          style: TextStyle(
-            color: _RefillPalette.blue,
-            fontSize: 11,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 1.35,
-          ),
-        ),
-        const SizedBox(height: 10),
-        Semantics(
-          header: true,
-          child: const Text(
-            'The refill\nstation.',
-            style: TextStyle(
-              fontSize: 39,
-              height: 1.02,
-              fontWeight: FontWeight.w700,
-              letterSpacing: -1.4,
-            ),
-          ),
-        ),
-        const SizedBox(height: 12),
-        const Text(
-          'Your prescriptions, supply, and next steps. In one calm place.',
-          style: TextStyle(
-            color: _RefillPalette.muted,
-            fontSize: 15,
-            height: 1.45,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _SupplyHero extends StatelessWidget {
-  const _SupplyHero({super.key, required this.state});
-
-  final RefillStationState state;
-
-  @override
-  Widget build(BuildContext context) {
-    final days = state.estimatedDays;
-    final unitLabel = days == 1 ? 'day' : 'days';
-
-    return Semantics(
-      container: true,
-      label:
-          'Estimated supply: $days $unitLabel. Based on ${state.inventoryUnits} tablets and a schedule of ${state.dailyUnits} per day. This is not a live measurement.',
-      child: ExcludeSemantics(
-        child: Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: _RefillPalette.softBlue,
-            borderRadius: BorderRadius.circular(26),
-          ),
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final textScale = MediaQuery.textScalerOf(context).scale(1);
-              final stack = constraints.maxWidth < 300 || textScale > 1.35;
-              final summary = _SupplyHeroCopy(state: state);
-              final art = Image.asset(
-                'assets/images/vial_bottle.png',
-                width: stack ? 78 : 92,
-                height: stack ? 104 : 132,
-                fit: BoxFit.contain,
-                errorBuilder:
-                    (_, __, ___) => Container(
-                      width: stack ? 78 : 92,
-                      height: stack ? 104 : 132,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.62),
-                        borderRadius: BorderRadius.circular(24),
-                      ),
-                      child: const Icon(
-                        Icons.medication_liquid_outlined,
-                        size: 48,
-                        color: _RefillPalette.blue,
-                      ),
-                    ),
-              );
-
-              if (stack) {
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    summary,
-                    const SizedBox(height: 12),
-                    Align(alignment: Alignment.centerRight, child: art),
-                  ],
-                );
-              }
-              return Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Expanded(child: summary),
-                  const SizedBox(width: 12),
-                  art,
-                ],
-              );
-            },
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _SupplyHeroCopy extends StatelessWidget {
-  const _SupplyHeroCopy({required this.state});
-
-  final RefillStationState state;
-
-  @override
-  Widget build(BuildContext context) {
-    final days = state.estimatedDays;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'ESTIMATED SUPPLY',
-          style: TextStyle(
-            color: _RefillPalette.blue,
-            fontSize: 10,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 1.1,
-          ),
-        ),
-        const SizedBox(height: 9),
-        Wrap(
-          crossAxisAlignment: WrapCrossAlignment.end,
-          spacing: 8,
-          children: [
-            Text(
-              '$days',
-              style: const TextStyle(
-                fontSize: 52,
-                height: 0.95,
-                fontWeight: FontWeight.w700,
-                letterSpacing: -2.2,
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.only(bottom: 4),
-              child: Text(
-                days == 1 ? 'day' : 'days',
-                style: const TextStyle(fontSize: 18),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 9),
-        const Text(
-          'Based on your count and saved daily schedule. Not a live measurement.',
-          style: TextStyle(
-            color: _RefillPalette.slateBlue,
-            fontSize: 12,
-            height: 1.35,
-          ),
-        ),
-        const SizedBox(height: 14),
-        _SegmentedSupplyProgress(progress: state.supplyProgress),
-      ],
-    );
-  }
-}
-
-class _SegmentedSupplyProgress extends StatelessWidget {
-  const _SegmentedSupplyProgress({required this.progress});
-
-  final double progress;
-
-  @override
-  Widget build(BuildContext context) {
-    final rawFilled = (progress * 10).ceil();
-    final filled = rawFilled < 0 ? 0 : (rawFilled > 10 ? 10 : rawFilled);
-    return Semantics(
-      label: 'Supply progress toward a 30 day reference',
-      value: '${(progress * 100).round()} percent',
-      child: ExcludeSemantics(
-        child: Row(
-          children: List.generate(
-            10,
-            (index) => Expanded(
-              child: Container(
-                height: 6,
-                margin: EdgeInsets.only(right: index == 9 ? 0 : 4),
-                decoration: BoxDecoration(
-                  color:
-                      index < filled
-                          ? _RefillPalette.navy
-                          : _RefillPalette.progressTrack,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _SectionTitle extends StatelessWidget {
-  const _SectionTitle({required this.title, this.trailing});
+  const _SectionTitle({required this.title});
 
   final String title;
-  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
@@ -963,7 +804,6 @@ class _SectionTitle extends StatelessWidget {
               ),
             ),
           ),
-          if (trailing != null) trailing!,
         ],
       ),
     );
@@ -1058,275 +898,6 @@ class _MedicationSupplyCard extends StatelessWidget {
   }
 }
 
-class _JourneyCard extends StatelessWidget {
-  const _JourneyCard({super.key, required this.state, required this.onAction});
-
-  final RefillStationState state;
-  final VoidCallback? onAction;
-
-  int get _activeStep {
-    switch (state.stage) {
-      case RefillJourneyStage.planAhead:
-        return 0;
-      case RefillJourneyStage.handoffPrepared:
-        return 1;
-      case RefillJourneyStage.pharmacyContacted:
-        return 2;
-      case RefillJourneyStage.ready:
-      case RefillJourneyStage.received:
-        return 3;
-      case RefillJourneyStage.reconciled:
-        return 4;
-    }
-  }
-
-  String get _statusLabel {
-    switch (state.stage) {
-      case RefillJourneyStage.planAhead:
-        return 'Ready when you are';
-      case RefillJourneyStage.handoffPrepared:
-        return 'Next step: your pharmacy';
-      case RefillJourneyStage.pharmacyContacted:
-        return 'Contacted · Your update';
-      case RefillJourneyStage.ready:
-        return 'Ready · You reported';
-      case RefillJourneyStage.received:
-        return 'Received · You reported';
-      case RefillJourneyStage.reconciled:
-        return 'Supply added · You confirmed';
-    }
-  }
-
-  String get _actionLabel {
-    switch (state.stage) {
-      case RefillJourneyStage.planAhead:
-        return 'Plan my refill';
-      case RefillJourneyStage.handoffPrepared:
-        return 'I contacted my pharmacy';
-      case RefillJourneyStage.pharmacyContacted:
-        return 'Update pharmacy status';
-      case RefillJourneyStage.ready:
-        return 'I’ve received my refill';
-      case RefillJourneyStage.received:
-        return 'Add the supply I received';
-      case RefillJourneyStage.reconciled:
-        return 'Review my vial';
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    const steps = [
-      (
-        'Plan ahead',
-        'Check your label and saved pharmacy details.',
-      ),
-      (
-        'Contact pharmacy',
-        'An app handoff is not a submitted order.',
-      ),
-      (
-        'Pharmacy review',
-        'Eligibility and timing come from your pharmacy.',
-      ),
-      (
-        'Receive & add supply',
-        'Record only what you actually received.',
-      ),
-    ];
-
-    return _Card(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _MedicationRow(state: state, showRouteHint: true),
-          const SizedBox(height: 14),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              const _StatusBadge(label: 'SELF-MANAGED'),
-              Text(
-                _statusLabel,
-                style: const TextStyle(
-                  color: _RefillPalette.muted,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          for (var index = 0; index < steps.length; index++)
-            _JourneyStep(
-              number: index + 1,
-              title: steps[index].$1,
-              description: steps[index].$2,
-              isCompleted: index < _activeStep,
-              isCurrent: index == _activeStep,
-              isLast: index == steps.length - 1,
-            ),
-          const SizedBox(height: 4),
-          if (state.stage == RefillJourneyStage.reconciled &&
-              onAction == null)
-            const _InlineSuccess(
-              message: 'Supply reconciled from your confirmed count.',
-            )
-          else if (state.stage == RefillJourneyStage.reconciled)
-            OutlinedButton.icon(
-              key: RefillStationKeys.primaryAction,
-              onPressed: onAction,
-              icon: const Icon(Icons.medication_liquid_outlined),
-              label: Text(_actionLabel),
-            )
-          else
-            FilledButton.icon(
-              key: RefillStationKeys.primaryAction,
-              onPressed: onAction,
-              icon: Icon(_actionIcon(state.stage)),
-              label: Text(_actionLabel),
-            ),
-        ],
-      ),
-    );
-  }
-
-  static IconData _actionIcon(RefillJourneyStage stage) {
-    switch (stage) {
-      case RefillJourneyStage.planAhead:
-        return Icons.arrow_forward_rounded;
-      case RefillJourneyStage.handoffPrepared:
-        return Icons.check_rounded;
-      case RefillJourneyStage.pharmacyContacted:
-        return Icons.sync_rounded;
-      case RefillJourneyStage.ready:
-        return Icons.inventory_2_outlined;
-      case RefillJourneyStage.received:
-        return Icons.add_rounded;
-      case RefillJourneyStage.reconciled:
-        return Icons.medication_liquid_outlined;
-    }
-  }
-}
-
-class _JourneyStep extends StatelessWidget {
-  const _JourneyStep({
-    required this.number,
-    required this.title,
-    required this.description,
-    required this.isCompleted,
-    required this.isCurrent,
-    required this.isLast,
-  });
-
-  final int number;
-  final String title;
-  final String description;
-  final bool isCompleted;
-  final bool isCurrent;
-  final bool isLast;
-
-  @override
-  Widget build(BuildContext context) {
-    final status =
-        isCompleted ? 'completed' : (isCurrent ? 'current' : 'upcoming');
-    return Semantics(
-      container: true,
-      label: 'Step $number, $title, $status. $description',
-      child: ExcludeSemantics(
-        child: IntrinsicHeight(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Column(
-                children: [
-                  AnimatedContainer(
-                    duration: const Duration(milliseconds: 220),
-                    width: 28,
-                    height: 28,
-                    decoration: BoxDecoration(
-                      color:
-                          isCompleted
-                              ? _RefillPalette.navy
-                              : isCurrent
-                              ? _RefillPalette.softBlue
-                              : Colors.transparent,
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(
-                        color:
-                            isCompleted
-                                ? _RefillPalette.navy
-                                : isCurrent
-                                ? _RefillPalette.blue
-                                : _RefillPalette.line,
-                        width: isCurrent ? 2 : 1,
-                      ),
-                    ),
-                    alignment: Alignment.center,
-                    child:
-                        isCompleted
-                            ? const Icon(
-                              Icons.check_rounded,
-                              size: 16,
-                              color: Colors.white,
-                            )
-                            : Text(
-                              '$number',
-                              style: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                  ),
-                  if (!isLast)
-                    Expanded(
-                      child: Container(
-                        width: 1,
-                        margin: const EdgeInsets.symmetric(vertical: 5),
-                        color:
-                            isCompleted
-                                ? _RefillPalette.navy.withValues(alpha: 0.35)
-                                : _RefillPalette.line,
-                      ),
-                    ),
-                ],
-              ),
-              const SizedBox(width: 13),
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.only(bottom: 18, top: 2),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        style: const TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        description,
-                        style: const TextStyle(
-                          color: _RefillPalette.muted,
-                          fontSize: 12,
-                          height: 1.4,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _HandoffCard extends StatelessWidget {
   const _HandoffCard({
     super.key,
@@ -1358,19 +929,13 @@ class _HandoffCard extends StatelessWidget {
                 Expanded(
                   child: Text(
                     'Pharmacy handoff',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                    ),
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
                   ),
                 ),
               ],
             ),
             const SizedBox(height: 17),
-            _InverseDetailRow(
-              label: 'Pharmacy',
-              value: state.pharmacyName,
-            ),
+            _InverseDetailRow(label: 'Pharmacy', value: state.pharmacyName),
             _InverseDetailRow(
               label: 'Prescription',
               value: 'Rx ending ${state.rxLastFour}',
@@ -1440,11 +1005,7 @@ class _HandoffCard extends StatelessWidget {
 }
 
 class _ReceiptCard extends StatelessWidget {
-  const _ReceiptCard({
-    super.key,
-    required this.state,
-    this.onReviewVial,
-  });
+  const _ReceiptCard({super.key, required this.state, this.onReviewVial});
 
   final RefillStationState state;
   final VoidCallback? onReviewVial;
@@ -1472,9 +1033,7 @@ class _ReceiptCard extends StatelessWidget {
                     ? Icons.check_circle_rounded
                     : Icons.receipt_long_outlined,
                 color:
-                    reconciled
-                        ? _RefillPalette.success
-                        : _RefillPalette.blue,
+                    reconciled ? _RefillPalette.success : _RefillPalette.blue,
               ),
               const SizedBox(width: 9),
               Expanded(
@@ -1529,10 +1088,9 @@ class _ReceiptCard extends StatelessWidget {
 }
 
 class _MedicationRow extends StatelessWidget {
-  const _MedicationRow({required this.state, this.showRouteHint = false});
+  const _MedicationRow({required this.state});
 
   final RefillStationState state;
-  final bool showRouteHint;
 
   @override
   Widget build(BuildContext context) {
@@ -1575,11 +1133,6 @@ class _MedicationRow extends StatelessWidget {
             ],
           ),
         ),
-        if (showRouteHint)
-          const Icon(
-            Icons.more_horiz_rounded,
-            color: _RefillPalette.muted,
-          ),
       ],
     );
   }
@@ -1604,18 +1157,12 @@ class _SupplyMetric extends StatelessWidget {
         children: [
           Text(
             label,
-            style: const TextStyle(
-              color: _RefillPalette.muted,
-              fontSize: 11,
-            ),
+            style: const TextStyle(color: _RefillPalette.muted, fontSize: 11),
           ),
           const SizedBox(height: 4),
           Text(
             value,
-            style: const TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-            ),
+            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
           ),
         ],
       ),
@@ -1754,10 +1301,7 @@ class _InverseDetailRow extends StatelessWidget {
           Expanded(
             child: Text(
               label,
-              style: const TextStyle(
-                color: Color(0xFFB9C8DF),
-                fontSize: 12,
-              ),
+              style: const TextStyle(color: Color(0xFFB9C8DF), fontSize: 12),
             ),
           ),
           const SizedBox(width: 12),
@@ -1794,10 +1338,7 @@ class _ReceiptDetail extends StatelessWidget {
           Expanded(
             child: Text(
               label,
-              style: const TextStyle(
-                color: _RefillPalette.muted,
-                fontSize: 12,
-              ),
+              style: const TextStyle(color: _RefillPalette.muted, fontSize: 12),
             ),
           ),
           const SizedBox(width: 12),
@@ -1805,10 +1346,7 @@ class _ReceiptDetail extends StatelessWidget {
             child: Text(
               value,
               textAlign: TextAlign.right,
-              style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-              ),
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
             ),
           ),
         ],
@@ -1902,10 +1440,7 @@ class _SheetMedicationCard extends StatelessWidget {
         children: [
           Text(
             state.medicationName,
-            style: const TextStyle(
-              fontSize: 17,
-              fontWeight: FontWeight.w700,
-            ),
+            style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 8),
           Text(
@@ -2045,40 +1580,6 @@ class _StatusChoice extends StatelessWidget {
   }
 }
 
-class _InlineSuccess extends StatelessWidget {
-  const _InlineSuccess({required this.message});
-
-  final String message;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: _RefillPalette.successSoft,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: _RefillPalette.successBorder),
-      ),
-      child: Row(
-        children: [
-          const Icon(
-            Icons.check_circle_rounded,
-            color: _RefillPalette.success,
-          ),
-          const SizedBox(width: 9),
-          Expanded(
-            child: Text(
-              message,
-              style: const TextStyle(fontWeight: FontWeight.w600),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 String _formatLocalDateTime(BuildContext context, DateTime dateTime) {
   final local = dateTime.toLocal();
   final localizations = MaterialLocalizations.of(context);
@@ -2091,12 +1592,10 @@ abstract final class _RefillPalette {
   static const navy = Color(0xFF142C55);
   static const blue = Color(0xFF426AA6);
   static const lightBlue = Color(0xFFD8E6FA);
-  static const slateBlue = Color(0xFF4D6283);
-  static const ivory = Color(0xFFF8F5ED);
-  static const card = Color(0xFFFFFEFB);
+  static const ivory = Color(0xFFF6F5F0);
+  static const card = Color(0xFFFFFFFF);
   static const soft = Color(0xFFF2F0E9);
   static const softBlue = Color(0xFFE3EAF6);
-  static const progressTrack = Color(0xFFC1CFE5);
   static const line = Color(0xFFD8DEE8);
   static const muted = Color(0xFF637187);
   static const warm = Color(0xFFFFF3DC);

@@ -4,6 +4,8 @@ Updated October 15, 2026.
 
 [Editable Figma file](https://www.figma.com/design/BeSPZ5VOwOOlrwKFTpMA4K?node-id=9-225) · [Prototype](https://www.figma.com/proto/BeSPZ5VOwOOlrwKFTpMA4K?node-id=2-9&starting-point-node-id=2%3A9)
 
+Rendered comparison and current design evidence: [VISUAL_PARITY.md](VISUAL_PARITY.md).
+
 ## Completed in this frontend pass
 
 The Figma handoff is complete and was read back from the design file. It has 17 editable 390 × 844 screens, shared variables and components, Outfit styles, and connected prototype flows. Today, Calendar, Refills, You, Routine, Reminders, Vial, Circle, Live Activity states, reminder-call states, explicit confirmation, refill handoff, and snooze are represented.

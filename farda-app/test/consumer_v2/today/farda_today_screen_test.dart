@@ -18,21 +18,81 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('9:00 AM · Not yet confirmed'), findsOneWidget);
+    expect(find.text('Not yet confirmed'), findsOneWidget);
     final logButton = find.byKey(FardaTodayRoutineCard.logDoseButtonKey);
     await tester.ensureVisible(logButton);
     await tester.tap(logButton);
     await tester.pumpAndSettle();
 
-    expect(find.text('Log your morning dose?'), findsOneWidget);
+    expect(find.text('Your record.\nYour choice.'), findsOneWidget);
     expect(snapshots, isEmpty);
 
     await tester.tap(find.byKey(FardaTodayScreen.confirmDoseButtonKey));
     await tester.pumpAndSettle();
 
-    expect(find.text('You confirmed · 9:00 AM'), findsOneWidget);
+    expect(find.text('You’re all set.'), findsOneWidget);
+    expect(find.textContaining('You confirmed ·'), findsOneWidget);
+    expect(find.text('Taken · You confirmed'), findsOneWidget);
     expect(snapshots.single.status, TodayDoseStatus.confirmed);
     expect(snapshots.single.isSnoozed, isFalse);
+  });
+
+  testWidgets('leaving check-in writes no dose or reminder state', (
+    tester,
+  ) async {
+    final snapshots = <TodayDoseSnapshot>[];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: FardaTodayScreen(
+          initialDate: DateTime(2026, 10, 14),
+          showBottomNavigation: false,
+          onDoseChanged: snapshots.add,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(FardaTodayRoutineCard.logDoseButtonKey));
+    await tester.tap(find.byKey(FardaTodayRoutineCard.logDoseButtonKey));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Not now'));
+    await tester.tap(find.text('Not now'));
+    await tester.pumpAndSettle();
+    expect(find.text('Not yet confirmed'), findsOneWidget);
+    expect(snapshots, isEmpty);
+  });
+
+  testWidgets('failed live write stays at check-in and does not show receipt', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: FardaTodayScreen(
+          initialDate: DateTime(2026, 10, 14),
+          liveRecords: true,
+          showBottomNavigation: false,
+          routines: const [
+            TodayRoutineRecord(
+              id: 'routine-a',
+              medicationLabel: 'Morning medication',
+              timeLabel: '9:00 AM',
+              status: TodayDoseStatus.pending,
+              isSnoozed: false,
+            ),
+          ],
+          onPersistDoseForId:
+              (id, status) async => 'Could not save your entry.',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(FardaTodayRoutineCard.logDoseButtonKey));
+    await tester.tap(find.byKey(FardaTodayRoutineCard.logDoseButtonKey));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(FardaTodayScreen.confirmDoseButtonKey));
+    await tester.pumpAndSettle();
+    expect(find.text('Your record.\nYour choice.'), findsOneWidget);
+    expect(find.text('You’re all set.'), findsNothing);
+    expect(find.text('Could not save your entry.'), findsOneWidget);
   });
 
   testWidgets('snooze changes reminder state without confirming the dose', (
@@ -55,9 +115,18 @@ void main() {
     await tester.tap(snoozeButton);
     await tester.pumpAndSettle();
 
-    expect(find.text('Reminder snoozed · Not yet confirmed'), findsOneWidget);
+    expect(find.text('We’ll remind\nyou again.'), findsOneWidget);
+    expect(
+      find.text('Reminder snoozed. Your record is unconfirmed.'),
+      findsOneWidget,
+    );
     expect(latest?.status, TodayDoseStatus.pending);
     expect(latest?.isSnoozed, isTrue);
+
+    await tester.ensureVisible(find.text('Back to today'));
+    await tester.tap(find.text('Back to today'));
+    await tester.pumpAndSettle();
+    expect(find.text('Reminder snoozed · Not yet confirmed'), findsOneWidget);
   });
 
   testWidgets('day selection updates locally and opens the calendar callback', (

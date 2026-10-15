@@ -23,10 +23,7 @@ void main() {
       addTearDown(controller.dispose);
 
       expect(controller.prepareHandoff(), isTrue);
-      expect(
-        controller.state.stage,
-        RefillJourneyStage.handoffPrepared,
-      );
+      expect(controller.state.stage, RefillJourneyStage.handoffPrepared);
       expect(controller.state.receiptRecordedAt, isNull);
 
       expect(controller.markPharmacyContacted(), isTrue);

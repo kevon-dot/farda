@@ -62,7 +62,7 @@ Visually reviewed both complete screen compositions and corrected switch sizing,
 
 The prototype connections and scroll containers were checked through the API. Figma reports a flow starting point at Today (2:9). Actual prototype-player clicks and device accessibility have not been exercised. Some secondary controls are visual studies, including month changes, filter chips, prescription scanning, invitations, and pharmacy calls.
 
-Flutter and Dart are unavailable in this workspace. The Flutter example has not been compiled, analyzed, or rendered on a device. It is not installed in production. Large-text and screen-size validation remain necessary.
+Flutter 3.47.7 is now available and the actual Flutter widgets have been compiled and rendered at 390px and 320px with larger text. See [VISUAL_PARITY.md](VISUAL_PARITY.md) for the screenshot evidence, final frame mappings and functional adaptations. Physical-device and production verification remain separate release work.
 
 The raster upload endpoint rejected the original PNG uploads (HTTP 413/405). The Figma character and vial are editable vector interpretations. Original raster assets remain in the repository. A browser capture was not performed; these are native Figma mock screens based on the existing design direction.
 
@@ -74,4 +74,4 @@ The refill station is a planning and pharmacy-contact handoff, not an order subm
 
 `FIGMA_STATE.json` is the current ID ledger. `FIGMA_FOUNDATIONS.json`, `FIGMA_APP_SCREENS.json`, `FIGMA_FLOW_SCREENS.json`, `FIGMA_PROTOTYPE.json`, and `FIGMA_VALIDATION.json` preserve build and verification details. The `figma-*.js` files are session construction scripts with fixed IDs, not idempotent deployment scripts; inspect current state before any rerun.
 
-This package is the design and implementation handoff. Production app routes and services remain separate implementation work.
+This package is the design and implementation handoff. Authenticated app routes and supported account services are integrated; see [FRONTEND_HANDOFF.md](FRONTEND_HANDOFF.md) for the remaining provider and device boundaries.

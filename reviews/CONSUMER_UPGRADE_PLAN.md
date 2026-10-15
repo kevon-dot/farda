@@ -4,6 +4,10 @@ October 14, 2026, America/Los_Angeles. Based on baseline commit 261c84e, the cod
 
 This document records the design and acceptance criteria. See [OVERNIGHT_BUILD_HANDOFF.md](OVERNIGHT_BUILD_HANDOFF.md) for implementation status and [the editable Figma handoff](../prototypes/consumer-v2/FIGMA_HANDOFF.md) for native design nodes and code references.
 
+## October 15 build update
+
+Astra refined the native Figma scenes and Flutter now shares their exact exported artwork. Actual rendered screen comparisons cover the primary tabs, narrow/large-text layouts and secondary account flows. See [the visual verification record](../prototypes/consumer-v2/VISUAL_PARITY.md) for evidence and deliberate data-driven differences. Build PR validation and native/device release gates remain distinct.
+
 ## The product to build
 
 Keep the lowercase Farda wordmark, Outfit typography, soft surfaces and reassuring voice. Move to rich navy and make the app feel like a useful daily companion: **Today, an interactive Calendar, a Refill station, and Your space**.
