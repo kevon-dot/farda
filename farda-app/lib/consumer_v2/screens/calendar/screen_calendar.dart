@@ -412,17 +412,22 @@ class _MonthNavigation extends StatelessWidget {
           semanticLabel: 'Show the previous month before $monthLabel',
           onPressed: onPreviousMonth,
         ),
-        Semantics(
-          header: true,
-          liveRegion: true,
-          label: 'Calendar month, $monthLabel',
-          child: ExcludeSemantics(
-            child: Text(
-              monthLabel,
-              style: _FardaCalendarType.style(
-                size: 19,
-                lineHeight: 24,
-                weight: FontWeight.w600,
+        Expanded(
+          child: Semantics(
+            header: true,
+            liveRegion: true,
+            label: 'Calendar month, $monthLabel',
+            child: ExcludeSemantics(
+              child: Text(
+                monthLabel,
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: _FardaCalendarType.style(
+                  size: 19,
+                  lineHeight: 24,
+                  weight: FontWeight.w600,
+                ),
               ),
             ),
           ),

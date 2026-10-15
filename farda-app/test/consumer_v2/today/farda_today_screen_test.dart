@@ -19,7 +19,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('9:00 AM · Not yet confirmed'), findsOneWidget);
-    await tester.tap(find.byKey(FardaTodayRoutineCard.logDoseButtonKey));
+    final logButton = find.byKey(FardaTodayRoutineCard.logDoseButtonKey);
+    await tester.ensureVisible(logButton);
+    await tester.tap(logButton);
     await tester.pumpAndSettle();
 
     expect(find.text('Log your morning dose?'), findsOneWidget);
@@ -48,7 +50,9 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(FardaTodayRoutineCard.snoozeButtonKey));
+    final snoozeButton = find.byKey(FardaTodayRoutineCard.snoozeButtonKey);
+    await tester.ensureVisible(snoozeButton);
+    await tester.tap(snoozeButton);
     await tester.pumpAndSettle();
 
     expect(find.text('Reminder snoozed · Not yet confirmed'), findsOneWidget);
