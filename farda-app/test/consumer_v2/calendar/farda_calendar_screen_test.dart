@@ -120,31 +120,33 @@ void main() {
   testWidgets('month and date controls provide descriptive semantics', (
     tester,
   ) async {
-    final semantics = tester.ensureSemantics();
-    addTearDown(semantics.dispose);
     await pumpCalendar(tester);
-
-    expect(
-      find.bySemanticsLabel('Show the previous month before October 2026'),
-      findsOneWidget,
-    );
-    expect(
-      find.bySemanticsLabel(
-        RegExp(r'Wednesday, October 14, 2026\. Today'),
-      ),
-      findsOneWidget,
-    );
-    expect(
-      find.bySemanticsLabel(
-        RegExp(r'Tuesday, October 13, 2026\. Unconfirmed entry'),
-      ),
-      findsOneWidget,
-    );
-    expect(
-      find.bySemanticsLabel(
-        RegExp(r'Friday, October 16, 2026\. Refill reminder'),
-      ),
-      findsOneWidget,
-    );
+    final semantics = tester.ensureSemantics();
+    try {
+      expect(
+        find.bySemanticsLabel('Show the previous month before October 2026'),
+        findsOneWidget,
+      );
+      expect(
+        find.bySemanticsLabel(
+          RegExp(r'Wednesday, October 14, 2026\. Today'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.bySemanticsLabel(
+          RegExp(r'Tuesday, October 13, 2026\. Unconfirmed entry'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.bySemanticsLabel(
+          RegExp(r'Friday, October 16, 2026\. Refill reminder'),
+        ),
+        findsOneWidget,
+      );
+    } finally {
+      semantics.dispose();
+    }
   });
 }
