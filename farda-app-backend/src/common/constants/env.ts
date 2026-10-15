@@ -6,7 +6,7 @@ import dotenv from "dotenv";
 const envFile =
 	process.env.NODE_ENV === "production" ? ".env" : ".env.development";
 
-dotenv.config({ path: path.resolve(__dirname, "../../../", envFile) });
+dotenv.config({ path: path.resolve(__dirname, "../../../", envFile), quiet: true });
 
 // 2. Define types for better IntelliSense
 export interface EnvConfig {

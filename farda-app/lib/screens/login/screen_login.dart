@@ -1,6 +1,4 @@
-import 'package:farda/application/authentication/repo/authentication_repo.dart';
 import 'package:farda/components/_components.dart';
-import 'package:farda/components/custom_snackbar.dart';
 import 'package:farda/screens/login/login_controller.dart';
 import 'package:farda/screens/login/login_provider.dart';
 import 'package:farda/theme.dart';

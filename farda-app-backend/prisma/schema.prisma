@@ -23,11 +23,19 @@ model User {
   sessions      Session[]
   prescriptions Prescription[]
   doses         Dose[]
+  reminderPreference ReminderPreference?
+  channelConsents ChannelConsent[]
+  reminderIntents ReminderIntent[]
+  deliveryAttempts DeliveryAttempt[]
+  refillIntents RefillIntent[]
+  refillEvents RefillEvent[]
+  inventoryBalances InventoryBalance[]
+  inventoryEntries InventoryEntry[]
 }
 
 model Prescription {
   id                   String    @id @default(cuid())
-  userId               String    @unique // One prescription per user
+  userId               String
   medicationName       String
   dosageInstructions   String?
   deviceId             String?   @unique // The vial ID from the external API
@@ -38,13 +46,22 @@ model Prescription {
   dateFilled           DateTime?
   dateExpired          DateTime?
   address              String?
+  labelReviewedAt      DateTime?
+  archivedAt           DateTime?
+  clientRequestId      String?
+  requestHash          String?
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
 
   user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   doses Dose[]
+  refillIntents RefillIntent[]
+  inventoryBalance InventoryBalance?
+  inventoryEntries InventoryEntry[]
+  schedules ScheduleVersion[]
 
   @@index([userId])
+  @@unique([userId, clientRequestId])
 }
 
 model Dose {
@@ -53,6 +70,12 @@ model Dose {
   userId         String
   scheduledFor   DateTime
   takenAt        DateTime?
+  snoozedUntil   DateTime?
+  canceledAt     DateTime?
+  status         String    @default("unconfirmed")
+  source         String    @default("self_report")
+  revision       Int       @default(0)
+  scheduleVersionId String?
   mood           String?
   note           String?
   createdAt      DateTime  @default(now())
@@ -60,20 +83,187 @@ model Dose {
 
   user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   prescription Prescription @relation(fields: [prescriptionId], references: [id], onDelete: Cascade)
+  reminderIntents ReminderIntent[]
+  scheduleVersion ScheduleVersion? @relation(fields: [scheduleVersionId], references: [id], onDelete: SetNull)
+  corrections DoseCorrection[]
 
   @@index([userId])
   @@index([prescriptionId])
+  @@index([userId, scheduledFor])
+  @@unique([scheduleVersionId, scheduledFor])
+}
+
+model ScheduleVersion {
+  id String @id @default(cuid())
+  prescriptionId String
+  version Int
+  timezone String
+  recurrence String
+  times Json
+  startDate DateTime
+  durationDays Int
+  effectiveAt DateTime
+  endedAt DateTime?
+  createdAt DateTime @default(now())
+  prescription Prescription @relation(fields: [prescriptionId], references: [id], onDelete: Cascade)
+  doses Dose[]
+  @@unique([prescriptionId, version])
+}
+
+model DoseCorrection {
+  id String @id @default(cuid())
+  doseId String
+  actorId String
+  revision Int
+  before Json
+  after Json
+  reason String?
+  createdAt DateTime @default(now())
+  dose Dose @relation(fields: [doseId], references: [id], onDelete: Cascade)
+  @@unique([doseId, revision])
+}
+
+// Ownership is also checked against the session and live Dose/Prescription on
+// every operation. No channel event mutates a dose confirmation.
+model ReminderPreference {
+  userId                String   @id
+  callsEnabled          Boolean  @default(false)
+  liveActivitiesEnabled Boolean  @default(false)
+  timeZone              String   @default("UTC")
+  quietHoursStart        String   @default("21:00")
+  quietHoursEnd          String   @default("08:00")
+  maxCallsPerDay         Int      @default(2)
+  updatedAt             DateTime @updatedAt
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model ChannelConsent {
+  id             String    @id @default(cuid())
+  userId         String
+  channel        String    @default("voice")
+  phoneNumber    String
+  wordingVersion String
+  grantedAt      DateTime  @default(now())
+  withdrawnAt    DateTime?
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId, channel, withdrawnAt])
+}
+
+model ReminderIntent {
+  id           String   @id @default(cuid())
+  userId       String
+  doseId       String
+  channel      String
+  stage        String
+  dueAt        DateTime
+  expiresAt    DateTime
+  state        String   @default("pending")
+  reason       String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dose Dose @relation(fields: [doseId], references: [id], onDelete: Cascade)
+  attempt DeliveryAttempt?
+  @@unique([doseId, channel, stage])
+  @@index([state, dueAt])
+  @@index([userId, doseId])
+}
+
+model DeliveryAttempt {
+  id               String    @id @default(cuid())
+  intentId         String    @unique
+  userId           String
+  channel          String
+  phoneNumber      String?
+  state            String    @default("reserved")
+  providerId       String?   @unique
+  providerStatus   String?
+  providerSequence Int       @default(-1)
+  reason           String?
+  startedAt        DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  intent ReminderIntent @relation(fields: [intentId], references: [id], onDelete: Cascade)
+  @@index([userId, channel, createdAt])
+  @@index([state, updatedAt])
+}
+
+model RefillIntent {
+  id             String   @id @default(cuid())
+  userId         String
+  prescriptionId String
+  kind           String   @default("refill")
+  status         String   @default("planned")
+  plannedFor     DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  prescription Prescription @relation(fields: [prescriptionId], references: [id], onDelete: Cascade)
+  events RefillEvent[]
+  receipt InventoryEntry?
+  @@index([userId, prescriptionId])
+}
+
+model RefillEvent {
+  id        String   @id @default(cuid())
+  refillId  String
+  userId    String
+  status    String
+  source    String   @default("user_report")
+  createdAt DateTime @default(now())
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  refill RefillIntent @relation(fields: [refillId], references: [id], onDelete: Cascade)
+  @@index([refillId, createdAt])
+}
+
+model InventoryBalance {
+  prescriptionId String   @id
+  userId         String
+  quantity       Int
+  observedAt     DateTime
+  source         String   @default("user_count")
+  revision       Int      @default(1)
+  updatedAt      DateTime @updatedAt
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  prescription Prescription @relation(fields: [prescriptionId], references: [id], onDelete: Cascade)
+  @@index([userId])
+}
+
+model InventoryEntry {
+  id             String   @id @default(cuid())
+  userId         String
+  prescriptionId String
+  refillId       String?  @unique
+  kind           String
+  quantity       Int
+  delta          Int
+  requestKey     String
+  requestHash    String
+  observedAt     DateTime
+  createdAt      DateTime @default(now())
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  prescription Prescription @relation(fields: [prescriptionId], references: [id], onDelete: Cascade)
+  refill RefillIntent? @relation(fields: [refillId], references: [id], onDelete: Cascade)
+  @@unique([userId, requestKey])
+  @@index([prescriptionId, createdAt])
 }
 
 model Account {
   id                   String    @id @default(cuid())
   userId               String
-  type                 String
+  type                 String    @default("oauth")
   provider             String
   providerAccountId    String
   accessToken          String?
   refreshToken         String?
   accessTokenExpiresAt DateTime?
+  refreshTokenExpiresAt DateTime?
+  idToken              String?
+  scope                String?
+  password             String?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
   user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])
@@ -104,4 +294,11 @@ model Verification {
 
   @@unique([identifier, value])
   @@map("verifications")
+}
+
+model ApiRateLimit {
+  key String @id
+  count Int
+  expiresAt DateTime
+  @@index([expiresAt])
 }

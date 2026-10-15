@@ -1,298 +1,122 @@
-const Device = require("../models/Device");
-const Event = require("../models/Event");
-const User = require("../models/User");
+const { randomUUID } = require('node:crypto');
+const Device = require('../models/Device');
+const Event = require('../models/Event');
+const User = require('../models/User');
+const { identifier, bodyFields, digest, safeDigestMatch, dateRange } = require('../lib/validation');
+const { handler, ApiError } = require('../lib/errors');
 
-//save user to database
-const saveUser = async (req, res, next) => {
-  try {
-    const user_id = req.user_id;
-    const user_role = req.user_role;
-
-    // Find or create user
-    let user = await User.findOne({ user_id });
-
-    if (!user) {
-      // Create new user
-      user = new User({
-        user_id,
-        user_roles: [user_role],
-        claim_device_ids: [],
-        caregiving_device_ids: [],
-        createdAt: new Date(),
-        lastLogin: new Date()
-      });
-      await user.save();
-      return res.status(201).json({ 
-        status: "success", 
-        message: "User created successfully",
-        user: {
-          user_id: user.user_id,
-          user_roles: user.user_roles,
-          createdAt: user.createdAt,
-          lastLogin: user.lastLogin
-        }
-      });
-    } else {
-      // Update existing user
-      user.lastLogin = new Date();
-      
-      // Add role if not already present
-      if (!user.user_roles.includes(user_role)) {
-        user.user_roles.push(user_role);
-      }
-      
-      await user.save();
-      return res.status(200).json({ 
-        status: "success", 
-        message: "User updated successfully",
-        user: {
-          user_id: user.user_id,
-          user_roles: user.user_roles,
-          claim_device_ids: user.claim_device_ids,
-          caregiving_device_ids: user.caregiving_device_ids,
-          createdAt: user.createdAt,
-          lastLogin: user.lastLogin
-        }
-      });
-    }
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-};
-
-//save a device for a user logic
-const claimDevice =  async (req, res, next) => {
-  try {
-    const { device_id } = req.body;
-    const user_id = req.user_id;
-    const user_role = req.user_role;
-
-    const device = await Device.findOne({ device_id });
-
-    if (!device) {
-      return res
-        .status(404)
-        .json({ error: "Device invalid (not provisioned)" });
-    }
-
-    if (device.claimed || device.user_id) {
-      return res
-        .status(409)
-        .json({ error: "Device is already claimed by another user" });
-    }
-
-    device.user_id = user_id;
-    device.claimed = true;
-    await device.save();
-
-    // Find or create user and add device_id to claim_device_ids
-    let user = await User.findOne({ user_id });
-    
-    if (!user) {
-      // Create new user if doesn't exist
-      user = new User({
-        user_id,
-        user_roles: [user_role],
-        claim_device_ids: [device_id],
-        caregiving_device_ids: []
-      });
-    } else {
-      // Add role if not present
-      if (!user.user_roles.includes(user_role)) {
-        user.user_roles.push(user_role);
-      }
-      // Add device_id if not already present
-      if (!user.claim_device_ids.includes(device_id)) {
-        user.claim_device_ids.push(device_id);
-      }
-      user.lastLogin = new Date();
-    }
-    
-    await user.save();
-
-    res.json({ status: "success", device });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+function ownerId(req) {
+  if (typeof req.user_id !== 'string' || !req.user_id) throw new ApiError(401, 'unauthorized', 'A valid session is required');
+  return req.user_id;
 }
-
-//get all devices for a user logic 
-const  getUserDevices = async (req, res, next) => {
-  try {
-    const devices = await Device.find({ user_id: req.user_id });
-    res.json(devices);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-}
-
-//get single device event logic
-const getADeviceEvents = async (req, res, next) => {
-    try {
-      const { device_id } = req.params;
-      const device = await Device.findOne({ device_id, user_id: req.user_id });
-      if (!device) {
-        return res.status(404).json({ error: "Device not found" });
-      }
-
-      const events = await Event.find({ device_id })
-        .sort({ server_timestamp: -1 })
-        .limit(100);
-      res.json(events);
-    } catch (err) {
-      res.status(500).json({ error: err.message });
-    }
+function publicDevice(device) {
+  return {
+    device_id: device.device_id, device_name: device.device_name, user_id: device.user_id,
+    claimed: device.claimed, claimed_at: device.claimed_at, ownership_epoch: device.ownership_epoch,
+    battery_percent: device.battery_percent ?? null, firmware_version: device.firmware_version ?? null,
+    isActive: device.isActive, last_seen: device.last_seen ?? null,
+    is_online: device.last_seen != null && +new Date(device.last_seen) >= Date.now() - 300000,
+    caregiver_id: device.caregiver_grant?.user_id ?? null,
   };
-
-//get all devices events logic
-const getAllDevicesEvents = async (req, res, next) => {
-  try {
-    const devices = await Device.find({ user_id: req.user_id });
-    
-    if (devices.length === 0) {
-      return res.json([]);
-    }
-
-    const deviceIds = devices.map(device => device.device_id);
-    const events = await Event.find({ device_id: { $in: deviceIds } })
-      .sort({ server_timestamp: -1 })
-      .limit(500);
-    
-    res.json(events);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-};
-
-// get search device events logic by time range
-const searchDeviceEventsByTimeRange = async (req, res, next) => {
-  try {
-    const { device_id } = req.params;
-    const { start_time, end_time } = req.query;
-
-    if (!start_time || !end_time) {
-      return res.status(400).json({ error: "start_time and end_time are required" });
-    }
-
-    const device = await Device.findOne({ device_id, user_id: req.user_id });
-    if (!device) {
-      return res.status(404).json({ error: "Device not found" });
-    }
-
-    const events = await Event.find({
-      device_id,
-      server_timestamp: {
-        $gte: new Date(start_time),
-        $lte: new Date(end_time)
-      }
-    }).sort({ server_timestamp: -1 });
-    
-    res.json(events);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-};
-
-//remove claimed device logic
-const removeClaimedDevice = async (req, res, next) => {
-  try {
-    const { device_id } = req.params;
-    const user_id = req.user_id;
-
-    const device = await Device.findOne({ device_id, user_id });
-    
-    if (!device) {
-      return res.status(404).json({ error: "Device not found" });
-    }
-
-    device.user_id = null;
-    device.claimed = false;
-    await device.save();
-
-    // Remove device_id from user's claim_device_ids array
-    const user = await User.findOne({ user_id });
-    if (user) {
-      const index = user.claim_device_ids.indexOf(device_id);
-      if (index > -1) {
-        user.claim_device_ids.splice(index, 1);
-        await user.save();
-      }
-    }
-
-    res.json({ status: "success", message: "Device unclaimed successfully" });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-};
-
-//delete device events logic
-const deleteDeviceEvents = async (req, res, next) => {
-  try {
-    const { device_id } = req.params;
-
-    const device = await Device.findOne({ device_id, user_id: req.user_id });
-    
-    if (!device) {
-      return res.status(404).json({ error: "Device not found" });
-    }
-
-    const result = await Event.deleteMany({ device_id });
-    
-    res.json({ 
-      status: "success", 
-      message: "Device events deleted successfully",
-      deletedCount: result.deletedCount 
-    });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-};
-
-//delete curent caregiver acess to a device 
-const deleteCaregiverAccessToDevice = async (req, res, next) => {
-  try {
-    const { device_id } = req.params;
-    const device = await Device.findOne({ device_id, user_id: req.user_id });
-    
-    if (!device) {
-      return res.status(404).json({ error: "Device not found or access denied" });
-    }
-
-    const caregiver_id = device.caregiver_id;
-    
-    // Remove caregiver from device
-    device.caregiver_id = null;
-    await device.save();
-
-    // Remove device_id from caregiver's caregiving_device_ids array
-    if (caregiver_id) {
-      const caregiver = await User.findOne({ user_id: caregiver_id });
-      if (caregiver) {
-        const index = caregiver.caregiving_device_ids.indexOf(device_id);
-        if (index > -1) {
-          caregiver.caregiving_device_ids.splice(index, 1);
-          await caregiver.save();
-        }
-      }
-    }
-
-    res.json({ status: "success", message: "Caregiver access removed successfully" });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  } 
-};
-
-module.exports = {
-    saveUser,
-    claimDevice,
-    getUserDevices,
-    getADeviceEvents,
-    getAllDevicesEvents,
-    searchDeviceEventsByTimeRange,
-    removeClaimedDevice,
-    deleteDeviceEvents,
-    deleteCaregiverAccessToDevice
+}
+function claimResponse(res, device, alreadyOwned) {
+  return res.json({ status: 'success', ownership_verified: true, already_owned: alreadyOwned, device: publicDevice(device) });
 }
 
+function createAppController({ devices = Device, events = Event, users = User, now = () => new Date(), uuid = randomUUID } = {}) {
+  const saveUser = handler(async (req, res) => {
+    const user_id = ownerId(req);
+    const user = await users.findOneAndUpdate({ user_id }, {
+      $set: { lastLogin: now() },
+      $setOnInsert: { user_roles: ['user'], createdAt: now() },
+    }, { upsert: true, new: true });
+    return res.json({ status: 'success', user: { user_id: user.user_id, createdAt: user.createdAt, lastLogin: user.lastLogin } });
+  });
 
+  const claimDevice = handler(async (req, res) => {
+    const user_id = ownerId(req);
+    bodyFields(req.body, ['device_id', 'claim_token']);
+    const device_id = identifier(req.body.device_id, 'device_id');
+    const selection = '+claim_grant.method +claim_grant.user_id +claim_grant.token_hash +claim_grant.expires_at +claim_grant.credential_version +credential.id +credential.hash +credential.version +credential.revoked_at';
+    const device = await devices.findOne({ device_id, isActive: true }).select(selection);
+    if (!device) throw new ApiError(404, 'device_unavailable', 'Device is unavailable for enrollment');
+    if (device.claimed || device.user_id) {
+      if (device.user_id === user_id && device.claimed && device.ownership_epoch) return claimResponse(res, device, true);
+      if (device.user_id === user_id) throw new ApiError(503, 'ownership_verification_required', 'This device needs verified ownership migration');
+      throw new ApiError(409, 'device_already_claimed', 'Device is already claimed');
+    }
+    const grant = device.claim_grant;
+    if (grant?.method !== 'vendor-possession-v1' || !grant.token_hash || !device.credential?.hash || !device.credential?.id || !Number.isSafeInteger(device.credential.version) || device.credential.version < 1 || device.credential.revoked_at) {
+      throw new ApiError(503, 'claim_verification_unavailable', 'Verified hardware enrollment is not available for this device yet');
+    }
+    const when = now();
+    if (grant.user_id !== user_id || !Number.isFinite(+new Date(grant.expires_at)) || +new Date(grant.expires_at) <= +when || grant.credential_version !== device.credential.version || !safeDigestMatch(req.body.claim_token, grant.token_hash)) {
+      throw new ApiError(403, 'invalid_claim_proof', 'A current possession verification is required');
+    }
+    // Consume the user-bound proof and establish ownership in one conditional write.
+    // Device is the authority; legacy User.claim_device_ids is not an access list.
+    const claimed = await devices.findOneAndUpdate({
+      device_id, isActive: true, claimed: false, user_id: null,
+      'claim_grant.method': 'vendor-possession-v1', 'claim_grant.user_id': user_id,
+      'claim_grant.token_hash': digest(req.body.claim_token), 'claim_grant.expires_at': { $gt: when },
+      'claim_grant.credential_version': device.credential.version,
+      'credential.version': device.credential.version, 'credential.id': device.credential.id,
+      'credential.revoked_at': null,
+    }, {
+      $set: { user_id, claimed: true, claimed_at: when, ownership_epoch: uuid(), caregiver_id: null },
+      $unset: { claim_grant: 1, caregiver_grant: 1, caregiver_invitation: 1 },
+      $inc: { ingestion_revision: 1 },
+    }, { new: true, writeConcern: { w: 'majority' } });
+    if (claimed) return claimResponse(res, claimed, false);
+    const winner = await devices.findOne({ device_id, isActive: true });
+    if (winner?.claimed && winner.user_id === user_id && winner.ownership_epoch) return claimResponse(res, winner, true);
+    throw new ApiError(409, 'claim_changed', 'Device ownership or verification changed. Start enrollment again.');
+  });
 
+  const getUserDevices = handler(async (req, res) => {
+    const result = await devices.find({ user_id: ownerId(req), claimed: true, isActive: true }).limit(100);
+    return res.json(result.map(publicDevice));
+  });
+  const getADeviceEvents = handler(async (req, res) => {
+    const device_id = identifier(req.params.device_id, 'device_id');
+    // Observation-time owner survives transfer; the new owner cannot read old epochs.
+    const result = await events.find({ device_id, owner_id: ownerId(req) }).sort({ server_timestamp: -1 }).limit(100);
+    return res.json(result);
+  });
+  const getAllDevicesEvents = handler(async (req, res) => {
+    const result = await events.find({ owner_id: ownerId(req) }).sort({ server_timestamp: -1 }).limit(500);
+    return res.json(result);
+  });
+  const searchDeviceEventsByTimeRange = handler(async (req, res) => {
+    const device_id = identifier(req.params.device_id, 'device_id');
+    const range = dateRange(req.query.start_time, req.query.end_time);
+    const result = await events.find({ device_id, owner_id: ownerId(req), server_timestamp: range }).sort({ server_timestamp: -1 }).limit(500);
+    return res.json(result);
+  });
+  const removeClaimedDevice = handler(async (req, res) => {
+    const device_id = identifier(req.params.device_id, 'device_id');
+    const device = await devices.findOneAndUpdate({ device_id, user_id: ownerId(req), claimed: true }, {
+      $set: { user_id: null, claimed: false, claimed_at: null, ownership_epoch: uuid(), caregiver_id: null, 'credential.revoked_at': now() },
+      $unset: { caregiver_grant: 1, caregiver_invitation: 1, claim_grant: 1, 'credential.hash': 1 },
+      $inc: { 'credential.version': 1, ingestion_revision: 1 },
+    }, { new: true, writeConcern: { w: 'majority' } });
+    if (!device) throw new ApiError(404, 'device_unavailable', 'Device not found');
+    return res.json({ status: 'success', message: 'Device released. New enrollment requires verified provisioning.', credentials_revoked: true });
+  });
+  const deleteDeviceEvents = handler(async (req, res) => {
+    ownerId(req);
+    identifier(req.params.device_id, 'device_id');
+    throw new ApiError(405, 'append_only_observations', 'Observation deletion is not supported by this route. Use the reviewed account-data process.');
+  });
+  const deleteCaregiverAccessToDevice = handler(async (req, res) => {
+    const device_id = identifier(req.params.device_id, 'device_id');
+    const device = await devices.findOneAndUpdate({ device_id, user_id: ownerId(req), claimed: true }, {
+      $set: { caregiver_id: null }, $unset: { caregiver_grant: 1, caregiver_invitation: 1 },
+    }, { new: true, writeConcern: { w: 'majority' } });
+    if (!device) throw new ApiError(404, 'device_unavailable', 'Device not found');
+    return res.json({ status: 'success', message: 'Caregiver access and pending invitation removed' });
+  });
+  return { saveUser, claimDevice, getUserDevices, getADeviceEvents, getAllDevicesEvents, searchDeviceEventsByTimeRange, removeClaimedDevice, deleteDeviceEvents, deleteCaregiverAccessToDevice };
+}
+
+module.exports = { ...createAppController(), createAppController, publicDevice, ownerId };

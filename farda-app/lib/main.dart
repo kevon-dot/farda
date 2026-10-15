@@ -35,9 +35,9 @@ class _MyAppState extends State<MyApp> {
               ChangeNotifierProvider(create: (_) => LoginProvider()),
               ChangeNotifierProvider(create: (_) => EmojiProvider()),
               ChangeNotifierProvider(
-                create: (_) => CalenderProvider()..getCallAllApi(),
+                create: (_) => CalenderProvider(),
               ),
-              ChangeNotifierProvider(create: (_) => PrescriptionProvider()..getMyPrescriptionApi()),
+              ChangeNotifierProvider(create: (_) => PrescriptionProvider()),
               // Add your providers here
               ChangeNotifierProvider(create: (_) => HomeProvider()),
             ],

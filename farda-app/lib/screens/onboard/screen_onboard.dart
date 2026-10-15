@@ -1,11 +1,10 @@
-
 import 'package:farda/components/_components.dart';
 import 'package:farda/routes/routes.dart';
 import 'package:farda/screens/login/screen_login.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:go_router/go_router.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:farda/application/authentication/storage/auth_storage.dart';
 
 class ScreenOnboard extends StatefulWidget {
   const ScreenOnboard({super.key});
@@ -15,22 +14,25 @@ class ScreenOnboard extends StatefulWidget {
 }
 
 class _ScreenOnboardState extends State<ScreenOnboard> {
-    Future<void> getInitialRoute() async {
-    final prefs = await SharedPreferences.getInstance();
-    String? isLoggedIn = prefs.getString('id');
+  Future<void> getInitialRoute() async {
+    final session = await AuthStorage.readSession();
+    if (!mounted) return;
+    String? isLoggedIn = session?.userId;
 
     if (isLoggedIn != null && isLoggedIn.isNotEmpty) {
-       context.go(CustomRoutePaths.dashboard);
+      context.go(CustomRoutePaths.dashboard);
     } else {
-      context.go( CustomRoutePaths.onboard);
+      context.go(CustomRoutePaths.onboard);
     }
   }
+
   @override
   void initState() {
     // TODO: implement initState
     super.initState();
     getInitialRoute();
   }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -72,7 +74,10 @@ class _ScreenOnboardState extends State<ScreenOnboard> {
                       onClick: () {
                         // context.go("/login");
                         // context.(RouteLogin());
-                        Navigator.push(context, MaterialPageRoute(builder: (_)=> ScreenLogin()));
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => ScreenLogin()),
+                        );
                       },
                     ),
                     12.verticalSpace,

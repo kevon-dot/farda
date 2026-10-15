@@ -1,3 +1,5 @@
+> **Current contract:** [Vial service v1](docs/VIAL_CONTRACT_V1.md) supersedes the historical setup, authentication and API examples below. It uses shared mobile sessions, individual provisioned device credentials, verified enrollment grants and append-only owner-scoped observations. Hardware enrollment remains unavailable until the vendor possession protocol is verified. Run `pnpm test`; database race tests require the documented disposable replica set.
+
 # Smart Vial IoT Backend
 
 REST API backend for Smart Vial 

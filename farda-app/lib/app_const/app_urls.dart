@@ -1,11 +1,17 @@
 class AppUrls {
-  static String getDoseTime = "dosetime/";
+  static String getDoseTime = "doses";
   static String getExtractPrescriptionOcr = "prescriptions/ocr/extract";
-  static String getPrescription = "my-prescriptions/";
-  static String submitPrescription = "prescriptions/ocr/save";
+  static String getPrescription = "prescriptions";
+  static String submitPrescription = "prescriptions";
   static String getMode = "mood/";
   static String setMood = "mood/";
   static String setNotes = "dose-notes/";
+
+  static const String authSession = "auth/session";
+  static const String authSignOut = "auth/sign-out";
+  static String dose(String id) => "doses/${Uri.encodeComponent(id)}";
+  static String observations(String id) =>
+      "user/devices/${Uri.encodeComponent(id)}/observations";
 
   // --- Backend Paths ---
   static const String api = "/api";

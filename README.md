@@ -5,10 +5,11 @@ load-cell scale and solenoid lock that logs dose/tamper events, a **Flutter mobi
 patients and caregivers, and **two backend services** that handle identity, prescriptions/OCR,
 and device-event ingestion.
 
-> ⚠️ **Status: prototype.** This repository is an as-delivered snapshot assembled for review.
-> See [`reviews/`](reviews/) for a detailed enterprise code review, front-end review, and
-> firmware audit, including security findings that should be addressed before any production /
-> clinical use.
+> **Status: consumer software review build.** The navy app, manual routines,
+> refill planning, reminder foundations, and trust-boundary fixes are under active
+> integration. Start with the [build handoff](reviews/OVERNIGHT_BUILD_HANDOFF.md)
+> for verification and remaining device/provider gates. Earlier reviews describe
+> the delivered baseline; they are not the current implementation status.
 
 ## Repository layout
 
@@ -22,13 +23,13 @@ and device-event ingestion.
 
 ## Architecture (high level)
 
-```
- Flutter app ──BLE──> Smart Vial (ESP32 firmware)
-      │                     │ Wi-Fi (HTTP/MQTT, optional)
-      │ HTTPS               ▼
-      ▼               smart-vial-backend (MongoDB: devices, events)
- farda-app-backend ───────────┘  (both share one PostgreSQL / better-auth identity store)
- (PostgreSQL: users, prescriptions, doses)
+```mermaid
+flowchart TD
+    App["Flutter consumer app"] -->|"HTTPS routines and reminders"| Main["Main API and PostgreSQL"]
+    App -->|"Owned observation uploads"| VialAPI["Vial API and MongoDB"]
+    VialAPI -->|"Shared revocable sessions"| Main
+    App -.->|"BLE contract pending hardware validation"| Vial["Physical vial"]
+    Vial -.->|"Provisioned device credentials required"| VialAPI
 ```
 
 The two backends **share a single PostgreSQL / better-auth identity store**; domain data is split
@@ -44,6 +45,10 @@ MCP design-to-code results. It includes an isolated Flutter component example
 and a [self-contained browser mock](prototypes/consumer-v2/farda-navy-mock.html).
 See the [prototype README](prototypes/consumer-v2/README.md) for walkthroughs and
 implementation limits.
+
+The [consumer upgrade plan](reviews/CONSUMER_UPGRADE_PLAN.md) maps every baseline
+gap to the intended behavior. The [build handoff](reviews/OVERNIGHT_BUILD_HANDOFF.md)
+maps those improvements to code, review commands, tests, and release gates.
 
 ## Getting started
 

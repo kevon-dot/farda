@@ -8,9 +8,11 @@ const {
     searchDeviceById,
     filterEventsByDateRange
 } = require('../controllers/caregiver.controller');
+const { acceptInvitation } = require('../controllers/caregiver.controller');
 
 // Assign a caregiver to a device (device owner only)
 router.post('/claim-device', verifyToken, claimDeviceForCaregiver);
+router.post('/invitations/:invitation_id/accept', verifyToken, acceptInvitation);
 
 // Get summary of a specific device (caregiver access)
 router.get('/devices/:device_id/summary', verifyToken, getCaregiver_A_device_summery);
