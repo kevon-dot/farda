@@ -934,6 +934,7 @@ class _FilterChip extends StatelessWidget {
 
 class _SelectedDayAgenda extends StatelessWidget {
   const _SelectedDayAgenda({
+    super.key,
     required this.selectedDate,
     required this.filter,
     required this.events,
