@@ -420,7 +420,37 @@ void main() {
   testWidgets('320px layout with larger text keeps controls usable', (
     tester,
   ) async {
-    await pumpCalendar(tester, width: 320, textScale: 1.3);
+    ConsumerCalendarEvent markerEvent(
+      String id,
+      ConsumerCalendarEventStatus status, {
+      ConsumerCalendarEventType type = ConsumerCalendarEventType.routine,
+    }) => ConsumerCalendarEvent(
+      id: id,
+      date: today,
+      type: type,
+      status: status,
+      routineName: type == ConsumerCalendarEventType.routine ? id : null,
+      eyebrow: '8:00 AM',
+      title: id,
+      description:
+          type == ConsumerCalendarEventType.refill
+              ? 'A plan you recorded; no pharmacy order was placed.'
+              : 'Calendar status.',
+    );
+    final events = [
+      markerEvent('Recorded', ConsumerCalendarEventStatus.recorded),
+      markerEvent('Skipped', ConsumerCalendarEventStatus.skipped),
+      markerEvent('Snoozed', ConsumerCalendarEventStatus.snoozed),
+      markerEvent('Unconfirmed', ConsumerCalendarEventStatus.unconfirmed),
+      markerEvent('Scheduled', ConsumerCalendarEventStatus.pending),
+      markerEvent(
+        'Refill',
+        ConsumerCalendarEventStatus.planned,
+        type: ConsumerCalendarEventType.refill,
+      ),
+    ];
+
+    await pumpCalendar(tester, events: events, width: 320, textScale: 1.3);
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
@@ -440,6 +470,22 @@ void main() {
       find.byKey(const Key('calendar-month-day-2026-10-14')),
       findsOneWidget,
     );
+    final monthDaySemantics =
+        tester
+            .getSemantics(
+              find.byKey(const Key('calendar-month-day-2026-10-14')),
+            )
+            .getSemanticsData();
+    for (final label in [
+      'Recorded entry',
+      'Skipped entry recorded',
+      'Snoozed reminder',
+      'Unconfirmed entry',
+      'Scheduled routine',
+      'Refill reminder',
+    ]) {
+      expect(monthDaySemantics.label, contains(label));
+    }
 
     await tester.tap(find.byTooltip('Next month'));
     await tester.pumpAndSettle();

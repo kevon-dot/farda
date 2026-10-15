@@ -888,7 +888,7 @@ class _CalendarDay extends StatelessWidget {
                         children: [
                           for (
                             var index = 0;
-                            index < markers.length;
+                            index < markers.length && index < 3;
                             index++
                           ) ...[
                             if (index > 0) const SizedBox(width: 3),
