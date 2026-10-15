@@ -1,13 +1,15 @@
 import path from 'path';
 import { defineConfig } from 'vitest/config';
 
-// Self-contained unit-test config: no DB/server bootstrap. Pure-function tests
-// only, so the suite runs in CI without Postgres or live credentials.
+// Database integration files share one disposable schema and some process env.
+// Keep files isolated from each other; explicit concurrent-write cases within a
+// file still run against native PostgreSQL in CI.
 const config = defineConfig({
   test: {
     globals: true,
     environment: 'node',
     isolate: true,
+    fileParallelism: false,
     include: ['tests/**/*.test.ts'],
   },
   resolve: {
