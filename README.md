@@ -36,6 +36,15 @@ across PostgreSQL (prescriptions/doses) and MongoDB (devices/events). See
 [`reviews/FARDA_ENTERPRISE_CODE_REVIEW.md`](reviews/FARDA_ENTERPRISE_CODE_REVIEW.md) for the full
 architecture map and known integration gaps.
 
+## Consumer design handoff
+
+The [Farda Figma handoff](prototypes/consumer-v2/FIGMA_HANDOFF.md) contains the
+17-screen navy consumer design, prototype links, screen/node map, and verified
+MCP design-to-code results. It includes an isolated Flutter component example
+and a [self-contained browser mock](prototypes/consumer-v2/farda-navy-mock.html).
+See the [prototype README](prototypes/consumer-v2/README.md) for walkthroughs and
+implementation limits.
+
 ## Getting started
 
 Each component has its own README and dependencies. Secrets are provided via environment files —

@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <meta name="description" content="Farda navy consumer concept: a calmer routine, interactive calendar, refill station, call reminders, and Live Activities. Synthetic data only.">
+  <title>farda. — A little less to remember</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <a class="skip" href="#screen">Skip to app</a>
+  <div class="demo-banner"><span class="demo-dot"></span> DESIGN PROTOTYPE <span class="divider">/</span> Sample data only. No calls, pharmacy orders, or device commands.</div>
+  <div class="workspace">
+    <aside class="rail">
+      <a class="wordmark" href="#today" aria-label="Farda home" data-view="today">farda<span>.</span></a>
+      <p class="brand-line">A little less to remember.<br>A little more room for you.</p>
+      <nav id="design-nav" aria-label="Explore app designs"></nav>
+      <div class="rail-bottom"><span class="edition">THE NAVY EDITION · 02</span><p>Thoughtful routines.<br>A friendly face.<br>Your day, at your pace.</p><div class="swatches" aria-label="Navy, blue, pale blue and ivory brand palette"><i></i><i></i><i></i><i></i></div></div>
+    </aside>
+    <main class="stage">
+      <div class="device-label"><span id="view-label">01 / TODAY</span><button data-action="reset" class="text-button">Reset demo</button></div>
+      <div class="phone" id="phone">
+        <div class="statusbar" aria-hidden="true"><span>9:00</span><span class="camera"></span><span>▮▮▮ &nbsp; ◒ ▰</span></div>
+        <div id="screen" class="screen" tabindex="-1"></div>
+        <nav id="bottom-nav" class="bottom-nav" aria-label="App navigation"></nav>
+        <div class="home-line" aria-hidden="true"></div>
+      </div>
+      <p class="stage-caption">An interactive concept, not a connected medical service.</p>
+    </main>
+    <aside class="inspector" aria-label="Design details and scenarios"><div id="inspector"></div></aside>
+  </div>
+  <dialog id="sheet" aria-labelledby="sheet-title"><div id="sheet-content"></div></dialog>
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+  <script src="model.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

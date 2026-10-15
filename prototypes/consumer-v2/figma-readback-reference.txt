@@ -1,0 +1,374 @@
+READBACK EVIDENCE — NOT RUNTIME SOURCE
+File: BeSPZ5VOwOOlrwKFTpMA4K
+Node: 2:9
+Requested client: Flutter / Dart
+Returned format: React + Tailwind reference
+Temporary asset URLs redacted; native source SVG exported separately.
+
+const imgIconBattery = "FIGMA_TEMPORARY_ASSET_URL_REDACTED";
+const imgStatusMark = "FIGMA_TEMPORARY_ASSET_URL_REDACTED";
+const imgStatusMark1 = "FIGMA_TEMPORARY_ASSET_URL_REDACTED";
+const imgCompanionWave = "FIGMA_TEMPORARY_ASSET_URL_REDACTED";
+const imgStatusMark2 = "FIGMA_TEMPORARY_ASSET_URL_REDACTED";
+const imgStatusMark3 = "FIGMA_TEMPORARY_ASSET_URL_REDACTED";
+const imgIconPill = "FIGMA_TEMPORARY_ASSET_URL_REDACTED";
+const imgIconArrow = "FIGMA_TEMPORARY_ASSET_URL_REDACTED";
+const imgIconRefill = "FIGMA_TEMPORARY_ASSET_URL_REDACTED";
+const imgIconInfo = "FIGMA_TEMPORARY_ASSET_URL_REDACTED";
+const imgIconHome = "FIGMA_TEMPORARY_ASSET_URL_REDACTED";
+const imgIconCalendar = "FIGMA_TEMPORARY_ASSET_URL_REDACTED";
+const imgIconRefill1 = "FIGMA_TEMPORARY_ASSET_URL_REDACTED";
+const imgIconUser = "FIGMA_TEMPORARY_ASSET_URL_REDACTED";
+
+type FardaButtonProps = {
+  className?: string;
+  label?: string;
+  style?: "Secondary" | "Inverse";
+};
+
+function FardaButton({ className, label = "Continue", style = "Secondary" }: FardaButtonProps) {
+  const isInverse = style === "Inverse";
+  return (
+    <div className={className || `content-stretch flex h-[48px] items-center justify-center px-[18px] py-[13px] relative rounded-[14px] ${isInverse ? "bg-[var(--surface-canvas,#f6f5f0)]" : "bg-[var(--surface-soft,#e9eef7)]"}`} id={isInverse ? "node-3_138" : "node-3_137"}>
+      <p className="[word-break:break-word] font-['Outfit:SemiBold'] font-semibold leading-[19px] relative shrink-0 text-[14px] text-[color:var(--text-primary,#142c55)] whitespace-nowrap" data-node-id="3:142">
+        {label}
+      </p>
+    </div>
+  );
+}
+
+export default function Today390844() {
+  return (
+    <div className="bg-[var(--surface-canvas,#f6f5f0)] content-stretch flex flex-col items-start overflow-clip relative rounded-[32px] size-full" data-node-id="2:9" data-name="today / 390 × 844">
+      <div className="content-stretch flex h-[48px] items-center justify-between overflow-clip pl-[28px] pr-[25px] relative shrink-0 w-[390px]" data-node-id="4:79" data-name="System status">
+        <p className="[word-break:break-word] font-['Outfit:SemiBold'] font-semibold leading-[20px] relative shrink-0 text-[14px] text-[color:var(--text-primary,#142c55)] whitespace-nowrap" data-node-id="4:80">
+          9:00
+        </p>
+        <div className="bg-[var(--surface-deep,#0b1d3c)] h-[26px] relative rounded-[var(--radius-16,16px)] shrink-0 w-[100px]" data-node-id="4:81" data-name="Camera cutout" />
+        <div className="content-stretch flex gap-[6px] items-center overflow-clip relative shrink-0 w-[47px]" data-node-id="4:82" data-name="Signal & battery">
+          <p className="[word-break:break-word] font-['Outfit:SemiBold'] font-semibold leading-[14px] relative shrink-0 text-[11px] text-[color:var(--text-primary,#142c55)] whitespace-nowrap" data-node-id="4:83">
+            •••
+          </p>
+          <div className="relative shrink-0 size-[22px]" data-node-id="4:84" data-name="Icon / battery">
+            <img alt="" className="absolute block inset-0 max-w-none size-full" src={imgIconBattery} />
+          </div>
+        </div>
+      </div>
+      <div className="content-stretch flex flex-col h-[710px] items-start overflow-x-clip overflow-y-auto relative shrink-0 w-[390px]" data-node-id="4:87" data-name="Scrollable content">
+        <div className="content-stretch flex flex-col gap-[var(--space-20,20px)] items-start overflow-clip pb-[28px] pt-[8px] px-[22px] relative shrink-0 w-[390px]" data-node-id="4:88" data-name="Content">
+          <div className="content-stretch flex items-center justify-between overflow-clip relative shrink-0 w-[346px]" data-node-id="4:115" data-name="Brand header">
+            <p className="[word-break:break-word] font-['Outfit:SemiBold'] font-semibold leading-[39px] relative shrink-0 text-[30px] text-[color:var(--text-primary,#142c55)] whitespace-nowrap" data-node-id="4:116">
+              farda.
+            </p>
+            <a className="bg-[var(--surface-soft,#e9eef7)] content-stretch cursor-pointer flex items-center justify-center overflow-clip relative rounded-[var(--radius-16,16px)] shrink-0 size-[36px]" data-node-id="4:117" data-name="Your profile">
+              <p className="[word-break:break-word] font-['Outfit:SemiBold'] font-semibold leading-[14px] relative shrink-0 text-[11px] text-[color:var(--text-primary,#142c55)] text-left whitespace-nowrap" data-node-id="4:118">
+                YO
+              </p>
+            </a>
+          </div>
+          <div className="[word-break:break-word] content-stretch flex gap-[var(--space-16,16px)] items-center overflow-clip relative shrink-0 w-[346px]" data-node-id="4:119" data-name="Morning greeting">
+            <div className="content-stretch flex flex-col gap-[var(--space-4,4px)] items-start overflow-clip relative shrink-0 w-[270px]" data-node-id="4:120" data-name="Welcome">
+              <p className="font-['Outfit:Regular'] font-normal leading-[20px] relative shrink-0 text-[14px] text-[color:var(--text-secondary,#58677d)] whitespace-nowrap" data-node-id="4:121">
+                Good morning, you.
+              </p>
+              <div className="font-['Outfit:SemiBold'] font-semibold leading-[0] relative shrink-0 text-[34px] text-[color:var(--text-primary,#142c55)] w-[270px]" data-node-id="4:122">
+                <p className="leading-[37px] mb-0">Make room</p>
+                <p className="leading-[37px]">for your day.</p>
+              </div>
+            </div>
+            <div className="bg-[var(--surface-soft,#e9eef7)] content-stretch flex flex-col font-['Outfit:SemiBold'] font-semibold gap-[2px] items-center overflow-clip p-[var(--space-8,8px)] relative rounded-[var(--radius-24,24px)] shrink-0 text-[color:var(--text-primary,#142c55)] w-[60px] whitespace-nowrap" data-node-id="4:123" data-name="October 14">
+              <p className="leading-[14px] relative shrink-0 text-[10px]" data-node-id="4:124">
+                OCT
+              </p>
+              <p className="leading-[36px] relative shrink-0 text-[28px]" data-node-id="4:125">
+                14
+              </p>
+            </div>
+          </div>
+          <div className="content-stretch cursor-pointer flex gap-[5px] items-start overflow-clip relative shrink-0 w-[346px]" data-node-id="4:126" data-name="This week">
+            <a className="bg-[var(--surface-card,white)] content-stretch flex flex-col gap-[var(--space-4,4px)] items-center overflow-clip p-[6px] relative rounded-[var(--radius-16,16px)] shrink-0 w-[45px]" data-node-id="4:127" data-name="October 12">
+              <p className="[word-break:break-word] font-['Outfit:Regular'] font-normal leading-[14px] relative shrink-0 text-[10px] text-[color:var(--text-secondary,#58677d)] text-left whitespace-nowrap" data-node-id="4:128">
+                M
+              </p>
+              <p className="[word-break:break-word] font-['Outfit:SemiBold'] font-semibold leading-[22px] relative shrink-0 text-[17px] text-[color:var(--text-primary,#142c55)] text-left whitespace-nowrap" data-node-id="4:129">
+                12
+              </p>
+              <div className="relative shrink-0 size-[4px]" data-node-id="4:130" data-name="Status mark">
+                <img alt="" className="absolute block inset-0 max-w-none size-full" src={imgStatusMark} />
+              </div>
+            </a>
+            <a className="bg-[var(--surface-card,white)] content-stretch flex flex-col gap-[var(--space-4,4px)] items-center overflow-clip p-[6px] relative rounded-[var(--radius-16,16px)] shrink-0 w-[45px]" data-node-id="4:131" data-name="October 13">
+              <p className="[word-break:break-word] font-['Outfit:Regular'] font-normal leading-[14px] relative shrink-0 text-[10px] text-[color:var(--text-secondary,#58677d)] text-left whitespace-nowrap" data-node-id="4:132">
+                T
+              </p>
+              <p className="[word-break:break-word] font-['Outfit:SemiBold'] font-semibold leading-[22px] relative shrink-0 text-[17px] text-[color:var(--text-primary,#142c55)] text-left whitespace-nowrap" data-node-id="4:133">
+                13
+              </p>
+              <div className="relative shrink-0 size-[4px]" data-node-id="4:134" data-name="Status mark">
+                <img alt="" className="absolute block inset-0 max-w-none size-full" src={imgStatusMark} />
+              </div>
+            </a>
+            <a className="bg-[var(--surface-brand,#142c55)] content-stretch flex flex-col gap-[var(--space-4,4px)] items-center overflow-clip p-[6px] relative rounded-[var(--radius-16,16px)] shrink-0 w-[45px]" data-node-id="4:135" data-name="October 14">
+              <p className="[word-break:break-word] font-['Outfit:Regular'] font-normal leading-[14px] relative shrink-0 text-[10px] text-[color:var(--text-inverse,white)] text-left whitespace-nowrap" data-node-id="4:136">
+                W
+              </p>
+              <p className="[word-break:break-word] font-['Outfit:SemiBold'] font-semibold leading-[22px] relative shrink-0 text-[17px] text-[color:var(--text-inverse,white)] text-left whitespace-nowrap" data-node-id="4:137">
+                14
+              </p>
+              <div className="relative shrink-0 size-[4px]" data-node-id="4:138" data-name="Status mark">
+                <img alt="" className="absolute block inset-0 max-w-none size-full" src={imgStatusMark1} />
+              </div>
+            </a>
+            <a className="bg-[var(--surface-card,white)] content-stretch flex flex-col gap-[var(--space-4,4px)] items-center overflow-clip p-[6px] relative rounded-[var(--radius-16,16px)] shrink-0 w-[45px]" data-node-id="4:139" data-name="October 15">
+              <p className="[word-break:break-word] font-['Outfit:Regular'] font-normal leading-[14px] relative shrink-0 text-[10px] text-[color:var(--text-secondary,#58677d)] text-left whitespace-nowrap" data-node-id="4:140">
+                T
+              </p>
+              <p className="[word-break:break-word] font-['Outfit:SemiBold'] font-semibold leading-[22px] relative shrink-0 text-[17px] text-[color:var(--text-primary,#142c55)] text-left whitespace-nowrap" data-node-id="4:141">
+                15
+              </p>
+              <div className="relative shrink-0 size-[4px]" data-node-id="4:142" data-name="Status mark">
+                <img alt="" className="absolute block inset-0 max-w-none size-full" src={imgStatusMark} />
+              </div>
+            </a>
+            <a className="bg-[var(--surface-card,white)] content-stretch flex flex-col gap-[var(--space-4,4px)] items-center overflow-clip p-[6px] relative rounded-[var(--radius-16,16px)] shrink-0 w-[45px]" data-node-id="4:143" data-name="October 16">
+              <p className="[word-break:break-word] font-['Outfit:Regular'] font-normal leading-[14px] relative shrink-0 text-[10px] text-[color:var(--text-secondary,#58677d)] text-left whitespace-nowrap" data-node-id="4:144">
+                F
+              </p>
+              <p className="[word-break:break-word] font-['Outfit:SemiBold'] font-semibold leading-[22px] relative shrink-0 text-[17px] text-[color:var(--text-primary,#142c55)] text-left whitespace-nowrap" data-node-id="4:145">
+                16
+              </p>
+              <div className="relative shrink-0 size-[4px]" data-node-id="4:146" data-name="Status mark">
+                <img alt="" className="absolute block inset-0 max-w-none size-full" src={imgStatusMark} />
+              </div>
+            </a>
+            <a className="bg-[var(--surface-card,white)] content-stretch flex flex-col gap-[var(--space-4,4px)] items-center overflow-clip p-[6px] relative rounded-[var(--radius-16,16px)] shrink-0 w-[45px]" data-node-id="4:147" data-name="October 17">
+              <p className="[word-break:break-word] font-['Outfit:Regular'] font-normal leading-[14px] relative shrink-0 text-[10px] text-[color:var(--text-secondary,#58677d)] text-left whitespace-nowrap" data-node-id="4:148">
+                S
+              </p>
+              <p className="[word-break:break-word] font-['Outfit:SemiBold'] font-semibold leading-[22px] relative shrink-0 text-[17px] text-[color:var(--text-primary,#142c55)] text-left whitespace-nowrap" data-node-id="4:149">
+                17
+              </p>
+              <div className="relative shrink-0 size-[4px]" data-node-id="4:150" data-name="Status mark">
+                <img alt="" className="absolute block inset-0 max-w-none size-full" src={imgStatusMark} />
+              </div>
+            </a>
+            <a className="bg-[var(--surface-card,white)] content-stretch flex flex-col gap-[var(--space-4,4px)] items-center overflow-clip p-[6px] relative rounded-[var(--radius-16,16px)] shrink-0 w-[45px]" data-node-id="4:151" data-name="October 18">
+              <p className="[word-break:break-word] font-['Outfit:Regular'] font-normal leading-[14px] relative shrink-0 text-[10px] text-[color:var(--text-secondary,#58677d)] text-left whitespace-nowrap" data-node-id="4:152">
+                S
+              </p>
+              <p className="[word-break:break-word] font-['Outfit:SemiBold'] font-semibold leading-[22px] relative shrink-0 text-[17px] text-[color:var(--text-primary,#142c55)] text-left whitespace-nowrap" data-node-id="4:153">
+                18
+              </p>
+              <div className="relative shrink-0 size-[4px]" data-node-id="4:154" data-name="Status mark">
+                <img alt="" className="absolute block inset-0 max-w-none size-full" src={imgStatusMark} />
+              </div>
+            </a>
+          </div>
+          <div className="bg-[var(--surface-brand,#142c55)] content-stretch flex flex-col gap-[var(--space-16,16px)] items-start overflow-clip p-[var(--space-20,20px)] relative rounded-[var(--radius-24,24px)] shadow-[0px_9px_20px_0px_rgba(20,44,85,0.15)] shrink-0 w-[346px]" data-node-id="4:155" data-name="Current morning routine">
+            <p className="[word-break:break-word] font-['Outfit:SemiBold'] font-semibold leading-[14px] relative shrink-0 text-[10px] text-[color:var(--text-inverse,white)] whitespace-nowrap" data-node-id="4:156">
+              YOUR MORNING · 9:00 AM
+            </p>
+            <div className="content-stretch flex items-center overflow-clip relative shrink-0 w-[306px]" data-node-id="4:157" data-name="A moment for your routine">
+              <div className="[word-break:break-word] content-stretch flex flex-col gap-[9px] items-start overflow-clip relative shrink-0 text-[color:var(--text-inverse,white)] w-[206px]" data-node-id="4:158" data-name="Routine copy">
+                <div className="font-['Outfit:SemiBold'] font-semibold leading-[0] relative shrink-0 text-[26px] w-[206px]" data-node-id="4:159">
+                  <p className="leading-[30px] mb-0">A moment</p>
+                  <p className="leading-[30px]">for your routine.</p>
+                </div>
+                <p className="font-['Outfit:Regular'] font-normal leading-[17px] relative shrink-0 text-[12px] w-[195px]" data-node-id="4:160">
+                  One less thing to hold in mind.
+                </p>
+              </div>
+              <div className="relative shrink-0 size-[100px]" data-node-id="4:161" data-name="Farda / Companion">
+                <div className="absolute left-0 size-[100px] top-0" data-node-id="I4:161;3:173" data-name="Companion / Wave">
+                  <img alt="" className="absolute block inset-0 max-w-none size-full" src={imgCompanionWave} />
+                </div>
+              </div>
+            </div>
+            <p className="[word-break:break-word] font-['Outfit:Regular'] font-normal leading-[17px] relative shrink-0 text-[12px] text-[color:var(--text-inverse,white)] w-[306px]" data-node-id="4:171">
+              9:00 AM · Not yet confirmed
+            </p>
+            <FardaButton className="bg-[var(--surface-canvas,#f6f5f0)] content-stretch cursor-pointer flex h-[48px] items-center justify-center px-[18px] py-[13px] relative rounded-[14px] shrink-0 w-[306px]" label="Log my dose" style="Inverse" />
+            <div className="content-stretch cursor-pointer flex gap-[var(--space-8,8px)] items-start overflow-clip relative shrink-0 w-[306px]" data-node-id="4:174" data-name="Secondary actions">
+              <FardaButton className="bg-[var(--surface-soft,#e9eef7)] content-stretch flex h-[48px] items-center justify-center px-[18px] py-[13px] relative rounded-[14px] shrink-0 w-[149px]" label="Remind in 15 min" />
+              <FardaButton className="bg-[var(--surface-soft,#e9eef7)] content-stretch flex h-[48px] items-center justify-center px-[18px] py-[13px] relative rounded-[14px] shrink-0 w-[149px]" label="More options" />
+            </div>
+          </div>
+          <div className="bg-[var(--surface-soft,#e9eef7)] content-stretch flex flex-col gap-[10px] items-start overflow-clip p-[var(--space-16,16px)] relative rounded-[var(--radius-24,24px)] shrink-0 w-[346px]" data-node-id="4:179" data-name="Reminder rhythm">
+            <p className="[word-break:break-word] font-['Outfit:SemiBold'] font-semibold leading-[14px] relative shrink-0 text-[10px] text-[color:var(--text-primary,#142c55)] whitespace-nowrap" data-node-id="4:180">
+              YOUR REMINDER RHYTHM
+            </p>
+            <p className="[word-break:break-word] font-['Outfit:Regular'] font-normal leading-[20px] relative shrink-0 text-[14px] text-[color:var(--text-primary,#142c55)] w-[314px]" data-node-id="4:181">
+              A heads-up. A moment. A real ring.
+            </p>
+            <div className="content-stretch cursor-pointer flex gap-[10px] items-start overflow-clip relative shrink-0 w-[314px]" data-node-id="4:182" data-name="Reminder milestones">
+              <a className="content-stretch flex flex-col gap-[5px] items-center overflow-clip relative shrink-0 w-[98px]" data-node-id="4:183" data-name="Live Activity">
+                <div className="relative shrink-0 size-[8px]" data-node-id="4:184" data-name="Status mark">
+                  <img alt="" className="absolute block inset-0 max-w-none size-full" src={imgStatusMark2} />
+                </div>
+                <p className="[word-break:break-word] font-['Outfit:SemiBold'] font-semibold leading-[29px] relative shrink-0 text-[22px] text-[color:var(--text-primary,#142c55)] text-left whitespace-nowrap" data-node-id="4:185">
+                  8:50
+                </p>
+                <p className="[word-break:break-word] font-['Outfit:Regular'] font-normal leading-[14px] relative shrink-0 text-[10px] text-[color:var(--text-secondary,#58677d)] text-left whitespace-nowrap" data-node-id="4:186">
+                  Live Activity
+                </p>
+              </a>
+              <a className="content-stretch flex flex-col gap-[5px] items-center overflow-clip relative shrink-0 w-[98px]" data-node-id="4:187" data-name="Routine due">
+                <div className="relative shrink-0 size-[8px]" data-node-id="4:188" data-name="Status mark">
+                  <img alt="" className="absolute block inset-0 max-w-none size-full" src={imgStatusMark3} />
+                </div>
+                <p className="[word-break:break-word] font-['Outfit:SemiBold'] font-semibold leading-[29px] relative shrink-0 text-[22px] text-[color:var(--text-primary,#142c55)] text-left whitespace-nowrap" data-node-id="4:189">
+                  9:00
+                </p>
+                <p className="[word-break:break-word] font-['Outfit:Regular'] font-normal leading-[14px] relative shrink-0 text-[10px] text-[color:var(--text-secondary,#58677d)] text-left whitespace-nowrap" data-node-id="4:190">
+                  Routine due
+                </p>
+              </a>
+              <a className="content-stretch flex flex-col gap-[5px] items-center overflow-clip relative shrink-0 w-[98px]" data-node-id="4:191" data-name="Call reminder">
+                <div className="relative shrink-0 size-[8px]" data-node-id="4:192" data-name="Status mark">
+                  <img alt="" className="absolute block inset-0 max-w-none size-full" src={imgStatusMark2} />
+                </div>
+                <p className="[word-break:break-word] font-['Outfit:SemiBold'] font-semibold leading-[29px] relative shrink-0 text-[22px] text-[color:var(--text-primary,#142c55)] text-left whitespace-nowrap" data-node-id="4:193">
+                  9:10
+                </p>
+                <p className="[word-break:break-word] font-['Outfit:Regular'] font-normal leading-[14px] relative shrink-0 text-[10px] text-[color:var(--text-secondary,#58677d)] text-left whitespace-nowrap" data-node-id="4:194">
+                  Call reminder
+                </p>
+              </a>
+            </div>
+            <p className="[word-break:break-word] font-['Outfit:Regular'] font-normal leading-[14px] relative shrink-0 text-[10px] text-[color:var(--text-secondary,#58677d)] w-[314px]" data-node-id="4:195">
+              Calls only when you enable them
+            </p>
+          </div>
+          <p className="[word-break:break-word] font-['Outfit:SemiBold'] font-semibold leading-[24px] relative shrink-0 text-[18px] text-[color:var(--text-primary,#142c55)] whitespace-nowrap" data-node-id="4:196">
+            Ahead of the day
+          </p>
+          <div className="bg-[var(--surface-card,white)] content-stretch flex flex-col gap-[var(--space-16,16px)] items-start overflow-clip p-[18px] relative rounded-[var(--radius-24,24px)] shrink-0 w-[346px]" data-node-id="4:197" data-name="Card">
+            <a className="content-stretch cursor-pointer flex gap-[var(--space-12,12px)] items-center overflow-clip relative shrink-0 w-[310px]" data-node-id="4:198" data-name="Evening routine">
+              <div className="bg-[var(--surface-soft,#e9eef7)] content-stretch flex items-start overflow-clip p-[9px] relative rounded-[var(--radius-12,12px)] shrink-0 size-[40px]" data-node-id="4:199" data-name="Icon container">
+                <div className="relative shrink-0 size-[22px]" data-node-id="4:200" data-name="Icon / pill">
+                  <img alt="" className="absolute block inset-0 max-w-none size-full" src={imgIconPill} />
+                </div>
+              </div>
+              <div className="[word-break:break-word] content-stretch flex flex-col gap-[3px] items-start overflow-clip relative shrink-0 text-left w-[230px]" data-node-id="4:203" data-name="Copy">
+                <p className="font-['Outfit:SemiBold'] font-semibold leading-[20px] relative shrink-0 text-[14px] text-[color:var(--text-primary,#142c55)] w-[230px]" data-node-id="4:204">
+                  Evening routine
+                </p>
+                <p className="font-['Outfit:Regular'] font-normal leading-[17px] relative shrink-0 text-[12px] text-[color:var(--text-secondary,#58677d)] w-[230px]" data-node-id="4:205">
+                  8:00 PM · Manual reminder
+                </p>
+              </div>
+              <div className="relative shrink-0 size-[16px]" data-node-id="4:206" data-name="Icon / arrow">
+                <img alt="" className="absolute block inset-0 max-w-none size-full" src={imgIconArrow} />
+              </div>
+            </a>
+          </div>
+          <p className="[word-break:break-word] font-['Outfit:SemiBold'] font-semibold leading-[24px] relative shrink-0 text-[18px] text-[color:var(--text-primary,#142c55)] whitespace-nowrap" data-node-id="4:208">
+            A little head start
+          </p>
+          <div className="bg-[var(--surface-card,white)] content-stretch flex flex-col gap-[var(--space-16,16px)] items-start overflow-clip p-[18px] relative rounded-[var(--radius-24,24px)] shrink-0 w-[346px]" data-node-id="4:209" data-name="Card">
+            <a className="content-stretch cursor-pointer flex gap-[var(--space-12,12px)] items-center overflow-clip relative shrink-0 w-[310px]" data-node-id="4:210" data-name="Let’s plan your refill">
+              <div className="bg-[var(--surface-soft,#e9eef7)] content-stretch flex items-start overflow-clip p-[9px] relative rounded-[var(--radius-12,12px)] shrink-0 size-[40px]" data-node-id="4:211" data-name="Icon container">
+                <div className="relative shrink-0 size-[22px]" data-node-id="4:212" data-name="Icon / refill">
+                  <img alt="" className="absolute block inset-0 max-w-none size-full" src={imgIconRefill} />
+                </div>
+              </div>
+              <div className="[word-break:break-word] content-stretch flex flex-col gap-[3px] items-start overflow-clip relative shrink-0 text-left w-[230px]" data-node-id="4:214" data-name="Copy">
+                <p className="font-['Outfit:SemiBold'] font-semibold leading-[20px] relative shrink-0 text-[14px] text-[color:var(--text-primary,#142c55)] w-[230px]" data-node-id="4:215">
+                  Let’s plan your refill
+                </p>
+                <p className="font-['Outfit:Regular'] font-normal leading-[17px] relative shrink-0 text-[12px] text-[color:var(--text-secondary,#58677d)] w-[230px]" data-node-id="4:216">
+                  About 6 days of supply · Estimate
+                </p>
+              </div>
+              <div className="relative shrink-0 size-[16px]" data-node-id="4:217" data-name="Icon / arrow">
+                <img alt="" className="absolute block inset-0 max-w-none size-full" src={imgIconArrow} />
+              </div>
+            </a>
+          </div>
+          <div className="bg-[var(--surface-soft,#e9eef7)] content-stretch flex gap-[var(--space-8,8px)] items-start overflow-clip p-[var(--space-12,12px)] relative rounded-[var(--radius-16,16px)] shrink-0 w-[346px]" data-node-id="4:219" data-name="Helpful context">
+            <div className="relative shrink-0 size-[18px]" data-node-id="4:220" data-name="Icon / info">
+              <img alt="" className="absolute block inset-0 max-w-none size-full" src={imgIconInfo} />
+            </div>
+            <p className="[word-break:break-word] font-['Outfit:Regular'] font-normal leading-[17px] relative shrink-0 text-[12px] text-[color:var(--text-secondary,#58677d)] w-[284px]" data-node-id="4:223">
+              No vial yet? Your reminders and manual journal work on their own.
+            </p>
+          </div>
+          <p className="[word-break:break-word] font-['Outfit:Regular'] font-normal leading-[17px] relative shrink-0 text-[12px] text-[color:var(--text-secondary,#58677d)] w-[346px]" data-node-id="4:224">
+            Your record, not a score. No streaks to keep.
+          </p>
+        </div>
+      </div>
+      <div className="bg-[var(--surface-card,white)] border-[var(--border-default,#dce2eb)] border-solid border-t content-stretch flex flex-col gap-[var(--space-8,8px)] h-[86px] items-center overflow-clip pt-[11px] px-[22px] relative shrink-0 w-[390px]" data-node-id="4:89" data-name="Bottom navigation">
+        <div className="content-stretch flex gap-[6px] items-start overflow-clip relative shrink-0 w-[346px]" data-node-id="4:90" data-name="Primary tabs">
+          <div className="content-stretch flex flex-col gap-[var(--space-4,4px)] items-center overflow-clip relative shrink-0 w-[82px]" data-node-id="4:91" data-name="Today">
+            <div className="bg-[var(--surface-soft,#e9eef7)] content-stretch flex items-start justify-center overflow-clip p-[6px] relative rounded-[var(--radius-12,12px)] shrink-0 w-[36px]" data-node-id="4:92" data-name="Tab icon">
+              <div className="relative shrink-0 size-[22px]" data-node-id="4:93" data-name="Icon / home">
+                <img alt="" className="absolute block inset-0 max-w-none size-full" src={imgIconHome} />
+              </div>
+            </div>
+            <p className="[word-break:break-word] font-['Outfit:SemiBold'] font-semibold leading-[14px] relative shrink-0 text-[10px] text-[color:var(--text-primary,#142c55)] whitespace-nowrap" data-node-id="4:96">
+              Today
+            </p>
+          </div>
+          <a className="content-stretch cursor-pointer flex flex-col gap-[var(--space-4,4px)] items-center overflow-clip relative shrink-0 w-[82px]" data-node-id="4:97" data-name="Calendar">
+            <div className="content-stretch flex items-start justify-center overflow-clip p-[6px] relative rounded-[var(--radius-12,12px)] shrink-0 w-[36px]" data-node-id="4:98" data-name="Tab icon">
+              <div className="relative shrink-0 size-[22px]" data-node-id="4:99" data-name="Icon / calendar">
+                <img alt="" className="absolute block inset-0 max-w-none size-full" src={imgIconCalendar} />
+              </div>
+            </div>
+            <p className="[word-break:break-word] font-['Outfit:Regular'] font-normal leading-[14px] relative shrink-0 text-[10px] text-[color:var(--text-secondary,#58677d)] text-left whitespace-nowrap" data-node-id="4:102">
+              Calendar
+            </p>
+          </a>
+          <a className="content-stretch cursor-pointer flex flex-col gap-[var(--space-4,4px)] items-center overflow-clip relative shrink-0 w-[82px]" data-node-id="4:103" data-name="Refills">
+            <div className="content-stretch flex items-start justify-center overflow-clip p-[6px] relative rounded-[var(--radius-12,12px)] shrink-0 w-[36px]" data-node-id="4:104" data-name="Tab icon">
+              <div className="relative shrink-0 size-[22px]" data-node-id="4:105" data-name="Icon / refill">
+                <img alt="" className="absolute block inset-0 max-w-none size-full" src={imgIconRefill1} />
+              </div>
+            </div>
+            <p className="[word-break:break-word] font-['Outfit:Regular'] font-normal leading-[14px] relative shrink-0 text-[10px] text-[color:var(--text-secondary,#58677d)] text-left whitespace-nowrap" data-node-id="4:107">
+              Refills
+            </p>
+          </a>
+          <a className="content-stretch cursor-pointer flex flex-col gap-[var(--space-4,4px)] items-center overflow-clip relative shrink-0 w-[82px]" data-node-id="4:108" data-name="You">
+            <div className="content-stretch flex items-start justify-center overflow-clip p-[6px] relative rounded-[var(--radius-12,12px)] shrink-0 w-[36px]" data-node-id="4:109" data-name="Tab icon">
+              <div className="relative shrink-0 size-[22px]" data-node-id="4:110" data-name="Icon / user">
+                <img alt="" className="absolute block inset-0 max-w-none size-full" src={imgIconUser} />
+              </div>
+            </div>
+            <p className="[word-break:break-word] font-['Outfit:Regular'] font-normal leading-[14px] relative shrink-0 text-[10px] text-[color:var(--text-secondary,#58677d)] text-left whitespace-nowrap" data-node-id="4:113">
+              You
+            </p>
+          </a>
+        </div>
+        <div className="bg-[var(--surface-brand,#142c55)] h-[4px] relative rounded-[2px] shrink-0 w-[108px]" data-node-id="4:114" data-name="Home indicator" />
+      </div>
+    </div>
+  );
+}
+
+SUPER CRITICAL: The generated React+Tailwind code MUST be converted to match the target project's technology stack and styling system.
+1. Analyze the target codebase to identify: technology stack, styling approach, component patterns, and design tokens
+2. Convert React syntax to the target framework/library
+3. Transform all Tailwind classes to the target styling system while preserving exact visual design
+4. Follow the project's existing patterns and conventions
+DO NOT install any Tailwind as a dependency unless the user instructs you to do so.
+
+
+Node ids have been added to the code as data attributes, e.g. `data-node-id="1:2"`.
+
+These styles are contained in the design: Farda/Body strong: Font(family: "Outfit", style: SemiBold, size: 14, weight: 600, lineHeight: 20, letterSpacing: 0), Farda/Body: Font(family: "Outfit", style: Regular, size: 14, weight: 400, lineHeight: 20, letterSpacing: 0), Farda/Display: Font(family: "Outfit", style: SemiBold, size: 34, weight: 600, lineHeight: 37, letterSpacing: 0), Farda/Label: Font(family: "Outfit", style: SemiBold, size: 10, weight: 600, lineHeight: 14, letterSpacing: 0), Farda/Heading: Font(family: "Outfit", style: SemiBold, size: 26, weight: 600, lineHeight: 30, letterSpacing: 0), Farda/Caption: Font(family: "Outfit", style: Regular, size: 12, weight: 400, lineHeight: 17, letterSpacing: 0), Farda/Title: Font(family: "Outfit", style: SemiBold, size: 18, weight: 600, lineHeight: 24, letterSpacing: 0).
+
+Component descriptions: The following components have usage descriptions or documentation links defined in Figma. These descriptions provide important context about the intended usage, best practices, and any constraints for each component. Follow these guidelines when implementing or using these components.
+
+## Farda / Companion
+**Node ID:** 3:172
+
+Calm optional companion. No guilt, scores, or judgment. Native vector interpretation for the Figma mock; production artwork remains in the repository.
+
+## Farda / Button
+**Node ID:** 3:140
+
+44+ pt touch target. Label is editable. Primary actions confirm intent; answering a call never creates a dose entry.
+
+The generated code contains image and SVG URL constants, e.g. const image = 'FIGMA_TEMPORARY_ASSET_URL_REDACTED'. These URLs are temporary download sources and expire after 7 days. Download each asset into the project with curl -L, then replace its URL in the generated code with a reference to the downloaded asset. Never use the temporary URLs as runtime image sources.
