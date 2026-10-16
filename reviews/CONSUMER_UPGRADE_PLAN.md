@@ -16,6 +16,10 @@ The user approved a more expressive Calendar on October 15: week-first navigatio
 
 Implemented October 15: dedicated camera viewfinder; up to four overlapping photos for one long/curved label; enlarged photo review, retake/remove and user-confirmed text coverage; authenticated multi-image OCR with safe manual fallback. Manual entry uses small steps with intact directions and explicit label review. Daily reminders are optional; no daily reminders creates no schedule. Today, Refills and Your routine expose direct Add medication entry points. Refill requests are editable and copyable, with no pharmacy submission claim. Astra added 16 matching editable Figma states; 28 new Flutter screenshots cover 390px and 320px/1.3 text. All 233 Flutter tests passed. See [the focused handoff](../prototypes/consumer-v2/PRESCRIPTION_ONBOARDING_HANDOFF.md). Device camera/OCR evaluation and pharmacy partner integration remain release work.
 
+### October 16 refill agent follow-up
+
+The refill API build is implemented on `codex/refill-agent`: documented Photon connector, trusted prescription links, explicit reviewed submission, durable duplicate protection and separate provider status. Flutter adds the connection card and optional AI question routing; inventory reads are batched. Astra added matching editable Figma states. Local backend validation passes 204 tests; database and native build validation runs in CI. Live sending remains disabled pending partner configuration and sandbox verification. See [the implementation and operator handoff](../prototypes/consumer-v2/REFILL_AGENT_HANDOFF.md) for the current scope and remaining release gates.
+
 ## The product to build
 
 Keep the lowercase Farda wordmark, Outfit typography, soft surfaces and reassuring voice. Move to rich navy and make the app feel like a useful daily companion: **Today, an interactive Calendar, a Refill station, and Your space**.

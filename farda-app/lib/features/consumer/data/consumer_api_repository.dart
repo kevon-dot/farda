@@ -6,11 +6,17 @@ import 'package:http/http.dart' as http;
 import 'consumer_models.dart';
 import 'consumer_repository.dart';
 import 'label_scan.dart';
+import 'refill_agent.dart';
 import 'package:http_parser/http_parser.dart';
 
 /// The production adapter never substitutes fixture data after a failed request.
 /// Transport logs deliberately contain neither bearer tokens nor health records.
-class ConsumerApiRepository implements ConsumerRepository, LabelScanRepository {
+class ConsumerApiRepository
+    implements
+        ConsumerRepository,
+        LabelScanRepository,
+        RefillAgentRepository,
+        RefillQuestionRepository {
   ConsumerApiRepository({
     required String baseUrl,
     required Future<String?> Function() tokenProvider,
@@ -64,9 +70,10 @@ class ConsumerApiRepository implements ConsumerRepository, LabelScanRepository {
           });
     if (body != null) request.body = jsonEncode(body);
     try {
-      final response = await http.Response.fromStream(
-        await _client.send(request),
-      ).timeout(const Duration(seconds: 20));
+      final response = await _client
+          .send(request)
+          .then(http.Response.fromStream)
+          .timeout(const Duration(seconds: 20));
       String? currentToken;
       try {
         currentToken = await _tokenProvider();
@@ -182,6 +189,54 @@ class ConsumerApiRepository implements ConsumerRepository, LabelScanRepository {
       );
     }
   }
+
+  @override
+  Future<RefillAgentAnswer> askRefillQuestion(
+    String prescriptionId,
+    String question,
+  ) async => RefillAgentAnswer.fromJson(
+    await _request(
+      'POST',
+      'refills/agent/${Uri.encodeComponent(prescriptionId)}/assist',
+      body: {'question': question, 'consent': true},
+    ),
+  );
+
+  @override
+  Future<RefillAgentState> loadRefillAgent(String prescriptionId) async =>
+      RefillAgentState.fromJson(
+        await _request(
+          'GET',
+          'refills/agent/${Uri.encodeComponent(prescriptionId)}',
+        ),
+      );
+
+  @override
+  Future<RefillAgentState> submitRefillAgent(
+    String prescriptionId, {
+    required String reviewToken,
+    required String idempotencyKey,
+  }) async => RefillAgentState.fromJson(
+    await _request(
+      'POST',
+      'refills/agent/${Uri.encodeComponent(prescriptionId)}/submit',
+      body: {
+        'reviewToken': reviewToken,
+        'confirmed': true,
+        'idempotencyKey': idempotencyKey,
+      },
+    ),
+  );
+
+  @override
+  Future<RefillAgentState> refreshRefillAgent(String prescriptionId) async =>
+      RefillAgentState.fromJson(
+        await _request(
+          'POST',
+          'refills/agent/${Uri.encodeComponent(prescriptionId)}/refresh',
+          body: {},
+        ),
+      );
 
   @override
   Future<LabelScanDraft> extractLabel(List<LabelPhoto> photos) async {
@@ -313,6 +368,15 @@ class ConsumerApiRepository implements ConsumerRepository, LabelScanRepository {
     required DateTime from,
     required DateTime to,
   }) async {
+    Future<Map<String, dynamic>> optionalRead(String path) async {
+      try {
+        return await _request('GET', path);
+      } on ConsumerRepositoryException catch (error) {
+        if (error.sessionExpired) rethrow;
+        return {};
+      }
+    }
+
     final responses = await Future.wait([
       _request('GET', 'prescriptions'),
       _request(
@@ -323,6 +387,8 @@ class ConsumerApiRepository implements ConsumerRepository, LabelScanRepository {
           'to': to.toUtc().toIso8601String(),
         },
       ),
+      optionalRead('reminders/preferences'),
+      optionalRead('refills'),
     ]);
     final prescriptions =
         _rows(responses[0]).map((p) {
@@ -389,7 +455,10 @@ class ConsumerApiRepository implements ConsumerRepository, LabelScanRepository {
     final warnings = <String>[];
     String? callConsentText;
     try {
-      final response = await _request('GET', 'reminders/preferences');
+      final response = responses[2];
+      if (response.isEmpty) {
+        throw const ConsumerRepositoryException('Unavailable');
+      }
       final body =
           response['data'] is Map
               ? Map<String, dynamic>.from(response['data'] as Map)
@@ -429,8 +498,21 @@ class ConsumerApiRepository implements ConsumerRepository, LabelScanRepository {
     var refillsEnabled = false;
     var inventoryEnabled = prescriptions.isNotEmpty;
     final refills = <String, Map<String, dynamic>>{};
+    final counts = <String, Map<String, dynamic>?>{};
     try {
-      final response = await _request('GET', 'refills');
+      final response = responses[3];
+      if (response.isEmpty) {
+        throw const ConsumerRepositoryException('Unavailable');
+      }
+      final batch = response['inventories'];
+      if (batch is List) {
+        for (final entry in batch.whereType<Map>()) {
+          counts['${entry['prescriptionId']}'] =
+              entry['inventory'] is Map
+                  ? Map<String, dynamic>.from(entry['inventory'] as Map)
+                  : null;
+        }
+      }
       final rows = response['refills'];
       if (rows is List) {
         refillsEnabled = true;
@@ -449,19 +531,9 @@ class ConsumerApiRepository implements ConsumerRepository, LabelScanRepository {
     }
     for (final prescription in prescriptions) {
       final refill = refills[prescription.id];
-      Map<String, dynamic>? count;
-      try {
-        final response = await _request(
-          'GET',
-          'inventory/${Uri.encodeComponent(prescription.id)}',
-        );
-        if (response['inventory'] is Map) {
-          count = Map<String, dynamic>.from(response['inventory'] as Map);
-        }
-      } on ConsumerRepositoryException catch (e) {
-        if (e.sessionExpired) rethrow;
-        inventoryEnabled = false;
-      }
+      // A missing batch entry means unavailable, never an assumed zero count.
+      final count = counts[prescription.id];
+      if (!counts.containsKey(prescription.id)) inventoryEnabled = false;
       final revision = (count?['revision'] as num?)?.toInt() ?? 0;
       _inventoryRevisions[prescription.id] = revision;
       inventory.add(
@@ -480,6 +552,9 @@ class ConsumerApiRepository implements ConsumerRepository, LabelScanRepository {
           ),
         ),
       );
+    }
+    if (!inventoryEnabled && prescriptions.isNotEmpty) {
+      warnings.add('Supply counts could not be refreshed.');
     }
     capabilities = ConsumerCapabilities(
       voiceEnabled: capabilities.voiceEnabled,

@@ -31,6 +31,9 @@ model User {
   refillEvents RefillEvent[]
   inventoryBalances InventoryBalance[]
   inventoryEntries InventoryEntry[]
+  refillProviderLinks RefillProviderLink[]
+  refillAgentReviews RefillAgentReview[]
+  refillAgentRequests RefillAgentRequest[]
 }
 
 model Prescription {
@@ -58,6 +61,9 @@ model Prescription {
   refillIntents RefillIntent[]
   inventoryBalance InventoryBalance?
   inventoryEntries InventoryEntry[]
+  refillProviderLink RefillProviderLink?
+  refillAgentReviews RefillAgentReview[]
+  refillAgentRequests RefillAgentRequest[]
   schedules ScheduleVersion[]
 
   @@index([userId])
@@ -301,4 +307,64 @@ model ApiRateLimit {
   count Int
   expiresAt DateTime
   @@index([expiresAt])
+}
+
+// Provisioned only by a trusted operator after provider identity verification.
+model RefillProviderLink {
+  id String @id @default(cuid())
+  userId String
+  prescriptionId String @unique
+  environment String
+  patientId String
+  providerPrescriptionId String
+  pharmacyId String
+  enabled Boolean @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  prescription Prescription @relation(fields: [prescriptionId], references: [id], onDelete: Cascade)
+  @@index([userId])
+  @@unique([environment, patientId, providerPrescriptionId])
+}
+
+model RefillAgentReview {
+  id String @id
+  userId String
+  prescriptionId String
+  snapshot Json
+  snapshotHash String
+  localRevision DateTime
+  linkRevision DateTime
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  prescription Prescription @relation(fields: [prescriptionId], references: [id], onDelete: Cascade)
+  request RefillAgentRequest?
+  @@index([userId, prescriptionId, expiresAt])
+}
+
+// Provider facts are deliberately separate from user-report refill and supply ledgers.
+model RefillAgentRequest {
+  id String @id
+  userId String
+  prescriptionId String
+  reviewId String @unique
+  requestKey String
+  environment String
+  patientId String
+  providerPrescriptionId String
+  pharmacyId String
+  providerOrderId String?
+  status String @default("submitting")
+  providerConfirmed Boolean @default(false)
+  failureCode String?
+  lastCheckedAt DateTime?
+  refreshClaimedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  prescription Prescription @relation(fields: [prescriptionId], references: [id], onDelete: Cascade)
+  review RefillAgentReview @relation(fields: [reviewId], references: [id], onDelete: Restrict)
+  @@unique([userId, requestKey])
+  @@index([userId, prescriptionId, createdAt])
 }

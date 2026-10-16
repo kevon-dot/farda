@@ -1,3 +1,4 @@
+import 'package:farda/features/consumer/data/refill_agent.dart';
 import 'package:flutter/material.dart';
 import 'package:farda/features/consumer/data/consumer_models.dart';
 
@@ -30,6 +31,7 @@ class FardaRefillsScreen extends StatelessWidget {
     this.onOpenRefillTools,
     this.onOpenProfile,
     this.onAddPrescription,
+    this.agentRepository,
   }) : assert(controller == null || initialState == null);
 
   final RefillStationController? controller;
@@ -40,6 +42,7 @@ class FardaRefillsScreen extends StatelessWidget {
 
   /// Non-null on the authenticated route. A null snapshot preserves the
   /// isolated design preview, which intentionally uses local sample state.
+  final RefillAgentRepository? agentRepository;
   final ConsumerSnapshot? snapshot;
   final Future<String?> Function(String prescriptionId, int quantity)?
   onUpdateInventory;
@@ -64,6 +67,7 @@ class FardaRefillsScreen extends StatelessWidget {
     if (snapshot != null) {
       return LiveRefillsScreen(
         snapshot: snapshot!,
+        agentRepository: agentRepository,
         onUpdateInventory: onUpdateInventory,
         onUpdateRefill: onUpdateRefill,
         onReconcileReceipt: onReconcileReceipt,

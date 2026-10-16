@@ -48,17 +48,31 @@ export function inventoryPresentation(
 export class RefillService {
 	constructor(private db: PrismaClient) {}
 	async list(userId: string) {
-		const refills = await this.db.refillIntent.findMany({
-			where: { userId },
-			include: {
-				receipt: {
-					select: { id: true, quantity: true, delta: true, createdAt: true },
+		const [refills, prescriptions, balances] = await Promise.all([
+			this.db.refillIntent.findMany({
+				where: { userId },
+				include: {
+					receipt: {
+						select: { id: true, quantity: true, delta: true, createdAt: true },
+					},
 				},
-			},
-			orderBy: { createdAt: "desc" },
-			take: 100,
-		});
+				orderBy: { createdAt: "desc" },
+				take: 100,
+			}),
+			this.db.prescription.findMany({
+				where: { userId, archivedAt: null },
+				select: { id: true },
+			}),
+			this.db.inventoryBalance.findMany({ where: { userId } }),
+		]);
+		const byPrescription = new Map(
+			balances.map((balance) => [balance.prescriptionId, balance]),
+		);
 		return {
+			inventories: prescriptions.map((prescription) => ({
+				prescriptionId: prescription.id,
+				...inventoryPresentation(byPrescription.get(prescription.id) ?? null),
+			})),
 			refills: refills.map((r) => ({
 				...r,
 				receiptReconciled: !!r.receipt,

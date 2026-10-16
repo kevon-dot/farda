@@ -1,3 +1,4 @@
+import 'package:farda/features/consumer/data/refill_agent.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
@@ -371,6 +372,10 @@ class _FardaConsumerShellState extends State<FardaConsumerShell> {
                         },
               ),
               FardaRefillsScreen(
+                agentRepository:
+                    controller?.repository is RefillAgentRepository
+                        ? controller!.repository as RefillAgentRepository
+                        : null,
                 onOpenProfile: () => _selectTab(3),
                 snapshot: snapshot,
                 onUpdateInventory:

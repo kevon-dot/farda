@@ -130,3 +130,7 @@ The remaining integration is complete when supported account actions across the 
 ## Prescription onboarding follow-up — October 15
 
 Guided multi-photo capture, manual onboarding, record-only prescriptions and a copyable refill assistant are implemented. All 233 Flutter tests pass; backend OCR/validation checks passed 42 tests. See [PRESCRIPTION_ONBOARDING_HANDOFF.md](PRESCRIPTION_ONBOARDING_HANDOFF.md) for exact behavior and release boundaries.
+
+## Refill agent follow-up — October 16
+
+The assistant now includes an optional provider connection with explicit review/consent, safe uncertain-submit recovery, verified status refresh and manual fallback. An opt-in question helper provides navigation-only guidance. Supply loads in the batched refill response rather than a per-medication request waterfall. See [REFILL_AGENT_HANDOFF.md](REFILL_AGENT_HANDOFF.md) for API contracts, partner setup, tests and remaining gates, and [REFILL_AGENT_DESIGN.md](REFILL_AGENT_DESIGN.md) for Astra's editable frames and scoped rendered comparison. Live pharmacy sending is disabled pending configured partner access and verified prescription links.
