@@ -3,6 +3,8 @@ import 'package:farda/consumer_v2/screens/membership/farda_membership_screen.dar
 import 'package:farda/features/consumer/data/billing.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:farda/consumer_v2/screens/membership/membership_offer_gate.dart';
 
 class BillingFake implements BillingRepository {
   BillingStatus status = const BillingStatus();
@@ -31,6 +33,52 @@ class BillingFake implements BillingRepository {
 }
 
 void main() {
+  test(
+    'onboarding offer is once per account and rejects a stale session',
+    () async {
+      SharedPreferences.setMockInitialValues({});
+      expect(await MembershipOfferGate.claim('owner-a', () => true), isTrue);
+      expect(await MembershipOfferGate.claim('owner-a', () => true), isFalse);
+      expect(await MembershipOfferGate.claim('owner-b', () => false), isFalse);
+      expect(await MembershipOfferGate.claim('owner-b', () => true), isTrue);
+      expect(await MembershipOfferGate.claim('', () => true), isFalse);
+    },
+  );
+
+  testWidgets('onboarding offer can continue free without checkout', (
+    tester,
+  ) async {
+    final repo = BillingFake();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder:
+              (context) => TextButton(
+                onPressed:
+                    () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder:
+                            (_) => FardaMembershipScreen(
+                              repository: repo,
+                              onboardingOffer: true,
+                            ),
+                      ),
+                    ),
+                child: const Text('Start'),
+              ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('Start'));
+    await tester.pumpAndSettle();
+    expect(find.text('Your routine, supported.'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('Continue free'), 300);
+    await tester.tap(find.text('Continue free'));
+    await tester.pumpAndSettle();
+    expect(find.text('Start'), findsOneWidget);
+    expect(repo.checkouts, 0);
+  });
+
   testWidgets(
     'session revision removes paid state before loading the next account',
     (tester) async {
@@ -68,12 +116,20 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      await tester.scrollUntilVisible(find.text('\$59.99 / year'), 150);
-      expect(find.text('\$59.99 / year'), findsOneWidget);
+      await tester.scrollUntilVisible(find.text('\$149.99 / year'), 150);
+      expect(find.text('\$149.99 / year'), findsOneWidget);
       await tester.scrollUntilVisible(find.text('Family'), -150);
       await tester.tap(find.text('Family'));
       await tester.pumpAndSettle();
-      expect(find.text('\$99.99 / year'), findsOneWidget);
+      expect(find.text('\$249.99 / year'), findsOneWidget);
+      await tester.scrollUntilVisible(find.text('Monthly'), -150);
+      await tester.tap(find.text('Monthly'));
+      await tester.pumpAndSettle();
+      expect(find.text('\$24.99 / month'), findsOneWidget);
+      await tester.scrollUntilVisible(find.text('Plus'), -150);
+      await tester.tap(find.text('Plus'));
+      await tester.pumpAndSettle();
+      expect(find.text('\$14.99 / month'), findsOneWidget);
       expect(tester.takeException(), isNull);
       await tester.scrollUntilVisible(find.text('Purchases unavailable'), 300);
       final button = tester.widget<FilledButton>(

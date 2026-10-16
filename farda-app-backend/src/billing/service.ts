@@ -5,6 +5,20 @@ import { configuredPrices, priceCatalog, publicCatalog, type PaidTier, type Pric
 export class BillingError extends Error { constructor(public status: number, public code: string, message: string) { super(message); } }
 type Db = Pick<PrismaClient, 'billingCustomer' | 'billingSubscription' | 'billingWebhookEvent' | 'billingCheckout' | '$transaction'>;
 const validUrl = (raw: string) => { const url = new URL(raw); const origins = (process.env.FARDA_BILLING_RETURN_ORIGINS ?? '').split(',').map(x => x.trim()).filter(Boolean); if (!origins.includes(url.origin)) throw new BillingError(400, 'invalid_url', 'Return URL origin is not allowed.'); return url.toString(); };
+const objectId = (value: string | { id: string } | null | undefined) => typeof value === 'string' ? value : value?.id;
+
+function eventSubscriptionId(event: Stripe.Event) {
+  if (event.type.startsWith('customer.subscription.')) return (event.data.object as Stripe.Subscription).id;
+  if (event.type === 'invoice.paid' || event.type === 'invoice.payment_failed') {
+    const invoice = event.data.object as Stripe.Invoice;
+    const subscription = invoice.parent?.subscription_details?.subscription ?? (invoice as Stripe.Invoice & { subscription?: string | Stripe.Subscription | null }).subscription;
+    return objectId(subscription);
+  }
+  if (event.type === 'checkout.session.completed' || event.type === 'checkout.session.async_payment_succeeded' || event.type === 'checkout.session.async_payment_failed') {
+    return objectId((event.data.object as Stripe.Checkout.Session).subscription);
+  }
+  return undefined;
+}
 
 export class BillingService {
   private readonly prices = configuredPrices();
@@ -73,21 +87,22 @@ export class BillingService {
     if (await this.db.billingWebhookEvent.findUnique({ where: { stripeEventId: event.id } })) return { duplicate: true };
     const expectedLive = process.env.STRIPE_MODE === 'live';
     if (event.livemode !== expectedLive) throw new BillingError(400, 'mode_mismatch', 'Webhook mode does not match billing configuration.');
-    if (event.type.startsWith('customer.subscription.')) {
-      const delivered = event.data.object as Stripe.Subscription;
+    const subscriptionId = eventSubscriptionId(event);
+    if (subscriptionId) {
+      const delivered = event.type.startsWith('customer.subscription.') ? event.data.object as Stripe.Subscription : undefined;
       // Stripe doesn't guarantee event delivery order. Retrieve canonical state
       // for non-deletion events instead of trusting a possibly stale payload.
-      const canonical = event.type === 'customer.subscription.deleted' ? delivered : await this.provider().subscriptions.retrieve(delivered.id);
+      const canonical = event.type === 'customer.subscription.deleted' ? delivered! : await this.provider().subscriptions.retrieve(subscriptionId, { expand: ['latest_invoice'] });
       if (canonical.livemode !== expectedLive) throw new BillingError(400, 'mode_mismatch', 'Subscription mode does not match billing configuration.');
-      const run = async (db: Db) => { await this.reconcile(canonical, event.created, db); };
+      const run = async (db: Db) => { await this.reconcile(canonical, event.created, expectedLive, db); };
       if (typeof this.db.$transaction === 'function') {
         await this.db.$transaction(async tx => {
-          await tx.$executeRawUnsafe('SELECT pg_advisory_xact_lock(hashtext($1))', delivered.id);
+          await tx.$executeRawUnsafe('SELECT pg_advisory_xact_lock(hashtext($1))', subscriptionId);
           // Re-read after acquiring the cross-worker lock. The first retrieve
           // may have raced another webhook's provider update.
-          const lockedCanonical = event.type === 'customer.subscription.deleted' ? delivered : await this.provider().subscriptions.retrieve(delivered.id);
+          const lockedCanonical = event.type === 'customer.subscription.deleted' ? delivered! : await this.provider().subscriptions.retrieve(subscriptionId, { expand: ['latest_invoice'] });
           if (lockedCanonical.livemode !== expectedLive) throw new BillingError(400, 'mode_mismatch', 'Subscription mode does not match billing configuration.');
-          await this.reconcile(lockedCanonical, event.created, tx as unknown as Db);
+          await this.reconcile(lockedCanonical, event.created, expectedLive, tx as unknown as Db);
         }, { timeout: 15_000 });
       } else await run(this.db);
     }
@@ -95,7 +110,16 @@ export class BillingService {
     catch (error) { if (await this.db.billingWebhookEvent.findUnique({ where: { stripeEventId: event.id } })) return { duplicate: true }; throw error; }
     return { received: true };
   }
-  private async reconcile(subscription: Stripe.Subscription, eventCreated: number, db: Db = this.db) {
+  private async paymentConfirmed(subscription: Stripe.Subscription, expectedLive: boolean) {
+    if (subscription.status !== 'active') return false;
+    const latest = subscription.latest_invoice;
+    if (!latest) return false;
+    const invoice = typeof latest === 'string' ? await this.provider().invoices.retrieve(latest) : latest;
+    const subscriptionCustomerId = objectId(subscription.customer);
+    const invoiceCustomerId = objectId(invoice.customer);
+    return invoice.livemode === expectedLive && invoice.status === 'paid' && invoiceCustomerId === subscriptionCustomerId;
+  }
+  private async reconcile(subscription: Stripe.Subscription, eventCreated: number, expectedLive: boolean, db: Db = this.db) {
     const customerId = typeof subscription.customer === 'string' ? subscription.customer : subscription.customer.id;
     const owner = await db.billingCustomer.findUnique({ where: { stripeCustomerId: customerId } });
     if (!owner) return; // Never bind an event to metadata alone.
@@ -116,7 +140,8 @@ export class BillingService {
       return;
     }
     const [key] = match as [PriceKey, unknown];
-    const data = { priceId, tier: priceCatalog[key].tier, status: subscription.status, currentPeriodEnd: item.current_period_end ? new Date(item.current_period_end * 1000) : null, cancelAtPeriodEnd: subscription.cancel_at_period_end, lastEventCreatedAt: effectiveEventAt };
+    const paid = await this.paymentConfirmed(subscription, expectedLive);
+    const data = { priceId, tier: paid ? priceCatalog[key].tier : 'none', status: subscription.status, currentPeriodEnd: item.current_period_end ? new Date(item.current_period_end * 1000) : null, cancelAtPeriodEnd: subscription.cancel_at_period_end, lastEventCreatedAt: effectiveEventAt };
     if (existing) { await db.billingSubscription.updateMany({ where: { stripeSubscriptionId: subscription.id, userId: owner.userId }, data }); return; }
     try { await db.billingSubscription.create({ data: { userId: owner.userId, stripeSubscriptionId: subscription.id, stripeCustomerId: customerId, ...data } }); }
     catch (error) {

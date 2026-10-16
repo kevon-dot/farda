@@ -19,6 +19,13 @@ const subscription = (overrides: Record<string, unknown> = {}) => ({
   livemode: false,
   status: "active",
   cancel_at_period_end: false,
+  latest_invoice: {
+    id: "in_owner",
+    customer: "cus_owner",
+    livemode: false,
+    paid: true,
+    status: "paid",
+  },
   items: {
     data: [{ price: { id: "price_family" }, current_period_end: 2_000_000_000 }],
   },
@@ -110,6 +117,104 @@ afterEach(() => {
 });
 
 describe("billing webhook security boundaries", () => {
+  it("withholds an initial active subscription until its canonical invoice is paid", async () => {
+    const f = fixture();
+    f.stripe.event = {
+      id: "evt_subscription_pending",
+      created: 300,
+      livemode: false,
+      type: "checkout.session.completed",
+      data: { object: { subscription: "sub_owner" } },
+    };
+    f.stripe.canonical = subscription({
+      latest_invoice: { id: "in_owner", customer: "cus_owner", livemode: false, paid: false, status: "open" },
+    });
+
+    await f.service.webhook(Buffer.from("{}"), "valid");
+    expect(f.rows.get("sub_owner")).toMatchObject({ tier: "none", status: "active" });
+
+    f.stripe.event = {
+      id: "evt_invoice_paid",
+      created: 301,
+      livemode: false,
+      type: "invoice.paid",
+      data: { object: { parent: { subscription_details: { subscription: "sub_owner" } } } },
+    };
+    f.stripe.canonical = subscription();
+
+    await expect(f.service.webhook(Buffer.from("{}"), "valid")).resolves.toEqual({ received: true });
+    expect(f.rows.get("sub_owner")).toMatchObject({ tier: "family", status: "active" });
+    await expect(f.service.webhook(Buffer.from("{}"), "valid")).resolves.toEqual({ duplicate: true });
+  });
+
+  it("keeps an unpaid initial subscription unentitled after payment failure", async () => {
+    const f = fixture();
+    f.rows.set("sub_owner", {
+      userId: "owner",
+      stripeSubscriptionId: "sub_owner",
+      stripeCustomerId: "cus_owner",
+      priceId: "price_family",
+      tier: "none",
+      status: "active",
+      lastEventCreatedAt: new Date(300_000),
+    });
+    f.stripe.event = {
+      id: "evt_invoice_failed",
+      created: 302,
+      livemode: false,
+      type: "invoice.payment_failed",
+      data: { object: { parent: { subscription_details: { subscription: "sub_owner" } } } },
+    };
+    f.stripe.canonical = subscription({
+      latest_invoice: { id: "in_owner", customer: "cus_owner", livemode: false, paid: false, status: "open" },
+    });
+
+    await f.service.webhook(Buffer.from("{}"), "valid");
+    expect(f.rows.get("sub_owner")).toMatchObject({ tier: "none", status: "active" });
+  });
+
+  it.each([
+    ["another customer", { id: "in_owner", customer: "cus_other", livemode: false, paid: true, status: "paid" }],
+    ["another Stripe mode", { id: "in_owner", customer: "cus_owner", livemode: true, paid: true, status: "paid" }],
+  ])("fails closed when the paid invoice belongs to %s", async (_label, latestInvoice) => {
+    const f = fixture();
+    f.stripe.event = {
+      id: `evt_bad_invoice_${latestInvoice.customer}_${latestInvoice.livemode}`,
+      created: 303,
+      livemode: false,
+      type: "customer.subscription.updated",
+      data: { object: subscription() },
+    };
+    f.stripe.canonical = subscription({ latest_invoice: latestInvoice });
+
+    await f.service.webhook(Buffer.from("{}"), "valid");
+    expect(f.rows.get("sub_owner")).toMatchObject({ tier: "none", status: "active" });
+  });
+
+  it("uses canonical paid state when an older failure arrives out of order", async () => {
+    const f = fixture();
+    f.rows.set("sub_owner", {
+      userId: "owner",
+      stripeSubscriptionId: "sub_owner",
+      stripeCustomerId: "cus_owner",
+      priceId: "price_family",
+      tier: "family",
+      status: "active",
+      lastEventCreatedAt: new Date(400_000),
+    });
+    f.stripe.event = {
+      id: "evt_old_invoice_failed",
+      created: 350,
+      livemode: false,
+      type: "checkout.session.async_payment_failed",
+      data: { object: { subscription: "sub_owner" } },
+    };
+    f.stripe.canonical = subscription();
+
+    await f.service.webhook(Buffer.from("{}"), "valid");
+    expect(f.rows.get("sub_owner")).toMatchObject({ tier: "family", lastEventCreatedAt: new Date(400_000) });
+  });
+
   it("uses Stripe's canonical subscription rather than stale delivered state", async () => {
     const f = fixture();
     f.stripe.event = {
@@ -123,7 +228,7 @@ describe("billing webhook security boundaries", () => {
 
     await f.service.webhook(Buffer.from("{}"), "valid");
 
-    expect(f.stripe.subscriptions.retrieve).toHaveBeenCalledWith("sub_owner");
+    expect(f.stripe.subscriptions.retrieve).toHaveBeenCalledWith("sub_owner", { expand: ["latest_invoice"] });
     expect(f.rows.get("sub_owner")).toMatchObject({
       userId: "owner",
       status: "active",

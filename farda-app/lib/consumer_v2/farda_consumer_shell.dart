@@ -1,3 +1,7 @@
+import 'package:farda/application/authentication/storage/auth_storage.dart';
+import 'package:farda/features/consumer/data/billing.dart';
+import 'screens/membership/farda_membership_screen.dart';
+import 'screens/membership/membership_offer_gate.dart';
 import 'package:farda/features/consumer/data/refill_agent.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -78,9 +82,35 @@ class _FardaConsumerShellState extends State<FardaConsumerShell> {
   Future<void> _addPrescription() async {
     final controller = widget.controller;
     if (controller == null) return;
-    await Navigator.of(context).push<bool>(
+    final firstRoutine = controller.snapshot?.prescriptions.isEmpty == true;
+    final revision = AuthStorage.sessionRevision.value;
+    final saved = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
         builder: (_) => PrescriptionOnboarding(controller: controller),
+      ),
+    );
+    bool current() => mounted && revision == AuthStorage.sessionRevision.value;
+    if (saved != true || !firstRoutine || !current()) return;
+    StoredSession? session;
+    try {
+      session = await AuthStorage.readSession();
+    } catch (_) {
+      return; // Optional discovery must not interrupt the saved routine.
+    }
+    if (session == null || !current()) return;
+    final show = await MembershipOfferGate.claim(session.userId, current);
+    if (!mounted || !show || !current()) return;
+    final repository = controller.repository;
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder:
+            (_) => FardaMembershipScreen(
+              onboardingOffer: true,
+              repository:
+                  repository is BillingRepository
+                      ? repository as BillingRepository
+                      : null,
+            ),
       ),
     );
   }

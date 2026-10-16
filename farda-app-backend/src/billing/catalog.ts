@@ -1,8 +1,8 @@
 export const priceCatalog = {
-  plus_monthly: { tier: 'plus', interval: 'month', amount: 699, env: 'STRIPE_PRICE_PLUS_MONTHLY' },
-  plus_annual: { tier: 'plus', interval: 'year', amount: 5999, env: 'STRIPE_PRICE_PLUS_ANNUAL' },
-  family_monthly: { tier: 'family', interval: 'month', amount: 1199, env: 'STRIPE_PRICE_FAMILY_MONTHLY' },
-  family_annual: { tier: 'family', interval: 'year', amount: 9999, env: 'STRIPE_PRICE_FAMILY_ANNUAL' },
+  plus_monthly: { tier: 'plus', interval: 'month', amount: 1499, env: 'STRIPE_PRICE_PLUS_MONTHLY' },
+  plus_annual: { tier: 'plus', interval: 'year', amount: 14999, env: 'STRIPE_PRICE_PLUS_ANNUAL' },
+  family_monthly: { tier: 'family', interval: 'month', amount: 2499, env: 'STRIPE_PRICE_FAMILY_MONTHLY' },
+  family_annual: { tier: 'family', interval: 'year', amount: 24999, env: 'STRIPE_PRICE_FAMILY_ANNUAL' },
 } as const;
 export type PriceKey = keyof typeof priceCatalog;
 export type PaidTier = 'plus' | 'family';

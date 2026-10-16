@@ -13,7 +13,7 @@ function fixture() {
   const stripe: any = { webhooks: { constructEvent: vi.fn((_raw: any, signature: string) => { if (signature !== 'valid') throw new Error(); return stripe.event; }) }, subscriptions: { retrieve: vi.fn(async () => stripe.event.data.object) } };
   return { db, stripe, subscriptions, service: new BillingService(db, stripe) };
 }
-const sub = (customer = 'cus_owner', status = 'active') => ({ id: 'sub_1', customer, status, livemode: false, cancel_at_period_end: false, items: { data: [{ price: { id: 'price_plus' }, current_period_end: 2000000000 }] } });
+const sub = (customer = 'cus_owner', status = 'active') => ({ id: 'sub_1', customer, status, livemode: false, cancel_at_period_end: false, latest_invoice: { id: 'in_1', customer, livemode: false, paid: true, status: 'paid' }, items: { data: [{ price: { id: 'price_plus' }, current_period_end: 2000000000 }] } });
 
 describe('billing security and lifecycle', () => {
   it('rejects missing/invalid signatures before writes', async () => { const f = fixture(); process.env.STRIPE_BILLING_ENABLED = 'true'; process.env.STRIPE_WEBHOOK_SECRET = 'whsec'; await expect(f.service.webhook(Buffer.from('{}'), 'bad')).rejects.toMatchObject({ code: 'invalid_signature' }); expect(f.db.billingSubscription.create).not.toHaveBeenCalled(); });

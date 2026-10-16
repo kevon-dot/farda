@@ -11,6 +11,7 @@ import 'circle_models.dart';
 import 'circle_alerts.dart';
 import 'label_scan.dart';
 import 'refill_agent.dart';
+import 'pharmacy_handoff.dart';
 
 import 'package:http_parser/http_parser.dart';
 
@@ -24,6 +25,7 @@ class ConsumerApiRepository
         CircleAlertsRepository,
         LabelScanRepository,
         RefillAgentRepository,
+        PharmacyHandoffRepository,
         RefillQuestionRepository {
   ConsumerApiRepository({
     required String baseUrl,
@@ -431,6 +433,32 @@ class ConsumerApiRepository
       body: {'question': question, 'consent': true},
     ),
   );
+
+  @override
+  Future<Future<bool> Function()> capturePharmacySession() =>
+      captureBillingSession();
+
+  @override
+  Future<List<PharmacyDestination>> loadPharmacyDirectory() async =>
+      _rows(
+        await _request('GET', 'pharmacies/directory'),
+      ).map(PharmacyDestination.fromJson).toList();
+
+  @override
+  Future<PharmacyHandoff> preparePharmacyHandoff(
+    String prescriptionId, {
+    required String pharmacyId,
+    required String purpose,
+  }) async {
+    final result = await _request(
+      'POST',
+      'prescriptions/${Uri.encodeComponent(prescriptionId)}/pharmacy-handoff',
+      body: {'pharmacyId': pharmacyId, 'purpose': purpose},
+    );
+    return PharmacyHandoff.fromJson(
+      Map<String, dynamic>.from(result['data'] as Map),
+    );
+  }
 
   @override
   Future<RefillAgentState> loadRefillAgent(String prescriptionId) async =>
