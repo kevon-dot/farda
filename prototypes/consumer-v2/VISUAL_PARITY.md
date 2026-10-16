@@ -1,5 +1,9 @@
 # Farda — rendered Flutter design verification
 
+## October 16 refill-agent addition
+
+Astra added [editable provider/review/manual states](https://www.figma.com/design/BeSPZ5VOwOOlrwKFTpMA4K?node-id=94-476). Actual Flutter captures cover unavailable, eligible, uncertain, sent, ready, review/consent and question-helper states at 390px and 320px/1.3 text. Long medication names, full directions and addresses remain scrollable in review. The provider card aligns in hierarchy, copy, width and token usage; inherited hero typography, native controls and some action dimensions differ. This is a rendered comparison with documented differences, not pixel identity. See [REFILL_AGENT_DESIGN.md](REFILL_AGENT_DESIGN.md) and `farda-app/test/visual_qa/refill_agent_screenshots_test.dart`.
+
 October 15, 2026. Source of truth: [editable Figma](https://www.figma.com/design/BeSPZ5VOwOOlrwKFTpMA4K?node-id=2-9). This record supersedes the earlier statement that Flutter could not be run in this workspace.
 
 ## Design and implementation

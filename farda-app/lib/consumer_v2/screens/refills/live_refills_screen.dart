@@ -1,3 +1,4 @@
+import 'package:farda/features/consumer/data/refill_agent.dart';
 import 'package:farda/consumer_v2/design_system/farda_consumer_tokens.dart';
 import 'package:farda/features/consumer/data/consumer_models.dart';
 import 'package:flutter/material.dart';
@@ -34,8 +35,10 @@ class LiveRefillsScreen extends StatelessWidget {
     this.onOpenRefillTools,
     this.onOpenProfile,
     this.onAddPrescription,
+    this.agentRepository,
   });
 
+  final RefillAgentRepository? agentRepository;
   final ConsumerSnapshot snapshot;
   final InventoryUpdate? onUpdateInventory;
   final RefillUpdate? onUpdateRefill;
@@ -98,6 +101,7 @@ class LiveRefillsScreen extends StatelessWidget {
                 key: ValueKey('refill-${prescription.id}'),
                 prescription: prescription,
                 inventory: snapshot.supply(prescription.id),
+                agentRepository: agentRepository,
                 countEnabled: snapshot.capabilities.inventoryEnabled,
                 refillEnabled: snapshot.capabilities.refillsEnabled,
                 onUpdateInventory: onUpdateInventory,
@@ -113,7 +117,7 @@ class LiveRefillsScreen extends StatelessWidget {
           ],
           const SizedBox(height: 12),
           const Text(
-            'Farda does not place an order or promise a pickup date. Use the contact details on your label for pharmacy or prescriber questions.',
+            'Your refill journey records your reports. Open the assistant for available connections. Your pharmacy confirms approval and pickup timing.',
             style: FardaConsumerType.caption,
           ),
         ],
@@ -127,6 +131,7 @@ class _SupplySection extends StatelessWidget {
     super.key,
     required this.prescription,
     required this.inventory,
+    required this.agentRepository,
     required this.countEnabled,
     required this.refillEnabled,
     required this.onUpdateInventory,
@@ -135,6 +140,7 @@ class _SupplySection extends StatelessWidget {
     required this.onOpenRefillTools,
   });
 
+  final RefillAgentRepository? agentRepository;
   final ConsumerPrescription prescription;
   final ConsumerInventory? inventory;
   final bool countEnabled;
@@ -161,6 +167,8 @@ class _SupplySection extends StatelessWidget {
         MaterialPageRoute(
           builder:
               (_) => RefillsHandoffScreen(
+                prescriptionId: prescription.id,
+                agentRepository: agentRepository,
                 medicationName: prescription.name,
                 rxLabel: 'Prescription number not saved',
                 rxNumber: prescription.rxNumber,

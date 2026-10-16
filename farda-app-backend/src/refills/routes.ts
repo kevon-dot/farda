@@ -4,15 +4,76 @@ import { prisma } from "../lib/prisma";
 import { isAuthenticated } from "../middleware/isAuthenticated";
 import { route } from "../reminders/routes";
 import { RefillService } from "./service";
+import env from "../common/constants/env";
+import { RefillAgentService } from "./agent";
+import { PhotonRefillsProvider } from "./providers/photon";
+import { rateLimit } from "../middleware/rateLimit";
 
 const id = z.string().min(1).max(160),
 	key = z.string().min(8).max(160);
 const timestamp = z.iso
 	.datetime({ offset: true })
 	.transform((value) => new Date(value));
-export function createRefillRouter(service = new RefillService(prisma)) {
+export function createRefillRouter(
+	service = new RefillService(prisma),
+	agent = new RefillAgentService(
+		prisma,
+		new PhotonRefillsProvider({
+			enabled: env.FARDA_REFILL_PROVIDER_ENABLED,
+			environment: env.FARDA_REFILL_PROVIDER_ENVIRONMENT,
+			clientId: env.PHOTON_CLIENT_ID,
+			clientSecret: env.PHOTON_CLIENT_SECRET,
+		}),
+	),
+) {
 	const router = Router();
 	router.use(isAuthenticated);
+	router.use("/refills/agent", (_req, res, next) => {
+		res.setHeader("Cache-Control", "no-store");
+		next();
+	});
+	router.get(
+		"/refills/agent/:prescriptionId",
+		rateLimit("refill-review", 30, 300),
+		route(async (req, res) => {
+			res.json(
+				await agent.review(req.user!.id, id.parse(req.params.prescriptionId)),
+			);
+		}),
+	);
+	router.post(
+		"/refills/agent/:prescriptionId/submit",
+		rateLimit("refill-submit", 10, 300),
+		route(async (req, res) => {
+			const input = z
+				.object({
+					reviewToken: z.string().uuid(),
+					confirmed: z.literal(true),
+					idempotencyKey: key,
+				})
+				.strict()
+				.parse(req.body);
+			res.json(
+				await agent.submit(
+					req.user!.id,
+					id.parse(req.params.prescriptionId),
+					input,
+				),
+			);
+		}),
+	);
+	router.post(
+		"/refills/agent/:prescriptionId/refresh",
+		rateLimit("refill-refresh", 30, 300),
+		route(async (req, res) => {
+			z.object({})
+				.strict()
+				.parse(req.body ?? {});
+			res.json(
+				await agent.refresh(req.user!.id, id.parse(req.params.prescriptionId)),
+			);
+		}),
+	);
 	router.get(
 		"/refills",
 		route(async (req, res) => res.json(await service.list(req.user!.id))),

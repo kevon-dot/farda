@@ -26,7 +26,9 @@ function match(row: Row, where: Row = {}): boolean {
 											? current < v
 											: false,
 			);
-		return current === value;
+		return current instanceof Date && value instanceof Date
+			? current.getTime() === value.getTime()
+			: current === value;
 	});
 }
 export function memoryDb(seed: Record<string, Row[]> = {}) {
@@ -48,6 +50,9 @@ export function memoryDb(seed: Record<string, Row[]> = {}) {
 		"refillEvent",
 		"inventoryBalance",
 		"inventoryEntry",
+		"refillProviderLink",
+		"refillAgentReview",
+		"refillAgentRequest",
 	];
 	for (const name of names) {
 		tables[name] ||= [];
@@ -124,6 +129,11 @@ export function memoryDb(seed: Record<string, Row[]> = {}) {
 				const found = rows().filter((row) => match(row, where));
 				for (const row of found) update(row, data);
 				return { count: found.length };
+			},
+			async deleteMany({ where }: Row) {
+				const before = tables[name].length;
+				tables[name] = rows().filter((row) => !match(row, where));
+				return { count: before - tables[name].length };
 			},
 			async upsert({ where, create, update: data }: Row) {
 				const row = rows().find((row) => match(row, where));

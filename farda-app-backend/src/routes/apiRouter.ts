@@ -9,6 +9,7 @@ import PhoneAuthRoutes from './PhoneAuthRoutes';
 import { archivePrescription, changeSchedule, createPrescription, doseHistory, listDoses, listPrescriptions, recordDose, updatePrescription } from './PrescriptionRoutes';
 import { createReminderRouter, createVoiceWebhookRouter } from '../reminders/routes';
 import { createRefillRouter } from '../refills/routes';
+import { createRefillAssistantRouter } from '../refills/assistant-routes';
 import { DeviceTrackingService } from '../services/DeviceTrackingService';
 
 const apiRouter = Router();
@@ -26,6 +27,7 @@ apiRouter.get('/auth/session', PhoneAuthRoutes.session);
 apiRouter.post('/auth/sign-out', PhoneAuthRoutes.signOut);
 apiRouter.use(createReminderRouter());
 apiRouter.use(createRefillRouter());
+apiRouter.use(createRefillAssistantRouter());
 
 apiRouter.get('/prescriptions', listPrescriptions);
 apiRouter.post('/prescriptions', createPrescription);

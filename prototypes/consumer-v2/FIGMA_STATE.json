@@ -41,7 +41,17 @@
     "prescriptionNoReminders": "69:481",
     "labelIntroduction": "69:485",
     "prescriptionNoRemindersConfirmation": "71:482",
-    "prescriptionNoRemindersSaved": "71:497"
+    "prescriptionNoRemindersSaved": "71:497",
+    "refillAgentUnavailable": "95:476",
+    "refillAgentEligible": "95:511",
+    "refillAgentSubmitting": "95:549",
+    "refillAgentUnknown": "95:585",
+    "refillAgentSent": "95:623",
+    "refillAgentReady": "95:661",
+    "refillAgentReview": "98:529",
+    "refillAgentConfirmed": "99:735",
+    "refillAgentManual": "99:638",
+    "refillAgentHelper": "101:601"
   },
   "sections": {
     "main": "9:225",
@@ -93,12 +103,13 @@
     ]
   },
   "verification": {
-    "date": "2026-10-15",
-    "screenCount": 37,
+    "date": "2026-10-16",
+    "screenCount": 47,
     "targetStack": "Flutter / Dart",
     "flutterCompile": "Flutter 3.47.7 compilation and rendered widget checks available; see VISUAL_PARITY.md for final results.",
     "visualRecord": "VISUAL_PARITY.md",
     "prototypePlayer": "Not exercised; original connections audited via API.",
-    "prescriptionFlow": "Astra compared actual Flutter390 and320 large-text renders; editable16-state flow; not pixel-identical native controls."
+    "prescriptionFlow": "Astra compared actual Flutter390 and320 large-text renders; editable16-state flow; not pixel-identical native controls.",
+    "refillAgent": "Astra compared actual Flutter renders to editable provider/review/manual states. Scoped alignment with native-control and inherited-layout differences documented in REFILL_AGENT_DESIGN.md."
   }
 }

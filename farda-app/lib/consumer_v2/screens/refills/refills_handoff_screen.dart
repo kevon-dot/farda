@@ -3,6 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'refills_figma_parts.dart';
+import 'refill_agent_card.dart';
+import 'refill_question_card.dart';
+import 'package:farda/features/consumer/data/refill_agent.dart';
 
 /// A local planning handoff. Copying text never changes the saved refill stage.
 /// Contact information and pharmacy eligibility are never inferred here.
@@ -20,8 +23,12 @@ class RefillsHandoffScreen extends StatefulWidget {
     this.onOpenContact,
     this.contactLabel = 'Find pharmacy contact',
     this.onOpenProfile,
+    this.prescriptionId,
+    this.agentRepository,
   });
 
+  final String? prescriptionId;
+  final RefillAgentRepository? agentRepository;
   final String medicationName;
   final String rxLabel;
   final String? rxNumber;
@@ -169,6 +176,19 @@ class _RefillsHandoffScreenState extends State<RefillsHandoffScreen> {
             ),
           ),
           const SizedBox(height: 18),
+          if (widget.agentRepository != null &&
+              widget.prescriptionId != null) ...[
+            RefillAgentCard(
+              prescriptionId: widget.prescriptionId!,
+              repository: widget.agentRepository!,
+            ),
+            const SizedBox(height: 18),
+            const Text(
+              'Prefer to contact your pharmacy?',
+              style: FardaConsumerType.title,
+            ),
+            const SizedBox(height: 12),
+          ],
           FardaConsumerCard(
             padding: const EdgeInsets.all(18),
             child: Column(
@@ -245,11 +265,21 @@ class _RefillsHandoffScreenState extends State<RefillsHandoffScreen> {
               child: Text(widget.contactLabel, textAlign: TextAlign.center),
             ),
           ],
+          if (widget.agentRepository is RefillQuestionRepository &&
+              widget.prescriptionId != null) ...[
+            const SizedBox(height: 16),
+            RefillQuestionCard(
+              prescriptionId: widget.prescriptionId!,
+              repository: widget.agentRepository as RefillQuestionRepository,
+            ),
+          ],
           const SizedBox(height: 16),
           const RefillsSafetyBanner(),
           const SizedBox(height: 8),
-          const Text(
-            'No refill order is submitted. Saving a plan does not contact your pharmacy.',
+          Text(
+            widget.agentRepository == null
+                ? 'No refill order is submitted. Saving a plan does not contact your pharmacy.'
+                : 'Copying a request or saving a plan does not contact your pharmacy.',
             style: FardaConsumerType.caption,
           ),
           const SizedBox(height: 16),
