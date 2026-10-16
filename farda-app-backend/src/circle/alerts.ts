@@ -75,7 +75,7 @@ export class CircleAlertService {
       if (inQuietHours(now, { ...policy, callsEnabled: false, liveActivitiesEnabled: false, maxCallsPerDay: 0 })) continue;
       const cutoff = new Date(now.getTime() - policy.gracePeriodMinutes * 60_000);
       const stale = new Date(now.getTime() - 24 * 60 * 60_000);
-      const doses = await this.db.dose.findMany({ where: { userId: policy.grant.ownerId, scheduledFor: { gt: stale, lte: cutoff }, status: "unconfirmed", takenAt: null, canceledAt: null, snoozedUntil: null, prescription: { archivedAt: null } }, orderBy: { scheduledFor: "asc" }, take: Math.min(25, limit - created) });
+      const doses = await this.db.dose.findMany({ where: { userId: policy.grant.ownerId, scheduledFor: { gt: stale, lte: cutoff }, status: "unconfirmed", takenAt: null, canceledAt: null, snoozedUntil: null, prescription: { archivedAt: null }, circleAlerts: { none: { grantId: policy.grantId, kind: "confirmation_not_recorded" } } }, orderBy: { scheduledFor: "asc" }, take: Math.min(25, limit - created) });
       for (const dose of doses) {
         const result = await this.db.$transaction(async tx => {
           await tx.$queryRaw`SELECT "id" FROM "CircleGrant" WHERE "id" = ${policy.grantId} FOR SHARE`;

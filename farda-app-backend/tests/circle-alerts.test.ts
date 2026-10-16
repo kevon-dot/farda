@@ -52,7 +52,7 @@ describe("Circle alert policy and materialization", () => {
     const now = new Date("2026-11-01T08:00:00Z");
     const { service, db } = workerDb(now);
     await service.materialize();
-    expect(db.dose.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ scheduledFor: { gt: new Date("2026-10-31T08:00:00Z"), lte: new Date("2026-11-01T07:30:00Z") } }), take: 25 }));
+    expect(db.dose.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ scheduledFor: { gt: new Date("2026-10-31T08:00:00Z"), lte: new Date("2026-11-01T07:30:00Z") }, circleAlerts: { none: { grantId: "grant-1", kind: "confirmation_not_recorded" } } }), take: 25 }));
   });
 
   it("advances a durable evaluation cursor so policies beyond the batch are reached", async () => {

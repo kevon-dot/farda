@@ -11,13 +11,14 @@ import 'package:farda/features/consumer/data/circle_models.dart';
 
 class Alerts implements CircleAlertsRepository {
   CircleAlertPolicy? saved;
+  CircleAlertPolicy initialPolicy = const CircleAlertPolicy();
   bool? consent;
   Completer<CircleAlertPolicy>? pending;
   @override
   Future<CircleAlertPolicy> loadCircleAlertPolicy(
     String id, {
     bool recipient = false,
-  }) async => pending == null ? const CircleAlertPolicy() : pending!.future;
+  }) async => pending == null ? initialPolicy : pending!.future;
   @override
   Future<void> saveCircleAlertPolicy(
     String id,
@@ -143,6 +144,40 @@ void main() {
     );
     await tester.pumpAndSettle();
   }
+
+  testWidgets('timezone choices use friendly names and save selected zone', (
+    tester,
+  ) async {
+    final repo = Alerts();
+    await pump(tester, repo);
+    expect(find.byType(TextField), findsNothing);
+    await tester.ensureVisible(find.byType(DropdownButtonFormField<String>));
+    await tester.tap(find.byType(DropdownButtonFormField<String>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Pacific · Los Angeles').last);
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Save preferences'));
+    await tester.tap(find.text('Save preferences'));
+    await tester.pumpAndSettle();
+    expect(repo.saved!.timeZone, 'America/Los_Angeles');
+    expect(tester.takeException(), isNull);
+  });
+  testWidgets('uncommon saved timezone remains available without replacement', (
+    tester,
+  ) async {
+    final repo =
+        Alerts()
+          ..initialPolicy = const CircleAlertPolicy(
+            timeZone: 'Pacific/Auckland',
+          );
+    await pump(tester, repo);
+    expect(find.text('Pacific/Auckland · saved'), findsOneWidget);
+    await tester.ensureVisible(find.text('Save preferences'));
+    await tester.tap(find.text('Save preferences'));
+    await tester.pumpAndSettle();
+    expect(repo.saved!.timeZone, 'Pacific/Auckland');
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('a delayed response cannot reveal policy after account change', (
     tester,

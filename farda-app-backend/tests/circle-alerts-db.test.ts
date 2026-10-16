@@ -38,6 +38,13 @@ describe.skipIf(!databaseUrl)("Circle alerts PostgreSQL integration", () => {
     expect(inbox.alerts).toHaveLength(1);
     expect(inbox.alerts[0]).toMatchObject({ grantId, scheduledFor: null, kind: "confirmation_not_recorded" });
     expect(JSON.stringify(inbox)).not.toContain("PRIVATE MEDICATION");
+
+    // A previously materialized earliest dose must not occupy the 25-row
+    // candidate window forever. Two ticks reach every later due dose.
+    await db.dose.createMany({ data: Array.from({ length: 26 }, (_, index) => ({ id: `${prefix}-overflow-${index}`, userId: ownerId, prescriptionId, scheduledFor: new Date(now.getTime() - (59 - index) * 60_000) })) });
+    await expect(service.materialize(100)).resolves.toMatchObject({ created: 25 });
+    await expect(service.materialize(100)).resolves.toMatchObject({ created: 1 });
+    expect(await db.circleAlert.count({ where: { grantId } })).toBe(27);
   });
 
   it("fails closed when the paid period expires even if status remains active", async () => {

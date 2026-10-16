@@ -29,7 +29,24 @@ class _CircleAlertPanelState extends State<CircleAlertPanel> {
   bool loading = true, busy = false, enabled = false, consent = false;
   int grace = 60;
   String start = '22:00', end = '08:00';
-  final zone = TextEditingController();
+  String zone = 'UTC';
+  static const _commonZones = <String, String>{
+    'America/Los_Angeles': 'Pacific · Los Angeles',
+    'America/Denver': 'Mountain · Denver',
+    'America/Chicago': 'Central · Chicago',
+    'America/New_York': 'Eastern · New York',
+    'Europe/London': 'London',
+    'Europe/Paris': 'Paris',
+    'Asia/Kolkata': 'India · Kolkata',
+    'Asia/Tokyo': 'Tokyo',
+    'Australia/Sydney': 'Sydney',
+    'UTC': 'UTC',
+  };
+  Map<String, String> get zones => {
+    ..._commonZones,
+    if (policy != null && !_commonZones.containsKey(policy!.timeZone))
+      policy!.timeZone: '${policy!.timeZone.replaceAll('_', ' ')} · saved',
+  };
   String? error;
   bool _sessionValid = true;
   bool get current => mounted && _sessionValid && widget.isCurrent();
@@ -51,14 +68,13 @@ class _CircleAlertPanelState extends State<CircleAlertPanel> {
       busy = false;
       enabled = false;
       consent = false;
-      zone.clear();
+      zone = 'UTC';
     });
   }
 
   @override
   void dispose() {
     AuthStorage.sessionRevision.removeListener(_sessionChanged);
-    zone.dispose();
     super.dispose();
   }
 
@@ -86,7 +102,7 @@ class _CircleAlertPanelState extends State<CircleAlertPanel> {
             grace = result.gracePeriodMinutes;
             start = result.quietHoursStart;
             end = result.quietHoursEnd;
-            zone.text = result.timeZone;
+            zone = result.timeZone;
           });
         }
       }
@@ -115,7 +131,7 @@ class _CircleAlertPanelState extends State<CircleAlertPanel> {
             gracePeriodMinutes: grace,
             quietHoursStart: start,
             quietHoursEnd: end,
-            timeZone: zone.text.trim(),
+            timeZone: zone,
           ),
         );
       }
@@ -347,15 +363,32 @@ class _CircleAlertPanelState extends State<CircleAlertPanel> {
                       ],
                     ),
                     const SizedBox(height: 12),
-                    TextField(
-                      controller: zone,
-                      enabled: !busy,
+                    DropdownButtonFormField<String>(
+                      key: ValueKey(zone),
+                      initialValue: zone,
+                      isExpanded: true,
+                      itemHeight: null,
                       decoration: const InputDecoration(
-                        labelText: 'Timezone',
-                        helperText: 'For example: Europe/London or UTC',
-                        helperMaxLines: 2,
+                        labelText: 'Quiet-hours timezone',
                         border: OutlineInputBorder(),
                       ),
+                      items:
+                          zones.entries
+                              .map(
+                                (entry) => DropdownMenuItem(
+                                  value: entry.key,
+                                  child: Text(entry.value),
+                                ),
+                              )
+                              .toList(),
+                      onChanged:
+                          busy
+                              ? null
+                              : (value) {
+                                if (value != null && current) {
+                                  setState(() => zone = value);
+                                }
+                              },
                     ),
                     const SizedBox(height: 12),
                   ] else
