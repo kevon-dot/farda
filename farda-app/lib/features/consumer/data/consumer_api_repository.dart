@@ -5,8 +5,10 @@ import 'package:http/http.dart' as http;
 
 import 'consumer_models.dart';
 import 'consumer_repository.dart';
+import 'circle_models.dart';
 import 'label_scan.dart';
 import 'refill_agent.dart';
+
 import 'package:http_parser/http_parser.dart';
 
 /// The production adapter never substitutes fixture data after a failed request.
@@ -37,6 +39,121 @@ class ConsumerApiRepository
   String? _consentVersion;
   @override
   bool get isDemo => false;
+
+  @override
+  Future<CircleOverview> loadCircle() async =>
+      CircleOverview.fromJson(await _request('GET', 'circle'));
+
+  @override
+  Future<List<CircleInvitation>> loadCircleInvitations() async {
+    final result = await _request('GET', 'circle/invitations');
+    return (result['invitations'] as List? ?? const [])
+        .map(
+          (v) => CircleInvitation.fromJson(Map<String, dynamic>.from(v as Map)),
+        )
+        .toList();
+  }
+
+  @override
+  Future<CircleInvitation> inviteToCircle(
+    String phone,
+    CirclePermissions permissions,
+  ) async {
+    final result = await _request(
+      'POST',
+      'circle/invitations',
+      body: {'recipientPhone': phone, 'permissions': permissions.toJson()},
+    );
+    final invitation = Map<String, dynamic>.from(result['invitation'] as Map);
+    return CircleInvitation.fromJson(invitation);
+  }
+
+  @override
+  Future<void> acceptCircleInvitation(String id, String inviteCode) async {
+    await _request(
+      'POST',
+      'circle/invitations/${Uri.encodeComponent(id)}/accept',
+      body: {'inviteCode': inviteCode},
+    );
+  }
+
+  @override
+  Future<void> updateCircleMember(
+    String id,
+    CirclePermissions permissions,
+  ) async {
+    await _request(
+      'PATCH',
+      'circle/members/${Uri.encodeComponent(id)}',
+      body: permissions.toJson(),
+    );
+  }
+
+  @override
+  Future<void> removeCircleMember(String id) async {
+    await _request('DELETE', 'circle/members/${Uri.encodeComponent(id)}');
+  }
+
+  @override
+  Future<void> cancelCircleInvitation(String id) async {
+    await _request('DELETE', 'circle/invitations/${Uri.encodeComponent(id)}');
+  }
+
+  @override
+  Future<void> declineCircleInvitation(String id) async {
+    await _request(
+      'DELETE',
+      'circle/invitations/${Uri.encodeComponent(id)}/received',
+    );
+  }
+
+  @override
+  Future<List<SharedCircle>> loadSharedCircles() async {
+    final result = await _request('GET', 'circle/shared-with-me');
+    return (result['circles'] as List? ?? const []).map((value) {
+      final json = Map<String, dynamic>.from(value as Map);
+      final owner = CirclePerson.fromJson(
+        Map<String, dynamic>.from(json['owner'] as Map),
+      );
+      final access = Map<String, dynamic>.from(json['access'] as Map);
+      return SharedCircle(
+        owner: owner,
+        access: CircleMember(
+          id: access['id'] as String,
+          person: owner,
+          permissions: CirclePermissions.fromJson(
+            Map<String, dynamic>.from(access['permissions'] as Map),
+          ),
+          acceptedAt: DateTime.parse(access['acceptedAt'] as String),
+          updatedAt: DateTime.parse(access['updatedAt'] as String),
+        ),
+      );
+    }).toList();
+  }
+
+  @override
+  Future<void> leaveSharedCircle(String grantId) async {
+    await _request(
+      'DELETE',
+      'circle/shared-with-me/${Uri.encodeComponent(grantId)}',
+    );
+  }
+
+  @override
+  Future<CircleRoutine> loadSharedCircleRoutine(
+    String grantId, {
+    required DateTime from,
+    required DateTime to,
+  }) async => CircleRoutine.fromJson(
+    await _request(
+      'GET',
+      'circle/shared-with-me/${Uri.encodeComponent(grantId)}/routine',
+      query: {
+        'from': from.toUtc().toIso8601String(),
+        'to': to.toUtc().toIso8601String(),
+      },
+    ),
+  );
 
   Future<Map<String, dynamic>> _request(
     String method,

@@ -1,4 +1,5 @@
 import 'consumer_models.dart';
+import 'circle_models.dart';
 
 abstract interface class ConsumerRepository {
   bool get isDemo;
@@ -29,5 +30,23 @@ abstract interface class ConsumerRepository {
     required bool alreadyIncluded,
   });
   Future<bool> signOut(String token);
+  Future<CircleOverview> loadCircle();
+  Future<List<CircleInvitation>> loadCircleInvitations();
+  Future<CircleInvitation> inviteToCircle(
+    String phone,
+    CirclePermissions permissions,
+  );
+  Future<void> acceptCircleInvitation(String id, String inviteCode);
+  Future<void> updateCircleMember(String id, CirclePermissions permissions);
+  Future<void> removeCircleMember(String id);
+  Future<void> cancelCircleInvitation(String id);
+  Future<void> declineCircleInvitation(String id);
+  Future<List<SharedCircle>> loadSharedCircles();
+  Future<void> leaveSharedCircle(String grantId);
+  Future<CircleRoutine> loadSharedCircleRoutine(
+    String grantId, {
+    required DateTime from,
+    required DateTime to,
+  });
   void dispose();
 }

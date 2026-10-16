@@ -3,6 +3,7 @@ import 'package:farda/features/consumer/consumer_controller.dart';
 import 'package:farda/features/consumer/data/consumer_models.dart';
 
 import 'you_models.dart';
+import 'farda_circle_screen.dart';
 import 'you_pages.dart';
 import 'you_widgets.dart';
 
@@ -12,7 +13,7 @@ export 'you_models.dart' show FardaYouDestination, FardaYouKeys;
 /// handoff (profile node 2:18 and its connected screens).
 ///
 /// Pass [controller] for authenticated routine and reminder preferences. The
-/// vial, Circle, OS surfaces, privacy, and call delay remain local previews.
+/// vial, OS surfaces, privacy, and call delay remain local previews.
 class FardaYouScreen extends StatefulWidget {
   const FardaYouScreen({
     super.key,
@@ -68,10 +69,6 @@ class _FardaYouScreenState extends State<FardaYouScreen> {
 
   int _vialSetupStep = 0;
 
-  bool _circleConnected = false;
-  bool _shareRoutineSummaries = false;
-  bool _shareRefillReminders = false;
-  bool _shareMissedConfirmation = false;
 
   FardaLivePreviewState _liveState = FardaLivePreviewState.due;
   bool _expandedIsland = false;
@@ -364,7 +361,7 @@ class _FardaYouScreenState extends State<FardaYouScreen> {
             content: Text(
               'Lock Screen privacy and the companion setting on this page live only '
               'in memory. Reminder preferences are saved to your account when '
-              'confirmed. Previewing Circle, vial, or a call shares nothing.',
+              'confirmed. Vial and call previews share nothing. Circle sharing is managed separately.',
               style: fardaYouText(
                 size: 14,
                 height: 20,
@@ -751,111 +748,6 @@ class _FardaYouScreenState extends State<FardaYouScreen> {
     _showMessage('Reminder delay updated locally.');
   }
 
-  Future<void> _previewInvitation() async {
-    var accepted = false;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder:
-          (dialogContext) => StatefulBuilder(
-            builder:
-                (context, setDialogState) => AlertDialog(
-                  backgroundColor: FardaYouPalette.ivory,
-                  title: const Text('Share just enough'),
-                  content: SingleChildScrollView(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          'Preview access for one sample supporter. They receive only the permissions currently switched on—never medication names, remote vial controls, or emergency access.',
-                          style: fardaYouText(
-                            size: 14,
-                            height: 20,
-                            color: FardaYouPalette.textSecondary,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        CheckboxListTile(
-                          value: accepted,
-                          onChanged:
-                              (value) => setDialogState(
-                                () => accepted = value ?? false,
-                              ),
-                          contentPadding: EdgeInsets.zero,
-                          controlAffinity: ListTileControlAffinity.leading,
-                          title: Text(
-                            'Simulate that a verified recipient reviewed and accepted this invitation.',
-                            style: fardaYouText(size: 13, height: 19),
-                          ),
-                        ),
-                        const FardaYouNotice(
-                          text: 'No message or invitation will be sent.',
-                        ),
-                      ],
-                    ),
-                  ),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.of(dialogContext).pop(false),
-                      child: const Text('Cancel'),
-                    ),
-                    FilledButton(
-                      onPressed:
-                          accepted
-                              ? () => Navigator.of(dialogContext).pop(true)
-                              : null,
-                      child: const Text('Add sample supporter'),
-                    ),
-                  ],
-                ),
-          ),
-    );
-
-    if (!mounted || confirmed != true) return;
-    setState(() => _circleConnected = true);
-    _showMessage('Sample access added locally. No one was contacted.');
-  }
-
-  Future<void> _revokeCircleAccess() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder:
-          (dialogContext) => AlertDialog(
-            backgroundColor: FardaYouPalette.ivory,
-            title: const Text('Remove sample access?'),
-            content: Text(
-              'The sample supporter and all three local sharing permissions will be cleared.',
-              style: fardaYouText(
-                size: 14,
-                height: 20,
-                color: FardaYouPalette.textSecondary,
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(dialogContext).pop(false),
-                child: const Text('Keep access'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.of(dialogContext).pop(true),
-                style: FilledButton.styleFrom(
-                  backgroundColor: FardaYouPalette.danger,
-                ),
-                child: const Text('Remove access'),
-              ),
-            ],
-          ),
-    );
-
-    if (!mounted || confirmed != true) return;
-    setState(() {
-      _circleConnected = false;
-      _shareRoutineSummaries = false;
-      _shareRefillReminders = false;
-      _shareMissedConfirmation = false;
-    });
-    _showMessage('Sample access and permissions removed.');
-  }
-
   Future<void> _reviewLiveEntry() async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -1076,24 +968,11 @@ class _FardaYouScreenState extends State<FardaYouScreen> {
         },
         onOpenRoutine: () => _open(FardaYouDestination.routine),
       ),
-      FardaYouDestination.circle => FardaCirclePage(
+      FardaYouDestination.circle => FardaCircleScreen(
         key: const ValueKey(FardaYouDestination.circle),
-        profileLabel: _live ? 'ME' : widget.profileLabel,
+        repository: widget.controller?.repository,
         showBrandHeader: widget.showBrandHeader,
-        showCompanion: _showCompanion,
-        connected: _circleConnected,
-        routineSummaries: _shareRoutineSummaries,
-        refillReminders: _shareRefillReminders,
-        missedConfirmation: _shareMissedConfirmation,
         onBack: _back,
-        onRoutineSummariesChanged:
-            (value) => setState(() => _shareRoutineSummaries = value),
-        onRefillRemindersChanged:
-            (value) => setState(() => _shareRefillReminders = value),
-        onMissedConfirmationChanged:
-            (value) => setState(() => _shareMissedConfirmation = value),
-        onInvite: _previewInvitation,
-        onRevoke: _revokeCircleAccess,
       ),
       FardaYouDestination.liveActivity => FardaLiveActivityPreviewPage(
         key: const ValueKey(FardaYouDestination.liveActivity),

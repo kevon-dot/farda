@@ -280,3 +280,7 @@ Defer autonomous fulfillment, medical voice chat, caregiver remote locking, mult
 - No production code was replaced, no schema migration was run, and nothing was pushed or deployed.
 
 Test with medication takers, not only buyers/caregivers. Ask them to use the calendar, understand the upcoming call, opt out, correct a log and reconcile a refill. If “contacted,” “received,” “unconfirmed” or “call completed” is misunderstood, improve the interaction before optimizing visual preference.
+
+### Family Circle implementation status (2026-10-16)
+
+The previously local-only Circle preview is implemented and locally verified, with exact-head CI and deployment review still required. The complete Flutter suite passes 264/264 and analyzer has no warnings or errors; focused Circle HTTP adapter contracts also pass. The implementation uses accepted, revocable invitations with separate dose-status and reminder-schedule permissions, supports multiple family members without requiring a vial, and exposes read-only routine evidence without medication names or label details. `not_recorded` is not treated as missed, and device observations do not claim ingestion. See [FAMILY_CIRCLE_HANDOFF.md](FAMILY_CIRCLE_HANDOFF.md) for the API, migration, privacy boundaries, and remaining PostgreSQL validation gate. This status does not mean the feature is merged, deployed, or live.
