@@ -28,3 +28,13 @@ Eight membership tests pass: 320px at 1.3x text with all four approved prices; a
 `FardaConsumerShell._addPrescription` opens the offer only after a first medication has been saved and its onboarding returns success. Cancelling setup or saving an additional medication does not trigger it. The saved medication is never contingent on membership. The offer uses the existing navy/Outfit companion layout, shows the full yearly charge first, and adds an explicitly approximate monthly equivalent ($12.50 Plus / $20.83 Family); no trial, scarcity or unverified discount is implied. Continue free and the close control dismiss it.
 
 `MembershipOfferGate` records a local, versioned preference per user ID before presenting. A captured auth revision is checked before and after storage and navigation; account changes dismiss the onboarding offer. Storage failures skip the optional offer. This is a device-local presentation preference, not a server entitlement or a cross-device promise.
+
+### Native store implementation update
+
+- Flutter now uses `purchases_flutter` 10.16.0 for iOS/Android offering discovery, purchase and restore. Prices are the store's localized `priceString`; the proposed USD web catalog is never displayed as a native store offer.
+- The server issues an opaque store identity and product allowlist. A session-pinned `/billing/native/prepare` reservation precedes purchase; `/billing/native/sync` verifies entitlement after purchase/restore. SDK entitlement data never unlocks features locally.
+- Purchase cancellation, pending approval, network failure and unconfigured store states keep the free routine accessible. Session changes clear private UI, invalidate in-flight work and serialize SDK logout. No long-lived CustomerInfo listener is installed.
+- Configured HTTPS terms/privacy links are required for native purchase enablement. Store subscription management opens Apple's or Google's subscription settings; native never opens Stripe checkout. Dual-source memberships retain native management access.
+- iOS application minimum deployment target is now 13.0 for the RevenueCat SDK; the Live Activity extension remains 16.2.
+- Editable Figma fixture states: `163:714` (native offer) and `163:735` (pending approval) in `BeSPZ5VOwOOlrwKFTpMA4K`. The euro price is explicitly a test fixture, not a configured production offer. These extend the existing navy membership design; this is not a claim of whole-app screenshot parity.
+- Device store builds and real sandbox purchases/restores still require provider credentials, products, policies and store test accounts. Local widget tests use an injected adapter.

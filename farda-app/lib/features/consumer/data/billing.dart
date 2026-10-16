@@ -80,8 +80,10 @@ class BillingStatus {
     this.managementAvailable = false,
     this.cancelAtPeriodEnd = false,
     this.renewsAt,
+    this.source,
   });
   final String tier, status;
+  final String? source;
   final bool aiRefillHelp, familyAlerts, managementAvailable, cancelAtPeriodEnd;
   final DateTime? renewsAt;
   bool get hasMembership => tier != 'free';
@@ -89,6 +91,7 @@ class BillingStatus {
     final caps = json['capabilities'] as Map? ?? {};
     return BillingStatus(
       tier: json['tier'] as String? ?? 'free',
+      source: json['source'] as String?,
       status: json['status'] as String? ?? 'inactive',
       aiRefillHelp: caps['aiRefillHelp'] == true,
       familyAlerts: caps['familyAlerts'] == true,

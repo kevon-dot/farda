@@ -1,5 +1,8 @@
 import 'package:farda/application/authentication/storage/auth_storage.dart';
+import 'dart:async';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter/foundation.dart';
+import 'package:farda/features/consumer/data/native_billing.dart';
 import 'package:flutter/material.dart';
 import 'package:farda/features/consumer/data/billing.dart';
 import '../../design_system/farda_consumer_tokens.dart';
@@ -10,10 +13,12 @@ class FardaMembershipScreen extends StatefulWidget {
   const FardaMembershipScreen({
     super.key,
     this.repository,
+    this.nativeAdapter,
     this.initialTier = 'plus',
     this.onboardingOffer = false,
   });
   final BillingRepository? repository;
+  final NativePurchaseAdapter? nativeAdapter;
   final String initialTier;
   final bool onboardingOffer;
   @override
@@ -22,6 +27,15 @@ class FardaMembershipScreen extends StatefulWidget {
 
 class _FardaMembershipScreenState extends State<FardaMembershipScreen>
     with WidgetsBindingObserver {
+  late final NativePurchaseAdapter _native =
+      widget.nativeAdapter ?? RevenueCatPurchaseAdapter();
+  List<NativeOffer> _offers = [];
+  bool _nativeReady = false;
+  NativeBillingConfig? _nativeConfig;
+  bool get _nativePlatform =>
+      !kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.iOS ||
+          defaultTargetPlatform == TargetPlatform.android);
   BillingCatalog? _catalog;
   BillingStatus? _status;
   late String _tier;
@@ -41,6 +55,7 @@ class _FardaMembershipScreenState extends State<FardaMembershipScreen>
   @override
   void dispose() {
     _generation++;
+    unawaited(_native.reset().catchError((Object _) {}));
     AuthStorage.sessionRevision.removeListener(_onSessionRevision);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
@@ -48,6 +63,7 @@ class _FardaMembershipScreenState extends State<FardaMembershipScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (_busy) return; // Store sheets can pause/resume the app mid-purchase.
     if (state == AppLifecycleState.resumed) {
       _load();
     } else if (state == AppLifecycleState.paused ||
@@ -60,6 +76,7 @@ class _FardaMembershipScreenState extends State<FardaMembershipScreen>
     if (widget.onboardingOffer) {
       Navigator.maybePop(context);
     }
+    unawaited(_native.reset().catchError((Object _) {}));
     _clearSessionView();
     final generation = _generation;
     Future.microtask(() {
@@ -71,6 +88,9 @@ class _FardaMembershipScreenState extends State<FardaMembershipScreen>
     _generation++;
     if (mounted) {
       setState(() {
+        _nativeConfig = null;
+        _offers = [];
+        _nativeReady = false;
         _catalog = null;
         _status = null;
         _sessionCurrent = null;
@@ -83,13 +103,19 @@ class _FardaMembershipScreenState extends State<FardaMembershipScreen>
   @override
   void didUpdateWidget(covariant FardaMembershipScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.repository != widget.repository) _load();
+    if (oldWidget.repository != widget.repository) {
+      unawaited(_native.reset().catchError((Object _) {}));
+      _load();
+    }
   }
 
   Future<void> _load() async {
     final generation = ++_generation;
     setState(() {
       _loading = true;
+      _nativeConfig = null;
+      _offers = [];
+      _nativeReady = false;
       _error = null;
       _catalog = null;
       _status = null;
@@ -115,6 +141,20 @@ class _FardaMembershipScreenState extends State<FardaMembershipScreen>
       if (!mounted || generation != _generation) return;
       if (!await check()) throw StateError('Session changed');
       if (!mounted || generation != _generation) return;
+      if (_nativePlatform && repository is NativeBillingRepository) {
+        final config = await (repository as NativeBillingRepository)
+            .loadNativeBillingConfig(
+              defaultTargetPlatform == TargetPlatform.iOS ? 'ios' : 'android',
+            );
+        if (!mounted || generation != _generation || !await check()) return;
+        if (config.enabled && config.policiesAvailable) {
+          final offers = await _native.configure(config);
+          if (!mounted || generation != _generation || !await check()) return;
+          _nativeConfig = config;
+          _offers = offers;
+          _nativeReady = true;
+        }
+      }
       setState(() {
         _sessionCurrent = check;
         _catalog = result[0] as BillingCatalog;
@@ -147,6 +187,88 @@ class _FardaMembershipScreenState extends State<FardaMembershipScreen>
     await _open(
       () => widget.repository!.createBillingCheckout(price.key, Uri.base),
     );
+  }
+
+  Future<void> _nativeAction([NativeOffer? offer]) async {
+    if (_busy || !_nativeReady) return;
+    final generation = _generation;
+    final check = _sessionCurrent;
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      if (check == null ||
+          !await check() ||
+          !mounted ||
+          generation != _generation) {
+        return;
+      }
+      if (offer == null) {
+        await _native.restore();
+      } else {
+        final prepared = await (widget.repository! as NativeBillingRepository)
+            .prepareNativeBilling(
+              defaultTargetPlatform == TargetPlatform.iOS ? 'ios' : 'android',
+              check,
+            );
+        if (!mounted || generation != _generation || !await check()) return;
+        if (!prepared.enabled ||
+            !prepared.policiesAvailable ||
+            prepared.appUserId != _nativeConfig?.appUserId ||
+            prepared.apiKey != _nativeConfig?.apiKey ||
+            prepared.products[offer.id] != offer.tier) {
+          throw StateError('Store offer changed');
+        }
+        await _native.purchase(offer);
+      }
+      if (!mounted || generation != _generation || !await check()) return;
+      final status = await (widget.repository! as NativeBillingRepository)
+          .syncNativeBilling(check);
+      if (!mounted || generation != _generation || !await check()) return;
+      setState(() {
+        _status = status;
+        _error =
+            status.hasMembership
+                ? null
+                : 'No active store membership has been confirmed yet. If your payment is pending, refresh after store approval.';
+      });
+    } catch (error) {
+      if (mounted && generation == _generation) {
+        setState(() => _error = nativePurchaseError(error));
+      }
+    } finally {
+      if (mounted && generation == _generation) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _manageStore() async {
+    final generation = _generation;
+    final check = _sessionCurrent;
+    if (check == null ||
+        !await check() ||
+        !mounted ||
+        generation != _generation) {
+      return;
+    }
+    try {
+      final uri = Uri.parse(
+        defaultTargetPlatform == TargetPlatform.iOS
+            ? 'https://apps.apple.com/account/subscriptions'
+            : 'https://play.google.com/store/account/subscriptions',
+      );
+      if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+        throw StateError('Unavailable');
+      }
+    } catch (_) {
+      if (mounted && generation == _generation) {
+        setState(
+          () =>
+              _error =
+                  'Open your app store subscription settings to manage or cancel your membership.',
+        );
+      }
+    }
   }
 
   Future<void> _open(Future<Uri> Function() create) async {
@@ -202,15 +324,21 @@ class _FardaMembershipScreenState extends State<FardaMembershipScreen>
                 .where((p) => p.interval == (_annual ? 'year' : 'month'))
                 .toList();
     final price = prices.isEmpty ? null : prices.first;
+    final matchingOffers = _offers.where(
+      (o) => o.tier == _tier && o.annual == _annual,
+    );
+    final nativeOffer = matchingOffers.isEmpty ? null : matchingOffers.first;
     final active = _status?.hasMembership == true;
+    final hasBillingAccount = active || _status?.managementAvailable == true;
     final canBuy =
         !_loading &&
         !_busy &&
-        !active &&
-        kIsWeb &&
-        _catalog?.checkoutEnabled == true &&
-        price != null &&
-        price.available;
+        !hasBillingAccount &&
+        (kIsWeb
+            ? _catalog?.checkoutEnabled == true &&
+                price != null &&
+                price.available
+            : _nativeReady && nativeOffer != null);
     const muted = Color(0xFFC7D2E5);
     return Scaffold(
       backgroundColor: FardaConsumerColors.deep,
@@ -243,7 +371,7 @@ class _FardaMembershipScreenState extends State<FardaMembershipScreen>
                 ),
                 const SizedBox(height: 16),
                 _text(
-                  active
+                  hasBillingAccount
                       ? 'Your membership.'
                       : widget.onboardingOffer
                       ? 'Your routine, supported.'
@@ -253,8 +381,10 @@ class _FardaMembershipScreenState extends State<FardaMembershipScreen>
                 ),
                 const SizedBox(height: 8),
                 _text(
-                  active
-                      ? 'Care that fits your everyday.'
+                  hasBillingAccount
+                      ? active
+                          ? 'Care that fits your everyday.'
+                          : 'Review your billing. Your free routine is still here.'
                       : widget.onboardingOffer
                       ? 'Your medication is saved. Choose a little extra support, or keep going free.'
                       : 'For you. And the people in your corner.',
@@ -269,13 +399,15 @@ class _FardaMembershipScreenState extends State<FardaMembershipScreen>
                       child: CircularProgressIndicator(color: Colors.white),
                     ),
                   )
-                else if (active) ...[
+                else if (hasBillingAccount) ...[
                   _panel(
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         _text(
-                          'FARDA ${_status!.tier.toUpperCase()}',
+                          active
+                              ? 'FARDA ${_status!.tier.toUpperCase()}'
+                              : 'FARDA MEMBERSHIP',
                           size: 12,
                           weight: FontWeight.w600,
                         ),
@@ -285,7 +417,7 @@ class _FardaMembershipScreenState extends State<FardaMembershipScreen>
                           size: 26,
                           weight: FontWeight.w600,
                         ),
-                        if (_status!.renewsAt != null) ...[
+                        if (active && _status!.renewsAt != null) ...[
                           const SizedBox(height: 8),
                           _text(
                             '${_status!.cancelAtPeriodEnd ? 'Access ends' : 'Renews'} ${MaterialLocalizations.of(context).formatMediumDate(_status!.renewsAt!.toLocal())}',
@@ -307,7 +439,15 @@ class _FardaMembershipScreenState extends State<FardaMembershipScreen>
                   const SizedBox(height: 16),
                   FilledButton(
                     onPressed:
-                        kIsWeb && _status!.managementAvailable && !_busy
+                        _nativePlatform &&
+                                (_status!.source == 'native' ||
+                                    _status!.source == 'multiple') &&
+                                !_busy
+                            ? _manageStore
+                            : kIsWeb &&
+                                _status!.source != 'native' &&
+                                _status!.managementAvailable &&
+                                !_busy
                             ? () => _open(
                               () => widget.repository!.createBillingPortal(
                                 Uri.base,
@@ -319,12 +459,28 @@ class _FardaMembershipScreenState extends State<FardaMembershipScreen>
                   ),
                   const SizedBox(height: 8),
                   _text(
-                    kIsWeb && _status!.managementAvailable
+                    kIsWeb &&
+                            _status!.source != 'native' &&
+                            _status!.managementAvailable
                         ? 'Opens secure Stripe billing to manage or cancel.'
+                        : !kIsWeb && _status!.source == 'web'
+                        ? 'This membership is billed on the web. Open Farda in your browser and choose Manage membership to update payment details or cancel.'
+                        : !kIsWeb
+                        ? 'Manage or cancel store subscriptions in your App Store or Google Play subscription settings.'
                         : 'Membership management is unavailable on this device.',
                     color: muted,
                     size: 12,
                   ),
+                  if (_status!.source == 'multiple') ...[
+                    const SizedBox(height: 12),
+                    _text(
+                      kIsWeb
+                          ? 'You have web and store subscriptions. This button manages web billing only. To stop store renewal, open the App Store or Google Play subscription settings used for your purchase.'
+                          : 'You have web and store subscriptions. This button manages store billing only. To stop web renewal, open Farda in your browser and choose Manage membership. Each subscription must be managed separately.',
+                      color: FardaConsumerColors.peach,
+                      size: 12,
+                    ),
+                  ],
                 ] else ...[
                   _choiceRow(
                     ['Plus', 'Family'],
@@ -349,7 +505,11 @@ class _FardaMembershipScreenState extends State<FardaMembershipScreen>
                         ),
                         const SizedBox(height: 8),
                         _text(
-                          price == null
+                          !kIsWeb
+                              ? nativeOffer == null
+                                  ? 'Price unavailable'
+                                  : '${nativeOffer.price} / ${_annual ? 'year' : 'month'}'
+                              : price == null
                               ? 'Price unavailable'
                               : '${price.dollars} / ${_annual ? 'year' : 'month'}',
                           size: 30,
@@ -357,7 +517,11 @@ class _FardaMembershipScreenState extends State<FardaMembershipScreen>
                         ),
                         const SizedBox(height: 4),
                         _text(
-                          price == null
+                          !kIsWeb
+                              ? nativeOffer == null
+                                  ? 'Store pricing will appear when available.'
+                                  : 'Billed ${_annual ? 'yearly' : 'monthly'} through your app store.'
+                              : price == null
                               ? 'Try refreshing membership.'
                               : _annual
                               ? '${price.dollars} billed yearly · USD'
@@ -365,7 +529,7 @@ class _FardaMembershipScreenState extends State<FardaMembershipScreen>
                           color: muted,
                           size: 13,
                         ),
-                        if (_annual && price != null) ...[
+                        if (kIsWeb && _annual && price != null) ...[
                           const SizedBox(height: 8),
                           _text(
                             'About \$${(price.amount / 1200).toStringAsFixed(2)} / month, billed yearly',
@@ -409,11 +573,19 @@ class _FardaMembershipScreenState extends State<FardaMembershipScreen>
                   ),
                   const SizedBox(height: 18),
                   FilledButton(
-                    onPressed: canBuy ? () => _purchase(price) : null,
+                    onPressed:
+                        canBuy
+                            ? () =>
+                                kIsWeb
+                                    ? _purchase(price!)
+                                    : _nativeAction(nativeOffer)
+                            : null,
                     style: _buttonStyle(),
                     child: Text(
                       _busy
-                          ? 'Opening secure billing…'
+                          ? kIsWeb
+                              ? 'Opening secure billing…'
+                              : 'Confirming with the store…'
                           : canBuy
                           ? 'Continue with ${_tier == 'plus' ? 'Plus' : 'Family'}'
                           : 'Purchases unavailable',
@@ -422,9 +594,11 @@ class _FardaMembershipScreenState extends State<FardaMembershipScreen>
                   const SizedBox(height: 10),
                   _text(
                     canBuy
-                        ? 'Renews automatically. Cancel in membership settings. Opens secure Stripe checkout.'
+                        ? kIsWeb
+                            ? 'Renews automatically. Cancel in membership settings. Opens secure Stripe checkout.'
+                            : 'Renews automatically. Confirm the price in your app store. Cancel in your store subscription settings.'
                         : !kIsWeb
-                        ? 'In-app purchases aren’t available yet. You can keep using Farda free.'
+                        ? 'Store purchases are unavailable right now. You can keep using Farda free.'
                         : 'Purchases are not configured. No payment will be taken.',
                     size: 12,
                     color: muted,
@@ -482,17 +656,36 @@ class _FardaMembershipScreenState extends State<FardaMembershipScreen>
                       ),
                       child: const Text('Refresh membership'),
                     ),
-                    const Tooltip(
-                      message:
-                          'Store purchases are not configured. Existing web memberships are loaded from your account.',
-                      child: TextButton(
-                        onPressed: null,
-                        child: Text(
-                          'Restore purchases',
-                          style: TextStyle(color: muted),
-                        ),
+                    if (_nativeConfig?.policiesAvailable == true) ...[
+                      TextButton(
+                        onPressed:
+                            () => launchUrl(
+                              _nativeConfig!.termsUrl!,
+                              mode: LaunchMode.externalApplication,
+                            ),
+                        child: const Text('Terms of service'),
                       ),
-                    ),
+                      TextButton(
+                        onPressed:
+                            () => launchUrl(
+                              _nativeConfig!.privacyUrl!,
+                              mode: LaunchMode.externalApplication,
+                            ),
+                        child: const Text('Privacy policy'),
+                      ),
+                    ],
+                    if (!kIsWeb)
+                      TextButton(
+                        onPressed:
+                            _nativeReady && !_busy && !_loading
+                                ? () => _nativeAction()
+                                : null,
+                        style: TextButton.styleFrom(
+                          foregroundColor: Colors.white,
+                          disabledForegroundColor: muted,
+                        ),
+                        child: const Text('Restore purchases'),
+                      ),
                   ],
                 ),
               ],

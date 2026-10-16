@@ -1,9 +1,10 @@
 import Stripe from 'stripe';
 import type { PrismaClient } from '../../generated/prisma/client';
 import { configuredPrices, priceCatalog, publicCatalog, type PaidTier, type PriceKey } from './catalog';
+import { nativeEntitled, refreshNativeIfNeeded } from './native';
 
 export class BillingError extends Error { constructor(public status: number, public code: string, message: string) { super(message); } }
-type Db = Pick<PrismaClient, 'billingCustomer' | 'billingSubscription' | 'billingWebhookEvent' | 'billingCheckout' | '$transaction'>;
+type Db = Pick<PrismaClient, 'billingCustomer' | 'billingSubscription' | 'billingWebhookEvent' | 'billingCheckout' | 'nativeBillingSubscription' | '$transaction'>;
 const validUrl = (raw: string) => { const url = new URL(raw); const origins = (process.env.FARDA_BILLING_RETURN_ORIGINS ?? '').split(',').map(x => x.trim()).filter(Boolean); if (!origins.includes(url.origin)) throw new BillingError(400, 'invalid_url', 'Return URL origin is not allowed.'); return url.toString(); };
 const objectId = (value: string | { id: string } | null | undefined) => typeof value === 'string' ? value : value?.id;
 
@@ -28,8 +29,14 @@ export class BillingService {
   async status(userId: string) {
     const row = await this.db.billingSubscription.findFirst({ where: { userId }, orderBy: { updatedAt: 'desc' } });
     const entitled = await this.db.billingSubscription.findFirst({ where: { userId, tier: { in: ['plus', 'family'] }, status: { in: ['active', 'trialing'] }, currentPeriodEnd: { gt: new Date() } }, orderBy: { updatedAt: 'desc' } });
-    const paid = entitled?.tier as PaidTier | undefined;
-    return { tier: paid ?? 'free', status: row?.status ?? 'inactive', capabilities: { core: true, aiRefillHelp: Boolean(paid), familyAlerts: paid === 'family' }, renewsAt: row?.currentPeriodEnd?.toISOString() ?? null, cancelAtPeriodEnd: row?.cancelAtPeriodEnd ?? false, managementAvailable: Boolean(row && this.stripe) };
+    const native = this.db.nativeBillingSubscription ? await refreshNativeIfNeeded(this.db, userId) ?? await this.db.nativeBillingSubscription.findUnique({ where: { userId } }) : null;
+    const freshNative = nativeEntitled(native, 'ai_refill_help') ? native : null;
+    const paid = (entitled?.tier === 'family' || freshNative?.tier === 'family' ? 'family' : entitled?.tier === 'plus' || freshNative?.tier === 'plus' ? 'plus' : undefined) as PaidTier | undefined;
+    const activeSources = [...(entitled ? ['web' as const] : []), ...(freshNative ? ['native' as const] : [])];
+    const source = activeSources.length === 2 ? 'multiple' : activeSources[0] ?? (row ? 'web' : native?.everPurchased ? 'native' : null);
+    const selected = source === 'native' ? freshNative : source === 'web' ? row : null;
+    const management = { web: Boolean(row && this.stripe), native: Boolean(native?.everPurchased) };
+    return { tier: paid ?? 'free', status: source === 'multiple' ? 'provider_conflict' : selected?.status ?? row?.status ?? (native?.everPurchased ? native.status : 'inactive'), capabilities: { core: true, aiRefillHelp: Boolean(paid), familyAlerts: paid === 'family' }, renewsAt: (source === 'native' ? freshNative?.expiresAt : source === 'web' ? row?.currentPeriodEnd : null)?.toISOString() ?? null, cancelAtPeriodEnd: source === 'web' ? row?.cancelAtPeriodEnd ?? false : false, managementAvailable: management.web || management.native, source, activeSources, management };
   }
   private async customer(userId: string) {
     const existing = await this.db.billingCustomer.findUnique({ where: { userId } });
@@ -51,23 +58,33 @@ export class BillingService {
     if (!price.active || price.livemode !== expectedLive || price.currency !== 'usd' || price.unit_amount !== selected.amount || price.recurring?.interval !== selected.interval || price.recurring?.interval_count !== 1) throw new BillingError(503, 'price_mismatch', 'Billing price configuration is invalid.');
     const active = await this.db.billingSubscription.findFirst({ where: { userId, status: { in: ['active', 'trialing'] }, currentPeriodEnd: { gt: new Date() } }, select: { id: true } });
     if (active) throw new BillingError(409, 'subscription_exists', 'Manage the existing subscription instead.');
+    const native = this.db.nativeBillingSubscription ? await this.db.nativeBillingSubscription.findUnique({ where: { userId } }) : null;
+    if (nativeEntitled(native, 'ai_refill_help')) throw new BillingError(409, 'subscription_exists', 'Manage the existing subscription instead.');
     const customer = await this.customer(userId);
     const remote = await stripe.subscriptions.list({ customer, status: 'all', limit: 100 });
     if (remote.data.some(subscription => ['active', 'trialing', 'past_due', 'unpaid', 'incomplete'].includes(subscription.status))) throw new BillingError(409, 'subscription_exists', 'Manage the existing subscription instead.');
-    const now = new Date();
-    const prior = await this.db.billingCheckout.findUnique({ where: { userId } });
-    if (prior && prior.expiresAt > now) {
-      if (prior.priceKey !== input.priceKey) throw new BillingError(409, 'checkout_in_progress', 'Another checkout is already in progress.');
-      if (prior.stripeSessionId && prior.sessionUrl) {
-        const existing = await stripe.checkout.sessions.retrieve(prior.stripeSessionId);
-        if (existing.status === 'open') return { url: prior.sessionUrl };
-      }
-      throw new BillingError(409, 'checkout_in_progress', 'Checkout is being prepared.');
-    }
-    if (prior) await this.db.billingCheckout.deleteMany({ where: { userId, expiresAt: { lte: now } } });
     const expiresAt = new Date(Date.now() + 31 * 60_000);
-    try { await this.db.billingCheckout.create({ data: { userId, priceKey: input.priceKey, expiresAt } }); }
-    catch { throw new BillingError(409, 'checkout_in_progress', 'Another checkout is already in progress.'); }
+    const reusable = await this.db.$transaction(async tx => {
+      await tx.$executeRawUnsafe('SELECT pg_advisory_xact_lock(hashtext($1))', `billing:${userId}`);
+      const lockedNative = await tx.nativeBillingSubscription.findUnique({ where: { userId } });
+      if (nativeEntitled(lockedNative, 'ai_refill_help')) throw new BillingError(409, 'subscription_exists', 'Manage the existing subscription instead.');
+      if (lockedNative?.purchaseReservedUntil && lockedNative.purchaseReservedUntil > new Date()) throw new BillingError(409, 'checkout_in_progress', 'A native purchase is already in progress.');
+      const now = new Date();
+      const prior = await tx.billingCheckout.findUnique({ where: { userId } });
+      if (prior && prior.expiresAt > now) {
+        if (prior.priceKey !== input.priceKey) throw new BillingError(409, 'checkout_in_progress', 'Another checkout is already in progress.');
+        if (prior.stripeSessionId && prior.sessionUrl) return { stripeSessionId: prior.stripeSessionId, sessionUrl: prior.sessionUrl };
+        else throw new BillingError(409, 'checkout_in_progress', 'Checkout is being prepared.');
+      }
+      if (prior) await tx.billingCheckout.deleteMany({ where: { userId, expiresAt: { lte: now } } });
+      await tx.billingCheckout.create({ data: { userId, priceKey: input.priceKey, expiresAt } });
+      return null;
+    });
+    if (reusable) {
+      const existing = await stripe.checkout.sessions.retrieve(reusable.stripeSessionId);
+      if (existing.status === 'open') return { url: reusable.sessionUrl };
+      throw new BillingError(409, 'checkout_in_progress', 'Another checkout is already in progress.');
+    }
     const session = await stripe.checkout.sessions.create({ mode: 'subscription', customer, line_items: [{ price: selected.id, quantity: 1 }], success_url: successUrl, cancel_url: cancelUrl, subscription_data: { metadata: { fardaUserId: userId } }, allow_promotion_codes: true, expires_at: Math.floor(expiresAt.getTime() / 1000) }, { idempotencyKey: `farda-checkout-${userId}-${expiresAt.getTime()}` });
     if (!session.url) throw new BillingError(503, 'billing_unavailable', 'Checkout is temporarily unavailable.');
     await this.db.billingCheckout.update({ where: { userId }, data: { stripeSessionId: session.id, sessionUrl: session.url } });

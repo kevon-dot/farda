@@ -31,3 +31,9 @@ Keep billing disabled until the server has a least-privilege restricted test key
 ## Remaining verification
 
 No webhook destination was found in this sandbox. A confirmed public backend URL is required for `/api/billing/webhook`; do not register a placeholder. Register `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.paid`, `invoice.payment_failed`, `checkout.session.completed`, `checkout.session.async_payment_succeeded`, and `checkout.session.async_payment_failed`; configure its signing secret, and test purchase, delayed-payment completion/failure, cancellation, duplicate/out-of-order events, and portal return against the application database. No end-to-end payment, native purchase, or live deployment claim is made by creating this catalog. Native StoreKit/Google Play purchases and restoration remain a separate implementation.
+
+## Runtime readiness command
+
+From `farda-app-backend`, run `pnpm runtime:readiness` in the target deployment environment. It reports configuration presence and consistency without printing credentials. After a real public backend URL, restricted Stripe key, webhook signing secret, and Photon credentials are installed, run `pnpm runtime:readiness -- --remote`. The remote mode only reads Stripe catalog, portal, and webhook configuration and requests a Photon access token; it does not create objects, read patient data, submit an order, enable either integration, or change environment values. A nonzero exit means at least one required check failed or remains blocked.
+
+There is no deployment platform, staging URL, or production URL recorded in this repository as of October 16, 2026. `FARDA_PUBLIC_BASE_URL` must be the confirmed deployed API origin before the Stripe webhook can be registered and checked.

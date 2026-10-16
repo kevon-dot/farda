@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 
 import 'consumer_models.dart';
 import 'billing.dart';
+import 'native_billing.dart';
 import 'consumer_repository.dart';
 import 'circle_models.dart';
 import 'circle_alerts.dart';
@@ -21,6 +22,7 @@ class ConsumerApiRepository
     implements
         ConsumerRepository,
         BillingRepository,
+        NativeBillingRepository,
         BillingSessionGuard,
         CircleAlertsRepository,
         LabelScanRepository,
@@ -63,6 +65,53 @@ class ConsumerApiRepository
   @override
   Future<BillingStatus> loadBillingStatus() async =>
       BillingStatus.fromJson(await _request('GET', 'billing/status'));
+
+  @override
+  Future<NativeBillingConfig> loadNativeBillingConfig(String platform) async =>
+      NativeBillingConfig.fromJson(
+        await _request(
+          'GET',
+          'billing/native/config',
+          query: {'platform': platform},
+        ),
+      );
+
+  @override
+  Future<NativeBillingConfig> prepareNativeBilling(
+    String platform,
+    Future<bool> Function() sessionCurrent,
+  ) async {
+    final token = await _tokenProvider();
+    if (token == null || !await sessionCurrent()) {
+      throw StateError('Session changed');
+    }
+    return NativeBillingConfig.fromJson(
+      await _request(
+        'POST',
+        'billing/native/prepare',
+        body: {'platform': platform},
+        requestToken: token,
+      ),
+    );
+  }
+
+  @override
+  Future<BillingStatus> syncNativeBilling(
+    Future<bool> Function() sessionCurrent,
+  ) async {
+    final token = await _tokenProvider();
+    if (token == null || !await sessionCurrent()) {
+      throw StateError('Session changed');
+    }
+    return BillingStatus.fromJson(
+      await _request(
+        'POST',
+        'billing/native/sync',
+        body: {},
+        requestToken: token,
+      ),
+    );
+  }
 
   @override
   Future<Uri> createBillingCheckout(String priceKey, Uri returnUri) async {
