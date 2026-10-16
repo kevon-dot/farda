@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'package:farda/features/consumer/data/circle_models.dart';
 import 'package:farda/features/consumer/data/consumer_api_repository.dart';
 import 'package:farda/features/consumer/data/consumer_models.dart';
-import 'package:farda/features/consumer/data/consumer_repository.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
