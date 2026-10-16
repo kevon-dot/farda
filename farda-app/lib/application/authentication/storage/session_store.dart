@@ -11,12 +11,13 @@ class StoredSession {
 /// One secure record prevents pairing a token with another user's ID.
 /// Authentication validity still comes from the server, not local presence.
 class SessionStore {
-  SessionStore(this.store, {required this.purgeLegacyPreferences});
+  SessionStore(this.store, {required this.purgeLegacyPreferences, this.onSessionChanged});
   static const sessionKey = 'farda.session.v1';
   static const revokedKey = 'farda.session.revoked';
   static const privatePrefix = 'farda.private.';
   final SecureStore store;
   final Future<void> Function() purgeLegacyPreferences;
+  final void Function()? onSessionChanged;
   Future<void> _tail = Future.value();
   bool _blocked = false;
 
@@ -54,6 +55,7 @@ class SessionStore {
       throw ArgumentError('A complete session is required');
     }
     _blocked = true;
+    onSessionChanged?.call();
     final existing = await _readStored();
     // Preserve this account's pending uploads on token renewal. A different
     // account must never inherit its private data.
@@ -73,6 +75,7 @@ class SessionStore {
     );
     await store.delete(revokedKey);
     _blocked = false;
+    onSessionChanged?.call();
   });
 
   Future<StoredSession?> _readStored() async {
@@ -119,11 +122,13 @@ class SessionStore {
   Future<void> clear() {
     // Prevent new authorization synchronously, even if storage is slow.
     _blocked = true;
+    onSessionChanged?.call();
     return _serial(_clear);
   }
 
   Future<void> _clear() async {
     _blocked = true;
+    onSessionChanged?.call();
     // A persistent tombstone prevents reusing a token after partial cleanup.
     // Storage failure is surfaced; callers must not claim logout succeeded.
     await store.write(revokedKey, '1');

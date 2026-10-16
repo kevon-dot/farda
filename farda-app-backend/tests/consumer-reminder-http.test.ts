@@ -50,7 +50,7 @@ describe.skipIf(!databaseUrl)('consumer HTTP and reminder integration', () => {
     expect(provider.send).not.toHaveBeenCalled();
   });
   it('mounts preferences and refills behind session authorization',async()=>{
-    for(const path of ['/reminders/preferences','/refills']){
+    for(const path of ['/reminders/preferences','/refills','/billing/catalog','/billing/status','/circle/alerts']){
       expect((await call(path,'GET',undefined,null)).status).toBe(401);
       expect((await call(path)).status).toBe(200);
     }

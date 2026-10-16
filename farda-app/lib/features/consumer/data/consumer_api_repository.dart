@@ -1,11 +1,14 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:farda/application/authentication/storage/auth_storage.dart';
 
 import 'package:http/http.dart' as http;
 
 import 'consumer_models.dart';
+import 'billing.dart';
 import 'consumer_repository.dart';
 import 'circle_models.dart';
+import 'circle_alerts.dart';
 import 'label_scan.dart';
 import 'refill_agent.dart';
 
@@ -16,6 +19,9 @@ import 'package:http_parser/http_parser.dart';
 class ConsumerApiRepository
     implements
         ConsumerRepository,
+        BillingRepository,
+        BillingSessionGuard,
+        CircleAlertsRepository,
         LabelScanRepository,
         RefillAgentRepository,
         RefillQuestionRepository {
@@ -38,7 +44,114 @@ class ConsumerApiRepository
   int _writeSequence = 0;
   String? _consentVersion;
   @override
+  Future<Future<bool> Function()> captureBillingSession() async {
+    final revision = AuthStorage.sessionRevision.value;
+    final original = await _tokenProvider();
+    return () async =>
+        AuthStorage.sessionRevision.value == revision &&
+        original != null &&
+        original.isNotEmpty &&
+        await _tokenProvider() == original;
+  }
+
+  @override
+  Future<BillingCatalog> loadBillingCatalog() async =>
+      BillingCatalog.fromJson(await _request('GET', 'billing/catalog'));
+
+  @override
+  Future<BillingStatus> loadBillingStatus() async =>
+      BillingStatus.fromJson(await _request('GET', 'billing/status'));
+
+  @override
+  Future<Uri> createBillingCheckout(String priceKey, Uri returnUri) async {
+    final response = await _request(
+      'POST',
+      'billing/checkout',
+      body: {
+        'priceKey': priceKey,
+        'successUrl': returnUri.toString(),
+        'cancelUrl': returnUri.toString(),
+        'channel': 'web',
+      },
+    );
+    return _billingUri(response, 'checkout.stripe.com');
+  }
+
+  @override
+  Future<Uri> createBillingPortal(Uri returnUri) async => _billingUri(
+    await _request(
+      'POST',
+      'billing/portal',
+      body: {'returnUrl': returnUri.toString()},
+    ),
+    'billing.stripe.com',
+  );
+
+  Uri _billingUri(Map<String, dynamic> response, String allowedHost) {
+    final uri = Uri.tryParse(response['url'] as String? ?? '');
+    if (uri == null ||
+        uri.scheme != 'https' ||
+        uri.host != allowedHost ||
+        uri.userInfo.isNotEmpty) {
+      throw const FormatException('Invalid billing destination');
+    }
+    return uri;
+  }
+
+  @override
   bool get isDemo => false;
+
+  @override
+  Future<CircleAlertPolicy> loadCircleAlertPolicy(
+    String grantId, {
+    bool recipient = false,
+  }) async {
+    final result = await _request(
+      'GET',
+      'circle/${recipient ? 'shared-with-me' : 'members'}/${Uri.encodeComponent(grantId)}/${recipient ? 'alert-consent' : 'alert-policy'}',
+    );
+    return CircleAlertPolicy.fromJson(
+      Map<String, dynamic>.from(result['policy'] as Map),
+    );
+  }
+
+  @override
+  Future<void> saveCircleAlertPolicy(
+    String grantId,
+    CircleAlertPolicy policy,
+  ) async {
+    await _request(
+      'PUT',
+      'circle/members/${Uri.encodeComponent(grantId)}/alert-policy',
+      body: policy.toJson(),
+    );
+  }
+
+  @override
+  Future<void> setCircleAlertConsent(String grantId, bool consented) async {
+    await _request(
+      'PUT',
+      'circle/shared-with-me/${Uri.encodeComponent(grantId)}/alert-consent',
+      body: {'consented': consented},
+    );
+  }
+
+  @override
+  Future<List<CircleAlert>> loadCircleAlerts() async {
+    final result = await _request(
+      'GET',
+      'circle/alerts',
+      query: {'limit': '100'},
+    );
+    return (result['alerts'] as List? ?? [])
+        .map((v) => CircleAlert.fromJson(Map<String, dynamic>.from(v as Map)))
+        .toList();
+  }
+
+  @override
+  Future<void> readCircleAlert(String id) async {
+    await _request('POST', 'circle/alerts/${Uri.encodeComponent(id)}/read');
+  }
 
   @override
   Future<CircleOverview> loadCircle() async =>

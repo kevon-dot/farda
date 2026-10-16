@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:farda/application/authentication/storage/auth_storage.dart';
 
 import 'package:farda/consumer_v2/screens/you/farda_circle_screen.dart';
 import 'package:farda/features/consumer/data/circle_models.dart';
@@ -93,6 +94,35 @@ Widget _screen(ConsumerDemoRepository? repository) => MaterialApp(
 );
 
 void main() {
+  testWidgets(
+    'same repository session revision clears Circle and rejects pending refresh',
+    (tester) async {
+      final repo = _CircleRepository('Private family');
+      await tester.pumpWidget(_screen(repo));
+      await tester.pumpAndSettle();
+      expect(find.text('Private family'), findsOneWidget);
+      final response = Completer<CircleOverview>();
+      repo.circleCompleter = response;
+      await tester.ensureVisible(find.text('Refresh'));
+      await tester.tap(find.text('Refresh'));
+      await tester.pump();
+      AuthStorage.sessionRevision.value++;
+      await tester.pump();
+      response.complete(
+        CircleOverview(
+          pending: const [],
+          members: [_member('private', 'Private family')],
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Private family'), findsNothing);
+      expect(
+        find.text('Your account changed. Reopen your circle to continue.'),
+        findsOneWidget,
+      );
+    },
+  );
+
   testWidgets(
     'a delayed old repository response cannot replace the new session',
     (tester) async {

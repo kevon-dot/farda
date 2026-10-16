@@ -38,6 +38,54 @@ model User {
   circleInvitationsReceived CircleInvitation[] @relation("CircleInvitationRecipient")
   circleGrantsOwned CircleGrant[] @relation("CircleGrantOwner")
   circleGrantsReceived CircleGrant[] @relation("CircleGrantRecipient")
+  circleAlertsOwned CircleAlert[] @relation("CircleAlertOwner")
+  circleAlertsReceived CircleAlert[] @relation("CircleAlertRecipient")
+  billingCustomer BillingCustomer?
+  billingSubscriptions BillingSubscription[]
+  billingCheckout BillingCheckout?
+}
+
+model BillingCustomer {
+  userId String @id
+  stripeCustomerId String @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model BillingSubscription {
+  id String @id @default(cuid())
+  userId String
+  stripeSubscriptionId String @unique
+  stripeCustomerId String
+  priceId String
+  tier String
+  status String
+  currentPeriodEnd DateTime?
+  cancelAtPeriodEnd Boolean @default(false)
+  lastEventCreatedAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId, status])
+  @@index([stripeCustomerId])
+}
+
+model BillingWebhookEvent {
+  stripeEventId String @id
+  type String
+  processedAt DateTime @default(now())
+}
+
+model BillingCheckout {
+  userId String @id
+  priceKey String
+  stripeSessionId String? @unique
+  sessionUrl String?
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model CircleInvitation {
@@ -69,8 +117,48 @@ model CircleGrant {
   updatedAt DateTime @updatedAt
   owner User @relation("CircleGrantOwner", fields: [ownerId], references: [id], onDelete: Cascade)
   recipient User @relation("CircleGrantRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
+  alertPolicy CircleAlertPolicy?
+  alerts CircleAlert[]
   @@unique([ownerId, recipientId])
   @@index([recipientId])
+}
+
+model CircleAlertPolicy {
+  grantId String @id
+  enabled Boolean @default(false)
+  recipientConsented Boolean @default(false)
+  gracePeriodMinutes Int @default(30)
+  quietHoursStart String @default("21:00")
+  quietHoursEnd String @default("08:00")
+  timeZone String @default("UTC")
+  lastEvaluatedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  grant CircleGrant @relation(fields: [grantId], references: [id], onDelete: Cascade)
+  @@index([enabled, recipientConsented])
+  @@index([lastEvaluatedAt])
+}
+
+model CircleAlert {
+  id String @id @default(cuid())
+  grantId String
+  ownerId String
+  recipientId String
+  doseId String
+  kind String @default("confirmation_not_recorded")
+  scheduledFor DateTime
+  state String @default("active")
+  cancelReason String?
+  readAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  grant CircleGrant @relation(fields: [grantId], references: [id], onDelete: Cascade)
+  owner User @relation("CircleAlertOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  recipient User @relation("CircleAlertRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
+  dose Dose @relation(fields: [doseId], references: [id], onDelete: Cascade)
+  @@unique([grantId, doseId, kind])
+  @@index([recipientId, state, createdAt])
+  @@index([state, scheduledFor])
 }
 
 model Prescription {
@@ -129,6 +217,7 @@ model Dose {
   reminderIntents ReminderIntent[]
   scheduleVersion ScheduleVersion? @relation(fields: [scheduleVersionId], references: [id], onDelete: SetNull)
   corrections DoseCorrection[]
+  circleAlerts CircleAlert[]
 
   @@index([userId])
   @@index([prescriptionId])

@@ -117,6 +117,31 @@ void main() {
   });
 
   group('secure account lifecycle', () {
+    test('private views are notified before logout storage cleanup completes', () async {
+      var revisions = 0;
+      final tracked = SessionStore(storage, purgeLegacyPreferences: () async {},
+        onSessionChanged: () => revisions++);
+      await tracked.save(const StoredSession(token: 'fresh', userId: 'user-a'));
+      final before = revisions;
+      final clearing = tracked.clear();
+      expect(revisions, greaterThan(before));
+      await clearing;
+      expect(await tracked.read(), isNull);
+    });
+
+    test('a stale token rejection does not invalidate the new account view', () async {
+      var revisions = 0;
+      final tracked = SessionStore(storage, purgeLegacyPreferences: () async {},
+        onSessionChanged: () => revisions++);
+      await tracked.save(const StoredSession(token: 'new-token', userId: 'user-b'));
+      final before = revisions;
+      expect(await tracked.invalidateToken('token-a'), isFalse);
+      expect(revisions, before);
+      expect((await tracked.read())?.userId, 'user-b');
+      expect(await tracked.invalidateToken('new-token'), isTrue);
+      expect(revisions, greaterThan(before));
+    });
+
     test('legacy credentials are not used as a session', () async {
       var purged = false;
       final legacy = SessionStore(

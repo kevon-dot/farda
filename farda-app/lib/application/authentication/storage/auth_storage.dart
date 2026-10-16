@@ -1,12 +1,15 @@
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter/foundation.dart';
 import 'package:farda/utilities/platform_secure_store.dart';
 import 'session_store.dart';
 export 'session_store.dart';
 
 class AuthStorage {
+  static final ValueNotifier<int> sessionRevision = ValueNotifier<int>(0);
   static final SessionStore _sessions = SessionStore(
     const PlatformSecureStore(),
     purgeLegacyPreferences: _purgeLegacyPreferences,
+    onSessionChanged: () => sessionRevision.value++,
   );
   static Future<void> _purgeLegacyPreferences() async {
     final prefs = await SharedPreferences.getInstance();

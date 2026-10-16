@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:farda/application/authentication/storage/auth_storage.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:farda/features/consumer/data/consumer_repository.dart';
@@ -6,6 +7,10 @@ import 'package:farda/features/consumer/data/circle_models.dart';
 
 import '../../design_system/farda_consumer_tokens.dart' as design;
 import 'you_widgets.dart';
+import 'circle_alert_panel.dart';
+import 'package:farda/features/consumer/data/circle_alerts.dart';
+import 'package:farda/features/consumer/data/billing.dart';
+import '../membership/farda_membership_screen.dart';
 
 /// Family sharing uses canonical account records, independently of a vial.
 class FardaCircleScreen extends StatefulWidget {
@@ -33,19 +38,45 @@ class _FardaCircleScreenState extends State<FardaCircleScreen>
   bool _loading = true;
   bool _busy = false;
   bool _familyTab = false;
+  BuildContext? _alertContext;
+  bool _sessionValid = true;
   int _requestGeneration = 0;
   int _mutationGeneration = 0;
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    AuthStorage.sessionRevision.addListener(_sessionChanged);
     _load();
+  }
+
+  void _sessionChanged() {
+    if (!mounted) return;
+    _requestGeneration++;
+    _mutationGeneration++;
+    setState(() {
+      _sessionValid = false;
+      _circle = null;
+      _invitations = const [];
+      _shared = const [];
+      _routine = null;
+      _selected = null;
+      _loading = false;
+      _busy = false;
+      _error = 'Your account changed. Reopen your circle to continue.';
+    });
   }
 
   @override
   void didUpdateWidget(covariant FardaCircleScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (!identical(oldWidget.repository, widget.repository)) {
+      _sessionValid = true;
+      final alertContext = _alertContext;
+      if (alertContext != null && alertContext.mounted) {
+        Navigator.of(alertContext).pop();
+      }
+      _alertContext = null;
       _requestGeneration++;
       _mutationGeneration++;
       _circle = null;
@@ -67,17 +98,20 @@ class _FardaCircleScreenState extends State<FardaCircleScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    AuthStorage.sessionRevision.removeListener(_sessionChanged);
     _requestGeneration++;
     _mutationGeneration++;
     super.dispose();
   }
 
   Future<void> _load() async {
+    if (!_sessionValid) return;
     final repo = widget.repository;
     final selected = _selected;
     final generation = ++_requestGeneration;
     bool isCurrent() =>
         mounted &&
+        _sessionValid &&
         generation == _requestGeneration &&
         identical(repo, widget.repository) &&
         (selected?.access.id == _selected?.access.id);
@@ -146,11 +180,12 @@ class _FardaCircleScreenState extends State<FardaCircleScreen>
     Future<void> Function(ConsumerRepository repo) action, {
     VoidCallback? onSuccess,
   }) async {
-    if (_busy) return;
+    if (_busy || !_sessionValid) return;
     if (!identical(repo, widget.repository)) return;
     final generation = ++_mutationGeneration;
     bool isCurrent() =>
         mounted &&
+        _sessionValid &&
         generation == _mutationGeneration &&
         identical(repo, widget.repository);
     setState(() => _busy = true);
@@ -175,7 +210,7 @@ class _FardaCircleScreenState extends State<FardaCircleScreen>
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
   Future<void> _invite() async {
     final repo = widget.repository;
-    if (repo == null) return;
+    if (repo == null || !_sessionValid) return;
     final result = await showModalBottomSheet<_InviteDraft>(
       context: context,
       isScrollControlled: true,
@@ -190,7 +225,9 @@ class _FardaCircleScreenState extends State<FardaCircleScreen>
         result.phone,
         result.permissions,
       );
-      if (!mounted || !identical(repo, widget.repository)) return;
+      if (!mounted || !_sessionValid || !identical(repo, widget.repository)) {
+        return;
+      }
       await showDialog<void>(
         context: context,
         builder:
@@ -254,7 +291,7 @@ class _FardaCircleScreenState extends State<FardaCircleScreen>
 
   Future<void> _accept(CircleInvitation invite) async {
     final repo = widget.repository;
-    if (repo == null) return;
+    if (repo == null || !_sessionValid) return;
     final code = await showDialog<String>(
       context: context,
       builder: (context) => _AcceptInvitationDialog(invite: invite),
@@ -272,7 +309,7 @@ class _FardaCircleScreenState extends State<FardaCircleScreen>
 
   Future<void> _manage(CircleMember member) async {
     final repo = widget.repository;
-    if (repo == null) return;
+    if (repo == null || !_sessionValid) return;
     final result = await showModalBottomSheet<_MemberEdit>(
       context: context,
       isScrollControlled: true,
@@ -289,6 +326,56 @@ class _FardaCircleScreenState extends State<FardaCircleScreen>
         await repo.updateCircleMember(member.id, result.permissions!);
       }
     });
+  }
+
+  Future<void> _alerts({
+    String? grantId,
+    String? name,
+    bool recipient = false,
+  }) async {
+    final repo = widget.repository;
+    if (repo is! CircleAlertsRepository || !_sessionValid) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (sheetContext) {
+        _alertContext = sheetContext;
+        return CircleAlertPanel(
+          repository: repo as CircleAlertsRepository,
+          isCurrent:
+              () =>
+                  mounted &&
+                  _sessionValid &&
+                  identical(repo, widget.repository),
+          grantId: grantId,
+          personName: name,
+          recipient: recipient,
+          onFamilyPlan: () async {
+            if (!mounted ||
+                !_sessionValid ||
+                !identical(repo, widget.repository)) {
+              return;
+            }
+            Navigator.of(sheetContext).pop();
+            _alertContext = null;
+            await Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder:
+                    (_) => FardaMembershipScreen(
+                      repository:
+                          repo is BillingRepository
+                              ? repo as BillingRepository
+                              : null,
+                      initialTier: 'family',
+                    ),
+              ),
+            );
+          },
+        );
+      },
+    );
+    _alertContext = null;
   }
 
   Widget _title(String value) => Padding(
@@ -454,6 +541,15 @@ class _FardaCircleScreenState extends State<FardaCircleScreen>
             ],
           ),
         ],
+        if (_selected == null && widget.repository is CircleAlertsRepository)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: () => _alerts(),
+              icon: const Icon(Icons.notifications_none),
+              label: const Text('Check-in inbox'),
+            ),
+          ),
         if (_loading)
           const Padding(
             padding: EdgeInsets.all(32),
@@ -535,7 +631,24 @@ class _FardaCircleScreenState extends State<FardaCircleScreen>
                 onPressed: _busy ? null : () => _manage(member),
                 icon: const Icon(Icons.tune_rounded),
               ),
-              footer: _permissions(member.permissions),
+              footer: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _permissions(member.permissions),
+                  if (widget.repository is CircleAlertsRepository)
+                    TextButton.icon(
+                      onPressed:
+                          _busy
+                              ? null
+                              : () => _alerts(
+                                grantId: member.id,
+                                name: member.person.displayName,
+                              ),
+                      icon: const Icon(Icons.favorite_border, size: 18),
+                      label: const Text('Gentle check-ins'),
+                    ),
+                ],
+              ),
             ),
             const SizedBox(height: 12),
           ],
@@ -574,7 +687,7 @@ class _FardaCircleScreenState extends State<FardaCircleScreen>
   );
   Future<void> _cancel(CircleInvitation invite) async {
     final repo = widget.repository;
-    if (repo == null) return;
+    if (repo == null || !_sessionValid) return;
     final yes = await showDialog<bool>(
       context: context,
       builder:
@@ -605,7 +718,7 @@ class _FardaCircleScreenState extends State<FardaCircleScreen>
 
   Future<void> _decline(CircleInvitation invite) async {
     final repo = widget.repository;
-    if (repo == null) return;
+    if (repo == null || !_sessionValid) return;
     final yes = await showDialog<bool>(
       context: context,
       builder:
@@ -659,6 +772,7 @@ class _FardaCircleScreenState extends State<FardaCircleScreen>
     );
     if (yes == true &&
         mounted &&
+        _sessionValid &&
         identical(repo, widget.repository) &&
         identical(selected, _selected)) {
       await _mutate(
@@ -672,6 +786,20 @@ class _FardaCircleScreenState extends State<FardaCircleScreen>
   List<Widget> _routineContent(CircleRoutine routine) => [
     const SizedBox(height: 20),
     _permissions(routine.permissions),
+    if (widget.repository is CircleAlertsRepository)
+      Align(
+        alignment: Alignment.centerLeft,
+        child: TextButton.icon(
+          onPressed:
+              () => _alerts(
+                grantId: _selected!.access.id,
+                name: _selected!.owner.displayName,
+                recipient: true,
+              ),
+          icon: const Icon(Icons.notifications_none),
+          label: const Text('Check-in preferences'),
+        ),
+      ),
     _title('Today'),
     Text(
       'Updated ${DateFormat.jm().format(routine.fetchedAt.toLocal())} · Times shown in your timezone',

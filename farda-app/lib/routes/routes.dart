@@ -16,7 +16,8 @@ final GlobalKey<NavigatorState> _rootNavigatorKey = GlobalKey<NavigatorState>();
 class AppRouter {
   static final GoRouter router = GoRouter(
     navigatorKey: _rootNavigatorKey,
-    debugLogDiagnostics: true,
+    // Routes may contain invitation context; keep diagnostic URLs out of logs.
+    debugLogDiagnostics: false,
     initialLocation: const bool.fromEnvironment('FARDA_DEMO')
         ? '/consumer/demo'
         : CustomRoutePaths.onboard,

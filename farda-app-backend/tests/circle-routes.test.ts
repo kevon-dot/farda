@@ -2,6 +2,7 @@ import express from "express";
 import type { Server } from "node:http";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { CircleService } from "../src/circle/service";
+import type { CircleAlertService } from "../src/circle/alerts";
 
 vi.mock("../src/lib/prisma", () => ({ prisma: { apiRateLimit: { upsert: async () => ({ count: 1 }), deleteMany: async () => ({ count: 0 }) }, $transaction: async (values: Array<Promise<unknown>>) => Promise.all(values) } }));
 import { createCircleRouter } from "../src/circle/routes";
@@ -16,8 +17,13 @@ describe("Circle HTTP contract", () => {
     accept: vi.fn(async () => ({ status: "accepted" })), update: vi.fn(async (_u, id, permissions) => ({ id, permissions })),
     remove: vi.fn(), cancel: vi.fn(), decline: vi.fn(), shared: vi.fn(async () => ({ circles: [] })), leave: vi.fn(), routine: vi.fn(),
   };
+  const alerts = {
+    ownerPolicy: vi.fn(), recipientPolicy: vi.fn(), inbox: vi.fn(async () => ({ alerts: [] })), markRead: vi.fn(),
+    saveOwnerPolicy: vi.fn(async (_user, _grant, settings) => ({ policy: { ...settings, recipientConsented: false } })),
+    saveRecipientConsent: vi.fn(async (_user, _grant, consented) => ({ policy: { enabled: true, recipientConsented: consented } })),
+  };
   beforeAll(async () => {
-    const app = express(); app.use(express.json()); app.use((req, _res, next) => { req.user = { id: "account-a" }; next(); }); app.use("/api", createCircleRouter(circle as unknown as CircleService));
+    const app = express(); app.use(express.json()); app.use((req, _res, next) => { req.user = { id: "account-a" }; next(); }); app.use("/api", createCircleRouter(circle as unknown as CircleService, alerts as unknown as CircleAlertService));
     server = await new Promise(resolve => { const value = app.listen(0, "127.0.0.1", () => resolve(value)); });
     base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
   });
@@ -41,5 +47,15 @@ describe("Circle HTTP contract", () => {
     const response = await fetch(`${base}/api/circle/invitations`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ recipientPhone: "+15550000002", permissions: { doseStatus: false, reminders: false } }) });
     expect(response.status).toBe(400);
     expect(circle.invite).toHaveBeenCalledTimes(calls);
+  });
+
+  it("keeps owner configuration separate from recipient consent", async () => {
+    const settings = { enabled: true, gracePeriodMinutes: 45, quietHoursStart: "21:00", quietHoursEnd: "08:00", timeZone: "America/New_York" };
+    const owner = await fetch(`${base}/api/circle/members/grant-1/alert-policy`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(settings) });
+    expect(owner.status).toBe(200);
+    expect(alerts.saveOwnerPolicy).toHaveBeenCalledWith("account-a", "grant-1", settings);
+    const recipient = await fetch(`${base}/api/circle/shared-with-me/grant-1/alert-consent`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ consented: true }) });
+    expect(recipient.status).toBe(200);
+    expect(alerts.saveRecipientConsent).toHaveBeenCalledWith("account-a", "grant-1", true);
   });
 });
