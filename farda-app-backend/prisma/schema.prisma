@@ -34,6 +34,43 @@ model User {
   refillProviderLinks RefillProviderLink[]
   refillAgentReviews RefillAgentReview[]
   refillAgentRequests RefillAgentRequest[]
+  circleInvitationsSent CircleInvitation[] @relation("CircleInvitationOwner")
+  circleInvitationsReceived CircleInvitation[] @relation("CircleInvitationRecipient")
+  circleGrantsOwned CircleGrant[] @relation("CircleGrantOwner")
+  circleGrantsReceived CircleGrant[] @relation("CircleGrantRecipient")
+}
+
+model CircleInvitation {
+  id String @id @default(cuid())
+  ownerId String
+  recipientId String?
+  recipientPhoneHash String
+  recipientPhoneLast4 String
+  secretHash String
+  shareDoseStatus Boolean @default(true)
+  shareReminders Boolean @default(true)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  owner User @relation("CircleInvitationOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  recipient User? @relation("CircleInvitationRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
+  @@index([ownerId, expiresAt])
+  @@index([recipientId, expiresAt])
+  @@index([recipientPhoneHash, expiresAt])
+  @@unique([ownerId, recipientPhoneHash])
+}
+
+model CircleGrant {
+  id String @id @default(cuid())
+  ownerId String
+  recipientId String
+  shareDoseStatus Boolean @default(true)
+  shareReminders Boolean @default(true)
+  acceptedAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  owner User @relation("CircleGrantOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  recipient User @relation("CircleGrantRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
+  @@unique([ownerId, recipientId])
+  @@index([recipientId])
 }
 
 model Prescription {

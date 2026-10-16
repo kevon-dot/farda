@@ -172,7 +172,9 @@ void main() {
     },
   );
 
-  testWidgets('vial and Circle are clearly local previews', (tester) async {
+  testWidgets('vial stays a preview while Circle uses account data', (
+    tester,
+  ) async {
     final repository = _YouRepository();
     await pumpYou(tester, repository, destination: FardaYouDestination.vial);
     expect(find.text('Meet your vial.'), findsOneWidget);
@@ -186,11 +188,9 @@ void main() {
     await tester.ensureVisible(find.byKey(FardaYouKeys.circleLink));
     await tester.tap(find.byKey(FardaYouKeys.circleLink));
     await tester.pumpAndSettle();
-    expect(find.text('Try the settings. No invites are sent.'), findsOneWidget);
-    expect(
-      find.text('Preview only. Sharing starts off; no access is granted.'),
-      findsOneWidget,
-    );
+    expect(find.text('Closer, even\nfrom here.'), findsOneWidget);
+    expect(find.text('Start with someone you trust'), findsOneWidget);
+    expect(find.text('Invite someone'), findsOneWidget);
     expect(repository.writes, 0);
   });
 

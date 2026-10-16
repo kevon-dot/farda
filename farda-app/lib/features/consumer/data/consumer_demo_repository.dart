@@ -1,5 +1,6 @@
 import 'consumer_models.dart';
 import 'consumer_repository.dart';
+import 'circle_models.dart';
 
 /// Explicitly selected, in-memory sample data. Never used as a production fallback.
 class ConsumerDemoRepository implements ConsumerRepository {
@@ -29,14 +30,12 @@ class ConsumerDemoRepository implements ConsumerRepository {
           id: 'demo-${date.toIso8601String()}',
           prescriptionId: 'demo-medication',
           scheduledFor: date,
-          status:
-              offset < 0 && offset % 3 != 0
-                  ? OccurrenceStatus.taken
-                  : OccurrenceStatus.unconfirmed,
-          recordedAt:
-              offset < 0 && offset % 3 != 0
-                  ? date.add(const Duration(minutes: 4))
-                  : null,
+          status: offset < 0 && offset % 3 != 0
+              ? OccurrenceStatus.taken
+              : OccurrenceStatus.unconfirmed,
+          recordedAt: offset < 0 && offset % 3 != 0
+              ? date.add(const Duration(minutes: 4))
+              : null,
           source: 'Sample record',
         ),
       );
@@ -59,18 +58,58 @@ class ConsumerDemoRepository implements ConsumerRepository {
   @override
   bool get isDemo => true;
   @override
+  Future<CircleOverview> loadCircle() async =>
+      const CircleOverview(pending: [], members: []);
+  @override
+  Future<List<CircleInvitation>> loadCircleInvitations() async => const [];
+  @override
+  Future<CircleInvitation> inviteToCircle(
+    String phone,
+    CirclePermissions permissions,
+  ) async => throw const ConsumerRepositoryException(
+    'Circle invitations require a signed-in account.',
+  );
+
+  @override
+  Future<void> acceptCircleInvitation(String id, String inviteCode) async {}
+  @override
+  Future<void> updateCircleMember(
+    String id,
+    CirclePermissions permissions,
+  ) async {}
+  @override
+  Future<void> removeCircleMember(String id) async {}
+  @override
+  Future<void> cancelCircleInvitation(String id) async {}
+  @override
+  Future<void> declineCircleInvitation(String id) async {}
+  @override
+  Future<List<SharedCircle>> loadSharedCircles() async => const [];
+  @override
+  Future<void> leaveSharedCircle(String grantId) async {}
+  @override
+  Future<CircleRoutine> loadSharedCircleRoutine(
+    String grantId, {
+    required DateTime from,
+    required DateTime to,
+  }) async => CircleRoutine(
+    owner: const CirclePerson(id: 'demo', displayName: 'Sample account'),
+    permissions: const CirclePermissions(doseStatus: true, reminders: true),
+    items: const [],
+    fetchedAt: clock(),
+    notice: 'Sample only. Not recorded does not mean missed.',
+  );
+  @override
   Future<ConsumerSnapshot> loadSnapshot({
     required DateTime from,
     required DateTime to,
   }) async => ConsumerSnapshot(
     prescriptions: List.unmodifiable(_prescriptions),
-    occurrences:
-        _occurrences
-            .where(
-              (o) =>
-                  !o.scheduledFor.isBefore(from) && o.scheduledFor.isBefore(to),
-            )
-            .toList(),
+    occurrences: _occurrences
+        .where(
+          (o) => !o.scheduledFor.isBefore(from) && o.scheduledFor.isBefore(to),
+        )
+        .toList(),
     inventory: _inventory.values.toList(),
     preferences: _preferences,
     capabilities: const ConsumerCapabilities(
@@ -261,10 +300,9 @@ class ConsumerDemoRepository implements ConsumerRepository {
       countedAt: old?.countedAt,
       dailyUnits: old?.dailyUnits,
       stage: stage,
-      refillId:
-          startNew
-              ? 'demo-refill-${++_counter}'
-              : old?.refillId ?? 'demo-refill-$prescriptionId',
+      refillId: startNew
+          ? 'demo-refill-${++_counter}'
+          : old?.refillId ?? 'demo-refill-$prescriptionId',
       plannedFor: startNew ? clock() : old?.plannedFor ?? clock(),
       revision: old?.revision ?? 0,
       receiptReconciled: startNew ? false : old?.receiptReconciled ?? false,

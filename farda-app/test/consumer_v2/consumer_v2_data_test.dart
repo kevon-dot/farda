@@ -167,7 +167,8 @@ void main() {
 
     await tester.tap(find.text('You'));
     await tester.pumpAndSettle();
-    expect(find.text('Sharing preview'), findsOneWidget);
+    expect(find.text('Your circle'), findsOneWidget);
+    expect(find.text('Family, friends & shared routines'), findsOneWidget);
   });
 
   testWidgets(

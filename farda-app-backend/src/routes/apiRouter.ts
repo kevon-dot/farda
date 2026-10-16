@@ -11,6 +11,7 @@ import { createReminderRouter, createVoiceWebhookRouter } from '../reminders/rou
 import { createRefillRouter } from '../refills/routes';
 import { createRefillAssistantRouter } from '../refills/assistant-routes';
 import { DeviceTrackingService } from '../services/DeviceTrackingService';
+import { createCircleRouter } from '../circle/routes';
 
 const apiRouter = Router();
 apiRouter.post(Paths.Auth.SendOTP, rateLimit('otp-send', 5), PhoneAuthRoutes.sendOTP);
@@ -28,6 +29,7 @@ apiRouter.post('/auth/sign-out', PhoneAuthRoutes.signOut);
 apiRouter.use(createReminderRouter());
 apiRouter.use(createRefillRouter());
 apiRouter.use(createRefillAssistantRouter());
+apiRouter.use(createCircleRouter());
 
 apiRouter.get('/prescriptions', listPrescriptions);
 apiRouter.post('/prescriptions', createPrescription);

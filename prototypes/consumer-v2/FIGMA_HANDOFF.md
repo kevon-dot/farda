@@ -102,3 +102,8 @@ The refill station is a planning and pharmacy-contact handoff, not an order subm
 `FIGMA_STATE.json` is the current ID ledger. `FIGMA_FOUNDATIONS.json`, `FIGMA_APP_SCREENS.json`, `FIGMA_FLOW_SCREENS.json`, `FIGMA_PROTOTYPE.json`, and `FIGMA_VALIDATION.json` preserve build and verification details. The `figma-*.js` files are session construction scripts with fixed IDs, not idempotent deployment scripts; inspect current state before any rerun.
 
 This package is the design and implementation handoff. Authenticated app routes and supported account services are integrated; see [FRONTEND_HANDOFF.md](FRONTEND_HANDOFF.md) for the remaining provider and device boundaries.
+
+
+## Family Circle upgrade
+
+The existing Circle home (`2:31`) now introduces real family sharing. Editable flow section `129:603` covers invitation (`129:604`), shared day (`129:665`), pending/code (`130:606`), acceptance (`130:677`), and manage sharing (`130:747`). See [Family Circle handoff](../../docs/design/family-circle-handoff.md) for implemented behavior, native Flutter render evidence, and comparison limits.

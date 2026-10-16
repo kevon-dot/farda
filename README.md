@@ -11,6 +11,8 @@ and device-event ingestion.
 > for verification and remaining device/provider gates. Earlier reviews describe
 > the delivered baseline; they are not the current implementation status.
 
+Feature handoffs: [Family Circle](reviews/FAMILY_CIRCLE_HANDOFF.md).
+
 ## Repository layout
 
 | Path | Component | Stack | Role |
