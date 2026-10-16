@@ -1,3 +1,4 @@
+import 'package:farda/application/authentication/storage/auth_storage.dart';
 import 'dart:async';
 import 'package:farda/consumer_v2/screens/refills/refill_agent_card.dart';
 import 'package:farda/consumer_v2/screens/refills/refill_question_card.dart';
@@ -90,6 +91,22 @@ Future<void> confirm(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets(
+    'account change dismisses owned provider review and prevents send',
+    (tester) async {
+      final agent = FakeAgent();
+      await pumpCard(tester, agent);
+      await tester.tap(find.byKey(const Key('refill-agent-review')));
+      await tester.pumpAndSettle();
+      expect(find.text('123 Example Street'), findsOneWidget);
+      AuthStorage.sessionRevision.value++;
+      await tester.pumpAndSettle();
+      expect(find.text('123 Example Street'), findsNothing);
+      expect(find.byKey(const Key('refill-agent-send')), findsNothing);
+      expect(agent.submits, 0);
+    },
+  );
+
   testWidgets('changing prescription while review is open cancels send', (
     tester,
   ) async {

@@ -1,3 +1,4 @@
+import 'package:farda/application/authentication/storage/auth_storage.dart';
 import 'package:farda/consumer_v2/screens/refills/refills_handoff_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -74,6 +75,26 @@ void main() {
     await tester.tap(find.text('Review refill request'));
     await tester.pumpAndSettle();
   }
+
+  testWidgets(
+    'account change hides the whole private handoff and dismisses review',
+    (tester) async {
+      await pump(tester);
+      expect(find.text('CHECK YOUR LABEL'), findsOneWidget);
+      await review(tester);
+      AuthStorage.sessionRevision.value++;
+      await tester.pumpAndSettle();
+      expect(find.text('CHECK YOUR LABEL'), findsNothing);
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(
+        find.text(
+          'Your account session changed. Return to your routine to continue.',
+        ),
+        findsOneWidget,
+      );
+      expect(clipboard, isEmpty);
+    },
+  );
 
   testWidgets(
     'review edits copy only after an explicit tap, never saves a stage',

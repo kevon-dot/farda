@@ -11,9 +11,11 @@ class FardaMembershipScreen extends StatefulWidget {
     super.key,
     this.repository,
     this.initialTier = 'plus',
+    this.onboardingOffer = false,
   });
   final BillingRepository? repository;
   final String initialTier;
+  final bool onboardingOffer;
   @override
   State<FardaMembershipScreen> createState() => _FardaMembershipScreenState();
 }
@@ -55,6 +57,9 @@ class _FardaMembershipScreenState extends State<FardaMembershipScreen>
   }
 
   void _onSessionRevision() {
+    if (widget.onboardingOffer) {
+      Navigator.maybePop(context);
+    }
     _clearSessionView();
     final generation = _generation;
     Future.microtask(() {
@@ -238,7 +243,11 @@ class _FardaMembershipScreenState extends State<FardaMembershipScreen>
                 ),
                 const SizedBox(height: 16),
                 _text(
-                  active ? 'Your membership.' : 'A little more support.',
+                  active
+                      ? 'Your membership.'
+                      : widget.onboardingOffer
+                      ? 'Your routine, supported.'
+                      : 'A little more support.',
                   size: 32,
                   weight: FontWeight.w600,
                 ),
@@ -246,6 +255,8 @@ class _FardaMembershipScreenState extends State<FardaMembershipScreen>
                 _text(
                   active
                       ? 'Care that fits your everyday.'
+                      : widget.onboardingOffer
+                      ? 'Your medication is saved. Choose a little extra support, or keep going free.'
                       : 'For you. And the people in your corner.',
                   color: muted,
                   size: 16,
@@ -354,6 +365,23 @@ class _FardaMembershipScreenState extends State<FardaMembershipScreen>
                           color: muted,
                           size: 13,
                         ),
+                        if (_annual && price != null) ...[
+                          const SizedBox(height: 8),
+                          _text(
+                            'About \$${(price.amount / 1200).toStringAsFixed(2)} / month, billed yearly',
+                            color: const Color(0xFFF8EDD8),
+                            size: 13,
+                            weight: FontWeight.w600,
+                          ),
+                        ],
+                        if (_tier == 'family') ...[
+                          const SizedBox(height: 8),
+                          _text(
+                            'Per routine owner · Invited viewers stay free',
+                            size: 12,
+                            color: muted,
+                          ),
+                        ],
                         const SizedBox(height: 20),
                         _benefit(
                           Icons.auto_awesome_outlined,
@@ -397,9 +425,21 @@ class _FardaMembershipScreenState extends State<FardaMembershipScreen>
                         ? 'Renews automatically. Cancel in membership settings. Opens secure Stripe checkout.'
                         : !kIsWeb
                         ? 'In-app purchases aren’t available yet. You can keep using Farda free.'
-                        : 'Purchases are not configured. Prices shown are proposed; no payment will be taken.',
+                        : 'Purchases are not configured. No payment will be taken.',
                     size: 12,
                     color: muted,
+                  ),
+                ],
+                if (widget.onboardingOffer) ...[
+                  const SizedBox(height: 12),
+                  OutlinedButton(
+                    onPressed: () => Navigator.maybePop(context),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.white,
+                      side: const BorderSide(color: Color(0xFFC7D2E5)),
+                      minimumSize: const Size(double.infinity, 52),
+                    ),
+                    child: const Text('Continue free'),
                   ),
                 ],
                 if (_error != null) ...[

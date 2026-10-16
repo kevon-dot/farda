@@ -60,12 +60,12 @@ class BillingCatalog {
   static const proposal = BillingCatalog(
     plans: [
       BillingPlan('plus', [
-        BillingPrice('plus_monthly', 'month', 699),
-        BillingPrice('plus_annual', 'year', 5999),
+        BillingPrice('plus_monthly', 'month', 1499),
+        BillingPrice('plus_annual', 'year', 14999),
       ]),
       BillingPlan('family', [
-        BillingPrice('family_monthly', 'month', 1199),
-        BillingPrice('family_annual', 'year', 9999),
+        BillingPrice('family_monthly', 'month', 2499),
+        BillingPrice('family_annual', 'year', 24999),
       ]),
     ],
   );

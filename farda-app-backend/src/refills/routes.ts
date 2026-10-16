@@ -1,13 +1,14 @@
 import { Router } from "express";
 import { z } from "zod";
+import env from "../common/constants/env";
 import { prisma } from "../lib/prisma";
 import { isAuthenticated } from "../middleware/isAuthenticated";
-import { route } from "../reminders/routes";
-import { RefillService } from "./service";
-import env from "../common/constants/env";
-import { RefillAgentService } from "./agent";
-import { PhotonRefillsProvider } from "./providers/photon";
 import { rateLimit } from "../middleware/rateLimit";
+import { route } from "../reminders/routes";
+import { RefillAgentService } from "./agent";
+import { PharmacyHandoffService } from "./pharmacy-handoff";
+import { PhotonRefillsProvider } from "./providers/photon";
+import { RefillService } from "./service";
 
 const id = z.string().min(1).max(160),
 	key = z.string().min(8).max(160);
@@ -25,9 +26,45 @@ export function createRefillRouter(
 			clientSecret: env.PHOTON_CLIENT_SECRET,
 		}),
 	),
+	handoff = new PharmacyHandoffService(prisma),
 ) {
 	const router = Router();
 	router.use(isAuthenticated);
+	router.get(
+		"/pharmacies/directory",
+		route(async (req, res) => {
+			const query = z
+				.string()
+				.trim()
+				.min(1)
+				.max(100)
+				.optional()
+				.parse(req.query.query);
+			res.json(handoff.directory(query));
+		}),
+	);
+	router.post(
+		"/prescriptions/:prescriptionId/pharmacy-handoff",
+		rateLimit("pharmacy-handoff", 30, 300),
+		route(async (req, res) => {
+			const input = z
+				.object({
+					pharmacyId: z.string().min(1).max(80),
+					purpose: z.enum(["refill", "renewal", "transfer", "new_rx"]),
+				})
+				.strict()
+				.parse(req.body);
+			res.setHeader("Cache-Control", "no-store");
+			res.json(
+				await handoff.handoff(
+					req.user!.id,
+					id.parse(req.params.prescriptionId),
+					input.pharmacyId,
+					input.purpose,
+				),
+			);
+		}),
+	);
 	router.use("/refills/agent", (_req, res, next) => {
 		res.setHeader("Cache-Control", "no-store");
 		next();

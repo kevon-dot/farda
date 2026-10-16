@@ -1,3 +1,4 @@
+import 'package:farda/application/authentication/storage/auth_storage.dart';
 import 'package:farda/consumer_v2/design_system/farda_consumer_tokens.dart';
 import 'package:farda/features/consumer/data/consumer_models.dart';
 import 'package:farda/features/consumer/data/refill_agent.dart';
@@ -24,11 +25,37 @@ class _RefillAgentCardState extends State<RefillAgentCard> {
   bool _uncertain = false;
   String? _error;
   int _generation = 0;
+  BuildContext? _reviewContext;
+  bool _sessionInvalid = false;
 
   @override
   void initState() {
     super.initState();
+    AuthStorage.sessionRevision.addListener(_invalidateSession);
     _load();
+  }
+
+  void _invalidateSession() {
+    ++_generation;
+    final dialogContext = _reviewContext;
+    _reviewContext = null;
+    if (dialogContext != null && dialogContext.mounted) {
+      final route = ModalRoute.of(dialogContext);
+      if (route != null) Navigator.of(dialogContext).removeRoute(route);
+    }
+    if (mounted)
+      setState(() {
+        _sessionInvalid = true;
+        _state = null;
+        _busy = false;
+        _submitting = false;
+      });
+  }
+
+  @override
+  void dispose() {
+    AuthStorage.sessionRevision.removeListener(_invalidateSession);
+    super.dispose();
   }
 
   @override
@@ -43,6 +70,7 @@ class _RefillAgentCardState extends State<RefillAgentCard> {
   }
 
   Future<void> _load({bool refresh = false}) async {
+    if (_sessionInvalid) return;
     final generation = ++_generation;
     setState(() {
       _busy = true;
@@ -86,7 +114,11 @@ class _RefillAgentCardState extends State<RefillAgentCard> {
     final reviewGeneration = _generation;
     final state = _state;
     final review = state?.review;
-    if (_busy || _uncertain || state?.canSubmit != true || review == null) {
+    if (_sessionInvalid ||
+        _busy ||
+        _uncertain ||
+        state?.canSubmit != true ||
+        review == null) {
       return;
     }
     if (!review.expiresAt.isAfter(DateTime.now())) {
@@ -95,13 +127,17 @@ class _RefillAgentCardState extends State<RefillAgentCard> {
     }
     final confirmed = await showDialog<bool>(
       context: context,
-      builder:
-          (_) => _ProviderReviewDialog(
-            review: review,
-            environment: state!.environment,
-          ),
+      builder: (dialogContext) {
+        _reviewContext = dialogContext;
+        return _ProviderReviewDialog(
+          review: review,
+          environment: state!.environment,
+        );
+      },
     );
+    _reviewContext = null;
     if (!mounted ||
+        _sessionInvalid ||
         confirmed != true ||
         prescriptionId != widget.prescriptionId ||
         repository != widget.repository ||
@@ -154,6 +190,7 @@ class _RefillAgentCardState extends State<RefillAgentCard> {
 
   @override
   Widget build(BuildContext context) {
+    if (_sessionInvalid) return const SizedBox.shrink();
     final state = _state;
     final request = state?.latestRequest;
     final uncertain = _uncertain || request?.uncertain == true;

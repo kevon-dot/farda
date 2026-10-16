@@ -7,12 +7,19 @@ import { BillingService } from "../src/billing/service";
 const databaseUrl = process.env.TEST_DATABASE_URL;
 
 function subscription(overrides: Record<string, unknown> = {}) {
+  const customer = typeof overrides.customer === "string" ? overrides.customer : "cus-placeholder";
   return {
     id: "sub-placeholder",
-    customer: "cus-placeholder",
+    customer,
     livemode: false,
     status: "active",
     cancel_at_period_end: false,
+    latest_invoice: {
+      id: "in-placeholder",
+      customer,
+      livemode: false,
+      status: "paid",
+    },
     items: {
       data: [
         {
@@ -151,6 +158,37 @@ describe.skipIf(!databaseUrl)("Billing PostgreSQL webhook serialization", () => 
       tier: "free",
       capabilities: { familyAlerts: false },
     });
+  });
+
+  it("withholds initial entitlement until an invoice-paid reconciliation", async () => {
+    const pending = subscription({
+      id: ownerSubscription,
+      customer: ownerCustomer,
+      latest_invoice: {
+        id: `${prefix}-invoice`,
+        customer: ownerCustomer,
+        livemode: false,
+        status: "open",
+      },
+    });
+    canonical = pending;
+    await deliver(event(`${prefix}-pending`, "checkout.session.completed", { subscription: ownerSubscription }));
+    expect(await service.status(ownerId)).toMatchObject({ tier: "free", capabilities: { familyAlerts: false } });
+
+    canonical = subscription({
+      id: ownerSubscription,
+      customer: ownerCustomer,
+      latest_invoice: {
+        id: `${prefix}-invoice`,
+        customer: ownerCustomer,
+        livemode: false,
+        status: "paid",
+      },
+    });
+    await deliver(event(`${prefix}-paid`, "invoice.paid", {
+      parent: { subscription_details: { subscription: ownerSubscription } },
+    }, 1_800_000_001));
+    expect(await service.status(ownerId)).toMatchObject({ tier: "family", capabilities: { familyAlerts: true } });
   });
 
   it("binds subscriptions only through the stored Stripe customer mapping", async () => {

@@ -1,3 +1,6 @@
+import 'package:farda/application/authentication/storage/auth_storage.dart';
+import 'pharmacy_handoff_card.dart';
+import 'package:farda/features/consumer/data/pharmacy_handoff.dart';
 import 'package:farda/consumer_v2/design_system/farda_consumer_tokens.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -47,6 +50,37 @@ class RefillsHandoffScreen extends StatefulWidget {
 
 class _RefillsHandoffScreenState extends State<RefillsHandoffScreen> {
   bool _saving = false;
+  bool _sessionInvalid = false;
+  String _handoffPurpose = 'refill';
+  BuildContext? _reviewContext;
+  @override
+  void initState() {
+    super.initState();
+    AuthStorage.sessionRevision.addListener(_invalidateSession);
+  }
+
+  void _invalidateSession() {
+    if (!mounted) return;
+    final dialogContext = _reviewContext;
+    _reviewContext = null;
+    if (dialogContext != null && dialogContext.mounted) {
+      final dialogRoute = ModalRoute.of(dialogContext);
+      if (dialogRoute != null)
+        Navigator.of(dialogContext).removeRoute(dialogRoute);
+    }
+    setState(() {
+      _sessionInvalid = true;
+      _draft = null;
+      _saving = false;
+    });
+  }
+
+  @override
+  void dispose() {
+    AuthStorage.sessionRevision.removeListener(_invalidateSession);
+    super.dispose();
+  }
+
   String? _error;
   String? _draft;
 
@@ -63,19 +97,27 @@ class _RefillsHandoffScreenState extends State<RefillsHandoffScreen> {
   ].join('\n\n');
 
   Future<void> _reviewRequest() async {
+    if (_sessionInvalid) return;
     final draft = await showDialog<String>(
       context: context,
-      builder:
-          (_) => _RequestReviewDialog(
-            request: _draft ?? _request,
-            onDraftChanged: (value) => _draft = value,
-          ),
+      builder: (dialogContext) {
+        _reviewContext = dialogContext;
+        return _RequestReviewDialog(
+          request: _draft ?? _request,
+          onDraftChanged: (value) {
+            if (!_sessionInvalid) _draft = value;
+          },
+        );
+      },
     );
-    if (draft != null && mounted) setState(() => _draft = draft);
+    _reviewContext = null;
+    if (draft != null && mounted && !_sessionInvalid) {
+      setState(() => _draft = draft);
+    }
   }
 
   Future<void> _save() async {
-    if (_saving) return;
+    if (_saving || _sessionInvalid) return;
     setState(() {
       _saving = true;
       _error = null;
@@ -86,7 +128,7 @@ class _RefillsHandoffScreenState extends State<RefillsHandoffScreen> {
     } catch (_) {
       error = 'Your plan was not saved. Please try again.';
     }
-    if (!mounted) return;
+    if (!mounted || _sessionInvalid) return;
     if (error != null) {
       setState(() {
         _saving = false;
@@ -102,222 +144,276 @@ class _RefillsHandoffScreenState extends State<RefillsHandoffScreen> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    backgroundColor: FardaConsumerColors.canvas,
-    body: SafeArea(
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(22, 8, 22, 24),
-        children: [
-          Row(
-            children: [
-              IconButton(
-                tooltip: 'Back to refill station',
-                onPressed: _saving ? null : () => Navigator.of(context).pop(),
-                constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
-                icon: const Icon(Icons.arrow_back_rounded),
-                color: FardaConsumerColors.brand,
-              ),
-              const SizedBox(width: 8),
-              const Expanded(
+  Widget build(BuildContext context) =>
+      _sessionInvalid
+          ? const Scaffold(
+            body: SafeArea(
+              child: Center(
                 child: Text(
-                  'Refill assistant',
-                  style: FardaConsumerType.bodyStrong,
+                  'Your account session changed. Return to your routine to continue.',
                 ),
               ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          FardaSceneCard(
-            scene: FardaScene.refills,
-            padding: const EdgeInsets.all(18),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+            ),
+          )
+          : Scaffold(
+            backgroundColor: FardaConsumerColors.canvas,
+            body: SafeArea(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(22, 8, 22, 24),
+                children: [
+                  Row(
                     children: [
-                      const Text(
-                        'ONE STEP AT A TIME',
-                        style: TextStyle(
-                          fontFamily: 'Outfit',
-                          fontSize: 10,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white,
+                      IconButton(
+                        tooltip: 'Back to refill station',
+                        onPressed:
+                            _saving ? null : () => Navigator.of(context).pop(),
+                        constraints: const BoxConstraints(
+                          minWidth: 48,
+                          minHeight: 48,
                         ),
+                        icon: const Icon(Icons.arrow_back_rounded),
+                        color: FardaConsumerColors.brand,
                       ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Let’s get\nyou ready.',
-                        style: TextStyle(
-                          fontFamily: 'Outfit',
-                          fontSize:
-                              MediaQuery.sizeOf(context).width < 350 ? 24 : 28,
-                          height: 1.12,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Your words, ready to share.',
-                        style: FardaConsumerType.caption.copyWith(
-                          color: Colors.white,
+                      const SizedBox(width: 8),
+                      const Expanded(
+                        child: Text(
+                          'Refill assistant',
+                          style: FardaConsumerType.bodyStrong,
                         ),
                       ),
                     ],
                   ),
-                ),
-                const SizedBox(width: 8),
-                FardaCompanion(
-                  size: MediaQuery.sizeOf(context).width < 350 ? 56 : 72,
-                  pose: FardaCompanionPose.quiet,
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 18),
-          if (widget.agentRepository != null &&
-              widget.prescriptionId != null) ...[
-            RefillAgentCard(
-              prescriptionId: widget.prescriptionId!,
-              repository: widget.agentRepository!,
-            ),
-            const SizedBox(height: 18),
-            const Text(
-              'Prefer to contact your pharmacy?',
-              style: FardaConsumerType.title,
-            ),
-            const SizedBox(height: 12),
-          ],
-          FardaConsumerCard(
-            padding: const EdgeInsets.all(18),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('CHECK YOUR LABEL', style: FardaConsumerType.label),
-                const SizedBox(height: 10),
-                Text(widget.medicationName, style: FardaConsumerType.title),
-                const SizedBox(height: 8),
-                SelectableText(
-                  _clean(widget.rxNumber).isEmpty
-                      ? widget.rxLabel
-                      : 'Rx ${_clean(widget.rxNumber)}',
-                  style: FardaConsumerType.body,
-                ),
-                if (_clean(widget.directions).isNotEmpty) ...[
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 12),
+                  FardaSceneCard(
+                    scene: FardaScene.refills,
+                    padding: const EdgeInsets.all(18),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'ONE STEP AT A TIME',
+                                style: TextStyle(
+                                  fontFamily: 'Outfit',
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.white,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'Let’s get\nyou ready.',
+                                style: TextStyle(
+                                  fontFamily: 'Outfit',
+                                  fontSize:
+                                      MediaQuery.sizeOf(context).width < 350
+                                          ? 24
+                                          : 28,
+                                  height: 1.12,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.white,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'Your words, ready to share.',
+                                style: FardaConsumerType.caption.copyWith(
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        FardaCompanion(
+                          size:
+                              MediaQuery.sizeOf(context).width < 350 ? 56 : 72,
+                          pose: FardaCompanionPose.quiet,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  if (widget.agentRepository is PharmacyHandoffRepository &&
+                      widget.prescriptionId != null) ...[
+                    PharmacyHandoffCard(
+                      prescriptionId: widget.prescriptionId!,
+                      repository:
+                          widget.agentRepository! as PharmacyHandoffRepository,
+                      medicationName: widget.medicationName,
+                      rxNumber: widget.rxNumber,
+                      savedPharmacy: widget.pharmacy,
+                      onPurposeChanged:
+                          (purpose) =>
+                              setState(() => _handoffPurpose = purpose),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+                  if (_handoffPurpose == 'refill' &&
+                      widget.agentRepository != null &&
+                      widget.prescriptionId != null) ...[
+                    RefillAgentCard(
+                      prescriptionId: widget.prescriptionId!,
+                      repository: widget.agentRepository!,
+                    ),
+                    const SizedBox(height: 18),
+                    const Text(
+                      'Prefer to contact your pharmacy?',
+                      style: FardaConsumerType.title,
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                  FardaConsumerCard(
+                    padding: const EdgeInsets.all(18),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'CHECK YOUR LABEL',
+                          style: FardaConsumerType.label,
+                        ),
+                        const SizedBox(height: 10),
+                        Text(
+                          widget.medicationName,
+                          style: FardaConsumerType.title,
+                        ),
+                        const SizedBox(height: 8),
+                        SelectableText(
+                          _clean(widget.rxNumber).isEmpty
+                              ? widget.rxLabel
+                              : 'Rx ${_clean(widget.rxNumber)}',
+                          style: FardaConsumerType.body,
+                        ),
+                        if (_clean(widget.directions).isNotEmpty) ...[
+                          const SizedBox(height: 14),
+                          const Text(
+                            'Saved directions',
+                            style: FardaConsumerType.caption,
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            _clean(widget.directions),
+                            style: FardaConsumerType.body,
+                          ),
+                        ],
+                        const SizedBox(height: 14),
+                        const Text(
+                          'Pharmacy',
+                          style: FardaConsumerType.caption,
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          _clean(widget.pharmacy).isEmpty
+                              ? 'Check your prescription label'
+                              : _clean(widget.pharmacy),
+                          style: FardaConsumerType.bodyStrong,
+                        ),
+                        const SizedBox(height: 8),
+                        const Text(
+                          'Use the phone number or official website on your label.',
+                          style: FardaConsumerType.caption,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  FilledButton(
+                    onPressed: _reviewRequest,
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size(48, 52),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 14,
+                      ),
+                      backgroundColor: FardaConsumerColors.mint,
+                      foregroundColor: FardaConsumerColors.brand,
+                      textStyle: FardaConsumerType.bodyStrong,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                    child: const Text(
+                      'Review refill request',
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
                   const Text(
-                    'Saved directions',
+                    'Review, edit and copy. You choose where to share it.',
+                    style: FardaConsumerType.caption,
+                    textAlign: TextAlign.center,
+                  ),
+                  if (widget.onOpenContact != null) ...[
+                    const SizedBox(height: 8),
+                    TextButton(
+                      onPressed: widget.onOpenContact,
+                      style: TextButton.styleFrom(
+                        minimumSize: const Size(48, 48),
+                      ),
+                      child: Text(
+                        widget.contactLabel,
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ],
+                  if (widget.agentRepository is RefillQuestionRepository &&
+                      widget.prescriptionId != null) ...[
+                    const SizedBox(height: 16),
+                    RefillQuestionCard(
+                      prescriptionId: widget.prescriptionId!,
+                      repository:
+                          widget.agentRepository as RefillQuestionRepository,
+                    ),
+                  ],
+                  const SizedBox(height: 16),
+                  const RefillsSafetyBanner(),
+                  const SizedBox(height: 8),
+                  Text(
+                    widget.agentRepository == null
+                        ? 'No refill order is submitted. Saving a plan does not contact your pharmacy.'
+                        : 'Copying a request or saving a plan does not contact your pharmacy.',
                     style: FardaConsumerType.caption,
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    _clean(widget.directions),
-                    style: FardaConsumerType.body,
-                  ),
+                  const SizedBox(height: 16),
+                  if (widget.showSavePlan)
+                    OutlinedButton(
+                      key: const Key('refill-save-plan'),
+                      onPressed: _saving ? null : _save,
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size(48, 48),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
+                        foregroundColor: FardaConsumerColors.brand,
+                        textStyle: FardaConsumerType.bodyStrong,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
+                      child: Text(
+                        _saving ? 'Saving…' : widget.actionLabel,
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  if (_error != null) ...[
+                    const SizedBox(height: 8),
+                    Semantics(
+                      liveRegion: true,
+                      child: Text(
+                        _error!,
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.error,
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
-                const SizedBox(height: 14),
-                const Text('Pharmacy', style: FardaConsumerType.caption),
-                const SizedBox(height: 4),
-                Text(
-                  _clean(widget.pharmacy).isEmpty
-                      ? 'Check your prescription label'
-                      : _clean(widget.pharmacy),
-                  style: FardaConsumerType.bodyStrong,
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Use the phone number or official website on your label.',
-                  style: FardaConsumerType.caption,
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-          FilledButton(
-            onPressed: _reviewRequest,
-            style: FilledButton.styleFrom(
-              minimumSize: const Size(48, 52),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-              backgroundColor: FardaConsumerColors.mint,
-              foregroundColor: FardaConsumerColors.brand,
-              textStyle: FardaConsumerType.bodyStrong,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(14),
               ),
             ),
-            child: const Text(
-              'Review refill request',
-              textAlign: TextAlign.center,
-            ),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'Review, edit and copy. You choose where to share it.',
-            style: FardaConsumerType.caption,
-            textAlign: TextAlign.center,
-          ),
-          if (widget.onOpenContact != null) ...[
-            const SizedBox(height: 8),
-            TextButton(
-              onPressed: widget.onOpenContact,
-              style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
-              child: Text(widget.contactLabel, textAlign: TextAlign.center),
-            ),
-          ],
-          if (widget.agentRepository is RefillQuestionRepository &&
-              widget.prescriptionId != null) ...[
-            const SizedBox(height: 16),
-            RefillQuestionCard(
-              prescriptionId: widget.prescriptionId!,
-              repository: widget.agentRepository as RefillQuestionRepository,
-            ),
-          ],
-          const SizedBox(height: 16),
-          const RefillsSafetyBanner(),
-          const SizedBox(height: 8),
-          Text(
-            widget.agentRepository == null
-                ? 'No refill order is submitted. Saving a plan does not contact your pharmacy.'
-                : 'Copying a request or saving a plan does not contact your pharmacy.',
-            style: FardaConsumerType.caption,
-          ),
-          const SizedBox(height: 16),
-          if (widget.showSavePlan)
-            OutlinedButton(
-              key: const Key('refill-save-plan'),
-              onPressed: _saving ? null : _save,
-              style: OutlinedButton.styleFrom(
-                minimumSize: const Size(48, 48),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 12,
-                ),
-                foregroundColor: FardaConsumerColors.brand,
-                textStyle: FardaConsumerType.bodyStrong,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                ),
-              ),
-              child: Text(
-                _saving ? 'Saving…' : widget.actionLabel,
-                textAlign: TextAlign.center,
-              ),
-            ),
-          if (_error != null) ...[
-            const SizedBox(height: 8),
-            Semantics(
-              liveRegion: true,
-              child: Text(
-                _error!,
-                style: TextStyle(color: Theme.of(context).colorScheme.error),
-              ),
-            ),
-          ],
-        ],
-      ),
-    ),
-  );
+          );
 }
 
 class _RequestReviewDialog extends StatefulWidget {
