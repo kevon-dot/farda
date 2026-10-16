@@ -12,6 +12,7 @@ import { createRefillRouter } from '../refills/routes';
 import { createRefillAssistantRouter } from '../refills/assistant-routes';
 import { DeviceTrackingService } from '../services/DeviceTrackingService';
 import { createCircleRouter } from '../circle/routes';
+import { createBillingRouter } from '../billing/routes';
 
 const apiRouter = Router();
 apiRouter.post(Paths.Auth.SendOTP, rateLimit('otp-send', 5), PhoneAuthRoutes.sendOTP);
@@ -24,6 +25,7 @@ apiRouter.use(createVoiceWebhookRouter());
 // All subsequent routes derive account identity from the same revocable bearer
 // session. The old public sample /users CRUD is intentionally not mounted.
 apiRouter.use(isAuthenticated);
+apiRouter.use(createBillingRouter());
 apiRouter.get('/auth/session', PhoneAuthRoutes.session);
 apiRouter.post('/auth/sign-out', PhoneAuthRoutes.signOut);
 apiRouter.use(createReminderRouter());

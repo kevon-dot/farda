@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:farda/features/consumer/data/circle_alerts.dart';
 
 import 'package:farda/features/consumer/data/circle_models.dart';
 import 'package:farda/features/consumer/data/consumer_api_repository.dart';
@@ -8,6 +9,54 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
 void main() {
+  test(
+    'check-in policy and recipient consent use separate scoped endpoints',
+    () async {
+      final requests = <http.Request>[];
+      final repository = ConsumerApiRepository(
+        baseUrl: 'https://example.test/api',
+        tokenProvider: () async => 'a',
+        client: MockClient((request) async {
+          requests.add(request);
+          return http.Response(
+            jsonEncode({
+              'policy': {
+                'enabled': false,
+                'recipientConsented': false,
+                'gracePeriodMinutes': 60,
+                'quietHoursStart': '22:00',
+                'quietHoursEnd': '08:00',
+                'timeZone': 'UTC',
+              },
+            }),
+            200,
+          );
+        }),
+      );
+      final policy = await repository.loadCircleAlertPolicy(
+        'g',
+        recipient: true,
+      );
+      expect(policy.recipientConsented, isFalse);
+      await repository.setCircleAlertConsent('g', true);
+      await repository.saveCircleAlertPolicy(
+        'g',
+        const CircleAlertPolicy(enabled: true),
+      );
+      expect(
+        requests[0].url.path,
+        '/api/circle/shared-with-me/g/alert-consent',
+      );
+      expect(jsonDecode(requests[1].body), {'consented': true});
+      expect(requests[2].url.path, '/api/circle/members/g/alert-policy');
+      expect(
+        jsonDecode(requests[2].body).containsKey('recipientConsented'),
+        isFalse,
+      );
+      repository.dispose();
+    },
+  );
+
   test('invite parses the one-time code and anonymous phone label', () async {
     late http.Request captured;
     final repository = ConsumerApiRepository(

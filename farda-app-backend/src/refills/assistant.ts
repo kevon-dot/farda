@@ -3,6 +3,7 @@ import { z } from 'zod';
 import env from '../common/constants/env';
 import type { PrismaClient } from '../../generated/prisma/client';
 import { ConsumerError } from '../reminders/policy';
+import { canUseAiRefill } from '../billing/entitlements';
 
 export const refillIntents = ['prepare_request', 'check_status', 'contact_pharmacy', 'update_supply', 'clinical_question', 'other'] as const;
 type Intent = typeof refillIntents[number];
@@ -53,14 +54,15 @@ export function makeRefillClassifier(): IntentClassifier | undefined {
 }
 
 export class RefillAssistantService {
-  constructor(private readonly db: Pick<PrismaClient, 'prescription'>, private readonly classify = makeRefillClassifier()) {}
+  constructor(private readonly db: Pick<PrismaClient, 'prescription' | 'billingSubscription'>, private readonly classify = makeRefillClassifier()) {}
 
   async assist(userId: string, prescriptionId: string, question: string, consent: boolean) {
     const prescription = await this.db.prescription.findFirst({ where: { id: prescriptionId, userId, archivedAt: null }, select: { id: true } });
     if (!prescription) throw new ConsumerError(404, 'Prescription not found.');
     let intent = guidedIntent(question);
     let source: 'ai' | 'guided' = 'guided';
-    if (consent && this.classify) {
+    const aiEntitled = await canUseAiRefill(this.db, userId);
+    if (consent && this.classify && aiEntitled) {
       try {
         const parsed = resultSchema.parse(await this.classify(question));
         // Explicit clinical language keeps the conservative response even if a
@@ -69,6 +71,6 @@ export class RefillAssistantService {
         source = 'ai';
       } catch { /* Bounded local guidance works when AI refuses or is offline. */ }
     }
-    return { intent, ...answers[intent], source, aiAvailable: Boolean(this.classify) };
+    return { intent, ...answers[intent], source, aiAvailable: Boolean(this.classify), aiEntitled };
   }
 }

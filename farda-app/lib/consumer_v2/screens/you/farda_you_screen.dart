@@ -3,6 +3,8 @@ import 'package:farda/features/consumer/consumer_controller.dart';
 import 'package:farda/features/consumer/data/consumer_models.dart';
 
 import 'you_models.dart';
+import 'package:farda/features/consumer/data/billing.dart';
+import '../membership/farda_membership_screen.dart';
 import 'farda_circle_screen.dart';
 import 'you_pages.dart';
 import 'you_widgets.dart';
@@ -68,7 +70,6 @@ class _FardaYouScreenState extends State<FardaYouScreen> {
   bool _labelReviewed = false;
 
   int _vialSetupStep = 0;
-
 
   FardaLivePreviewState _liveState = FardaLivePreviewState.due;
   bool _expandedIsland = false;
@@ -887,6 +888,20 @@ class _FardaYouScreenState extends State<FardaYouScreen> {
         onPrivatePreviewsChanged:
             (value) => setState(() => _privatePreviews = value),
         onPrivacyPressed: _showPrivacyDetails,
+        onMembershipPressed: () {
+          final repository = widget.controller?.repository;
+          Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder:
+                  (_) => FardaMembershipScreen(
+                    repository:
+                        repository is BillingRepository
+                            ? repository as BillingRepository
+                            : null,
+                  ),
+            ),
+          );
+        },
       ),
       FardaYouDestination.routine => FardaRoutinePage(
         key: const ValueKey(FardaYouDestination.routine),

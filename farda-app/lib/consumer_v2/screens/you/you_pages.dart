@@ -18,6 +18,7 @@ class FardaYouOverviewPage extends StatelessWidget {
     required this.onPrivatePreviewsChanged,
     required this.onPrivacyPressed,
     this.liveRecords = false,
+    this.onMembershipPressed,
   });
 
   final String profileLabel;
@@ -29,6 +30,7 @@ class FardaYouOverviewPage extends StatelessWidget {
   final ValueChanged<bool> onPrivatePreviewsChanged;
   final VoidCallback onPrivacyPressed;
   final bool liveRecords;
+  final VoidCallback? onMembershipPressed;
 
   @override
   Widget build(BuildContext context) {
@@ -133,6 +135,15 @@ class FardaYouOverviewPage extends StatelessWidget {
                 onTap: () => onDestinationSelected(FardaYouDestination.vial),
               ),
               const SizedBox(height: 16),
+              if (onMembershipPressed != null) ...[
+                FardaYouLinkRow(
+                  title: 'Farda membership',
+                  subtitle: 'A little more support · Plus & Family',
+                  vectorIcon: 'icon-circle',
+                  onTap: onMembershipPressed!,
+                ),
+                const SizedBox(height: 16),
+              ],
               FardaYouLinkRow(
                 key: FardaYouKeys.circleLink,
                 title: 'Your circle',

@@ -71,6 +71,7 @@ export class CircleService {
       if (grant.recipient.phoneNumber) await tx.circleInvitation.deleteMany({ where: { ownerId, recipientPhoneHash: this.phoneDigest(grant.recipient.phoneNumber) } });
       const updated = await tx.circleGrant.updateMany({ where: { id: grantId, ownerId }, data: { shareDoseStatus: permissions.doseStatus, shareReminders: permissions.reminders } });
       if (updated.count !== 1) throw new ConsumerError(409, "Circle membership changed. Refresh and try again.");
+      if (!permissions.doseStatus) await tx.circleAlert.updateMany({ where: { grantId, state: "active" }, data: { state: "cancelled", cancelReason: "permission_removed" } });
     });
     return { id: grantId, permissions };
   }

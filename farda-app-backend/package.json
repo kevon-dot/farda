@@ -10,7 +10,8 @@
 		"dev": "cross-env NODE_ENV=development tsx watch --clear-screen=false --exclude \"src/**/*.test.ts\" ./src/main.ts",
 		"test": "vitest run",
 		"db:migrate": "prisma migrate deploy",
-		"db:validate": "prisma validate"
+		"db:validate": "prisma validate",
+		"stripe:bootstrap:test": "tsx scripts/bootstrap-stripe-test-catalog.ts"
 	},
 	"engines": {
 		"node": "^22.12.0 || ^24.0.0"
@@ -38,6 +39,7 @@
 		"multer": "^2.1.1",
 		"openai": "^6.27.0",
 		"pg": "^8.18.0",
+		"stripe": "^19.3.0",
 		"twilio": "^5.12.1",
 		"zod": "^4.3.6"
 	},

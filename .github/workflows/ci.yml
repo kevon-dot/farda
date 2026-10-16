@@ -175,6 +175,13 @@ jobs:
         run: flutter pub get --enforce-lockfile
       - name: Build app and embedded Live Activity extension
         run: flutter build ios --simulator --debug --no-codesign
+      - name: Package simulator app for review
+        run: ditto -c -k --sequesterRsrc --keepParent build/ios/iphonesimulator/Runner.app build/ios/farda-simulator.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: farda-ios-simulator-review
+          path: farda-app/build/ios/farda-simulator.zip
+          if-no-files-found: error
 
   consumer-prototype:
     name: Consumer prototype state transitions

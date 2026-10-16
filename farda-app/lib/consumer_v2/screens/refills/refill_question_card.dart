@@ -2,6 +2,8 @@ import 'package:farda/consumer_v2/design_system/farda_consumer_tokens.dart';
 import 'package:farda/features/consumer/data/refill_agent.dart';
 import 'package:farda/features/consumer/data/consumer_models.dart';
 import 'package:flutter/material.dart';
+import 'package:farda/features/consumer/data/billing.dart';
+import '../membership/farda_membership_screen.dart';
 
 class RefillQuestionCard extends StatefulWidget {
   const RefillQuestionCard({
@@ -101,6 +103,25 @@ class _RefillQuestionCardState extends State<RefillQuestionCard> {
           'Find your next step. For medication or dosing questions, ask your pharmacist.',
           style: FardaConsumerType.caption,
         ),
+        if (widget.repository is BillingRepository) ...[
+          const SizedBox(height: 8),
+          const Text(
+            'AI guidance is included with Plus. Guided refill steps stay free.',
+            style: FardaConsumerType.caption,
+          ),
+          TextButton(
+            onPressed:
+                () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder:
+                        (_) => FardaMembershipScreen(
+                          repository: widget.repository as BillingRepository,
+                        ),
+                  ),
+                ),
+            child: const Text('Explore Plus'),
+          ),
+        ],
         const SizedBox(height: 12),
         TextField(
           key: const Key('refill-agent-question'),
