@@ -48,6 +48,7 @@ export function createLiveActivityRouter(
 		handle(async (req, res) => {
 			const result = await service.registerInstallation(
 				req.user!.id,
+				req.user!.sessionId,
 				installationSchema.parse(req.body),
 			);
 			res.json(result);
@@ -59,6 +60,7 @@ export function createLiveActivityRouter(
 			res.json(
 				await service.registerActivity(
 					req.user!.id,
+					req.user!.sessionId,
 					activitySchema.parse(req.body),
 				),
 			);

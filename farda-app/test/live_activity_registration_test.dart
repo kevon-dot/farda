@@ -137,6 +137,34 @@ void main() {
     ]);
   });
 
+  test('account replacement purges the old installation identity', () async {
+    const nextInstallationId = '223e4567-e89b-42d3-a456-426614174000';
+    var generation = 0;
+    registrar = LiveActivityTokenRegistrar(
+      repository: repository,
+      sessions: sessions,
+      createInstallationId:
+          () => generation++ == 0 ? installationId : nextInstallationId,
+    );
+    await registrar.handle(
+      LiveActivityEvent({'type': 'pushToStartToken', 'token': startToken}),
+    );
+    await sessions.save(
+      const StoredSession(token: 'session-b', userId: 'other'),
+    );
+    await registrar.handle(
+      LiveActivityEvent({'type': 'pushToStartToken', 'token': startToken}),
+    );
+    expect(repository.calls.map((call) => call['installationId']), [
+      installationId,
+      nextInstallationId,
+    ]);
+    expect(
+      store.values['farda.private.live_activity_installation.v1'],
+      nextInstallationId,
+    );
+  });
+
   test(
     'rejects malformed native values before an authenticated request',
     () async {

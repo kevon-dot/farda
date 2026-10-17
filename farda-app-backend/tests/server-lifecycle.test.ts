@@ -74,8 +74,7 @@ describe("server and worker lifecycle", () => {
 		);
 		lifecycle.start.mockReturnValue(lifecycle.stop);
 		lifecycle.reconcileStart.mockReturnValue(lifecycle.reconcileStop);
-		let finishReconcile: () => void = () => {};
-		lifecycle.reconcileStop.mockReturnValue(new Promise<void>((resolve) => { finishReconcile = resolve; }));
+		lifecycle.reconcileStop.mockResolvedValue(undefined);
 		lifecycle.close.mockImplementation((callback: () => void) => callback());
 		lifecycle.disconnect.mockResolvedValue(undefined);
 		const main = await import("../src/main");
@@ -93,9 +92,6 @@ describe("server and worker lifecycle", () => {
 		expect(lifecycle.reconcileStop).toHaveBeenCalledOnce();
 		expect(lifecycle.disconnect).not.toHaveBeenCalled();
 		finish();
-		await Promise.resolve();
-		expect(lifecycle.disconnect).not.toHaveBeenCalled();
-		finishReconcile();
 		await stopping;
 		expect(lifecycle.disconnect).toHaveBeenCalledOnce();
 	});

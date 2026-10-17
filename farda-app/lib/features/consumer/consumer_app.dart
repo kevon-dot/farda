@@ -76,6 +76,7 @@ class ConsumerAppState extends State<ConsumerApp> with WidgetsBindingObserver {
           }
         },
       )..attach();
+      AuthStorage.sessionRevision.addListener(_sessionChanged);
     }
     controller.load();
   }
@@ -117,11 +118,19 @@ class ConsumerAppState extends State<ConsumerApp> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    AuthStorage.sessionRevision.removeListener(_sessionChanged);
     _links?.cancel();
     unawaited(_liveActivities?.dispose() ?? Future.value());
     controller.removeListener(_changed);
     controller.dispose();
     super.dispose();
+  }
+
+  void _sessionChanged() {
+    // Session expiry and account replacement both invalidate the owner of any
+    // visible ActivityKit surface immediately. The newly authenticated account
+    // will reconcile and register its own tokens from a fresh snapshot.
+    unawaited(_liveActivities?.signOut() ?? Future.value());
   }
 
   Future<void> _signOut() async {

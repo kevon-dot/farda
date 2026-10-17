@@ -7,7 +7,7 @@ vi.mock("../src/middleware/isAuthenticated", () => ({
 	isAuthenticated: (req: any, res: any, next: any) => {
 		if (!req.get("X-Test-User"))
 			return res.status(401).json({ error: "Unauthorized" });
-		req.user = { id: req.get("X-Test-User") };
+		req.user = { id: req.get("X-Test-User"), sessionId: "session-owner" };
 		next();
 	},
 }));
@@ -86,10 +86,14 @@ describe("Live Activity registration HTTP boundary", () => {
 			},
 		);
 		expect(response.status).toBe(200);
-		expect(service.registerInstallation).toHaveBeenCalledWith("owner", {
-			installationId,
-			token,
-		});
+		expect(service.registerInstallation).toHaveBeenCalledWith(
+			"owner",
+			"session-owner",
+			{
+				installationId,
+				token,
+			},
+		);
 		expect(await response.text()).not.toContain(token);
 	});
 });

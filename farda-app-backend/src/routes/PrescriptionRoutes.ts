@@ -4,6 +4,7 @@ import { ConsumerError, DosePatch, PrescriptionInput, PrescriptionPatch, Schedul
 import type { Prisma } from '../../generated/prisma/client';
 import type { Request, Response } from 'express';
 import { z } from 'zod';
+import { queueLiveActivityEnd } from '../live-activities/service';
 import { cancelOccurrenceReminders, lock, serial } from '../reminders/service';
 
 export function authenticatedUser(req: Request) {
@@ -169,7 +170,8 @@ export const recordDose = async (req: Request, res: Response) => {
   try {
     const userId = authenticatedUser(req);
     const input = DosePatch.parse(req.body);
-    const changes = doseChanges(input, new Date());
+    const now = new Date();
+    const changes = doseChanges(input, now);
     const doseId = String(req.params.id ?? req.params.doseId);
     const data = await serial(prisma, async tx => {
       const before = await tx.dose.findFirst({ where: { id: doseId, userId } });
@@ -180,6 +182,7 @@ export const recordDose = async (req: Request, res: Response) => {
       if (changed.count !== 1) throw new ConsumerError(409, 'conflict', 'This record changed. Reload it before editing');
       if (input.status === 'taken' || input.status === 'skipped') await cancelOccurrenceReminders(tx, doseId, 'user_resolved');
       const after = await tx.dose.findFirstOrThrow({ where: { id: doseId, userId } });
+      if (input.status === 'taken' || input.status === 'skipped') await queueLiveActivityEnd(tx, after, now);
       await tx.doseCorrection.create({ data: { doseId, actorId: userId, revision: after.revision, before: asJson(before), after: asJson(after), reason: input.reason } });
       return after;
     });

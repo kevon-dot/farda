@@ -73,7 +73,7 @@ Channel timestamps are Unix **milliseconds**. Native `ContentState` and APNs `co
 
 ## Background delivery and provisioning
 
-The foreground coordinator is not a background scheduler. The backend now includes authenticated token registration and an APNs start/update sender, but it remains disabled until every server credential/configuration check succeeds. A countdown can continue, but changing heads-up into due requires a native update or APNs; the heads-up becomes stale at the due boundary if it receives neither. Snoozed content becomes stale at its resume boundary. Stale copy asks the user to open Farda rather than claiming an up-to-date status.
+The foreground coordinator is not a background scheduler. The backend now includes authenticated token registration and an APNs start/update/end sender, but it remains disabled until every server credential/configuration check succeeds. Remote starts include `input-push-token: 1` so iOS 18 can return the per-activity token needed for later updates. A countdown can continue, but changing heads-up into due requires a native update or APNs; the heads-up becomes stale at the due boundary if it receives neither. Snoozed content becomes stale at its resume boundary. Stale copy asks the user to open Farda rather than claiming an up-to-date status.
 
 For app-initiated starts this implementation uses the iOS 16.2 ActivityContent APIs. Background push-to-start uses the observed iOS 17.2+ token. Older supported devices can receive per-activity updates after an activity has been started from the app. Later scheduling APIs are not used here.
 
@@ -82,9 +82,9 @@ Before enabling remote delivery:
 1. Set real Runner and extension bundle identifiers with a shared prefix and select the same signing team. The repository still uses `com.example.farda` and `com.example.farda.LiveActivity`.
 2. Enable Push Notifications for the Runner App ID, regenerate provisioning profiles, and add the correctly signed `aps-environment` entitlement for development or production. Local Live Activities do not require adding a fabricated ActivityKit entitlement.
 3. Configure server APNs key ID, team ID, private key, environment, and topic `<Runner bundle ID>.push-type.liveactivity`. Keep keys server-side.
-4. Apply the Live Activity database migration and set a distinct 32-byte base64 token-encryption key. Authenticated registration binds the installation and each activity token to the signed-in owner; per-activity registration verifies the occurrence owner. Opt-out, sign-out, expiry and APNs token rejection revoke credentials.
+4. Apply the Live Activity database migration and set a distinct 32-byte base64 token-encryption key. Authenticated registration binds the installation to the signed-in session and each activity token to the occurrence owner. Session expiry/deletion cascades its registrations; account replacement ends local activities and presenting the same APNs credential atomically retires its old server binding. Opt-out, sign-out, expiry and APNs token rejection revoke credentials.
 5. The app sets `requestPushToken:true` only when the authenticated server capability is enabled. The native availability field remains false because native code cannot attest to server configuration.
-6. Durable workers recheck occurrence status, schedule version, consent, expiry and snooze immediately before delivery. End notifications must cancel a displayed reminder after confirmation. Never retry an ambiguous remote start as if no activity was created.
+6. Durable workers recheck occurrence status, schedule version, consent, expiry and snooze immediately before delivery. Authoritative taken/skipped writes durably queue an end event with final content and retire the activity token. Never retry an ambiguous remote start as if no activity was created.
 
 An APNs HTTP 200 is provider acceptance, never proof of device display or viewing. Do not infer that a dose was taken, that a call was answered, or that an activity was seen from an accepted push. Ordinary notification fallback is a separate integration and is not implemented by this extension.
 

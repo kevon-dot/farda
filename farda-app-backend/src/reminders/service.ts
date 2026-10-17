@@ -170,12 +170,13 @@ export async function cancelOccurrenceReminders(
 	const doseIds = Array.isArray(doseId) ? doseId : [doseId];
 	if (doseIds.length === 0) return;
 	const intents = await tx.reminderIntent.findMany({
-		where: { doseId: { in: doseIds } },
+		where: { doseId: { in: doseIds }, stage: { not: "end" } },
 		select: { id: true },
 	});
 	await tx.reminderIntent.updateMany({
 		where: {
 			doseId: { in: doseIds },
+			stage: { not: "end" },
 			state: { in: ["pending", "reserved", "dispatched"] },
 		},
 		data: { state: "cancelled", reason },
@@ -185,6 +186,10 @@ export async function cancelOccurrenceReminders(
 			intentId: { in: intents.map((i) => i.id) },
 			state: { in: ["reserved", "retryable"] },
 		},
+		data: { state: "cancelled", reason },
+	});
+	await tx.liveActivityAttempt.updateMany({
+		where: { intentId: { in: intents.map((i) => i.id) }, state: "reserved" },
 		data: { state: "cancelled", reason },
 	});
 }

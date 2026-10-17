@@ -136,8 +136,10 @@ export function reminderPlan(
 		{
 			channel: "live_activity",
 			stage: "before",
-			dueAt: new Date(dose.scheduledFor.getTime() - CADENCE.beforeMinutes * 60_000),
-			// A delayed heads-up must never start after the due time.
+			dueAt: new Date(
+				dose.scheduledFor.getTime() - CADENCE.beforeMinutes * 60_000,
+			),
+			// Never turn a delayed heads-up into a surprise start after the due time.
 			expiresAt: dose.scheduledFor,
 		},
 		{

@@ -3,6 +3,7 @@ import { prisma } from '@src/lib/prisma';
 import { sendSmsOTP } from '@src/services/twilioService';
 import { z } from 'zod';
 import type { Request, Response } from 'express';
+import { revokeLiveActivitySession } from '../live-activities/service';
 
 const phone = z.string().regex(/^\+[1-9]\d{7,14}$/);
 const sendInput = z.object({ phoneNumber: phone }).strict();
@@ -50,8 +51,7 @@ const PhoneAuthRoutes = {
     try {
       const now = new Date();
       await prisma.$transaction(async tx => {
-        await tx.liveActivityInstallation.updateMany({ where: { userId: req.user!.id, revokedAt: null }, data: { revokedAt: now } });
-        await tx.liveActivityToken.updateMany({ where: { userId: req.user!.id, revokedAt: null }, data: { revokedAt: now } });
+        await revokeLiveActivitySession(tx, req.user!.id, req.user!.sessionId, now);
         await tx.session.deleteMany({ where: { token: req.headers.authorization!.slice(7), userId: req.user!.id } });
       });
       return res.status(204).end();

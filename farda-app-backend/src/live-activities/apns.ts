@@ -1,5 +1,5 @@
 import { createPrivateKey, sign } from "node:crypto";
-import { connect } from "node:http2";
+import { connect, type ClientHttp2Stream } from "node:http2";
 import { z } from "zod";
 import { TokenProtector } from "./crypto";
 
@@ -65,6 +65,7 @@ const payloadSchema = z.object({
 			"stale-date": z.number().int().nonnegative().optional(),
 			"dismissal-date": z.number().int().nonnegative().optional(),
 			"attributes-type": z.literal("FardaRoutineAttributes").optional(),
+			"input-push-token": z.literal(1).optional(),
 			attributes: z
 				.object({ occurrenceId: z.string().min(1).max(128) })
 				.strict()
@@ -78,6 +79,11 @@ const payloadSchema = z.object({
 });
 
 export type LiveActivityPayload = z.infer<typeof payloadSchema>;
+export function validateLiveActivityPayload(
+	payload: unknown,
+): LiveActivityPayload {
+	return payloadSchema.parse(payload);
+}
 export interface ApnsResult {
 	accepted: boolean;
 	status: number;
@@ -92,6 +98,14 @@ export interface ApnsAdapter {
 		expiresAt: Date,
 	): Promise<ApnsResult>;
 }
+
+export class ApnsTransportError extends Error {
+	constructor() {
+		super("apns_transport_result_unknown");
+	}
+}
+
+export class ApnsLocalError extends Error {}
 
 export function makeApnsAdapter(
 	config: LiveActivityConfig = liveActivityConfig(),
@@ -118,17 +132,30 @@ export function makeApnsAdapter(
 	return {
 		enabled: config.enabled,
 		async send(token, payload, expiresAt) {
-			if (!config.enabled) throw new Error("apns_unavailable");
-			if (!/^[0-9a-f]{64}$/i.test(token)) throw new Error("apns_token_invalid");
-			const body = JSON.stringify(payloadSchema.parse(payload));
+			if (!config.enabled) throw new ApnsLocalError("apns_unavailable");
+			if (!/^[0-9a-f]{64}$/i.test(token))
+				throw new ApnsLocalError("apns_token_invalid");
+			const body = JSON.stringify(validateLiveActivityPayload(payload));
 			if (Buffer.byteLength(body) > 4096)
-				throw new Error("apns_payload_too_large");
+				throw new ApnsLocalError("apns_payload_too_large");
 			const origin =
 				config.environment === "production"
 					? "https://api.push.apple.com"
 					: "https://api.sandbox.push.apple.com";
+			let authorization: string;
+			try {
+				authorization = `bearer ${jwt()}`;
+			} catch {
+				throw new ApnsLocalError("apns_signing_failed");
+			}
 			return new Promise<ApnsResult>((resolve, reject) => {
-				const client = connect(origin);
+				let client: ReturnType<typeof connect>;
+				try {
+					client = connect(origin);
+				} catch {
+					reject(new ApnsTransportError());
+					return;
+				}
 				let settled = false;
 				const finish = (error?: Error, result?: ApnsResult) => {
 					if (settled) return;
@@ -137,17 +164,23 @@ export function makeApnsAdapter(
 					if (error) reject(error);
 					else resolve(result!);
 				};
-				client.setTimeout(10_000, () => finish(new Error("apns_timeout")));
-				client.once("error", () => finish(new Error("apns_transport_error")));
-				const request = client.request({
-					":method": "POST",
-					":path": `/3/device/${token}`,
-					authorization: `bearer ${jwt()}`,
-					"apns-push-type": "liveactivity",
-					"apns-topic": config.topic,
-					"apns-priority": "10",
-					"apns-expiration": String(Math.floor(expiresAt.getTime() / 1000)),
-				});
+				client.setTimeout(10_000, () => finish(new ApnsTransportError()));
+				client.once("error", () => finish(new ApnsTransportError()));
+				let request: ClientHttp2Stream;
+				try {
+					request = client.request({
+						":method": "POST",
+						":path": `/3/device/${token}`,
+						authorization,
+						"apns-push-type": "liveactivity",
+						"apns-topic": config.topic,
+						"apns-priority": "10",
+						"apns-expiration": String(Math.floor(expiresAt.getTime() / 1000)),
+					});
+				} catch {
+					finish(new ApnsTransportError());
+					return;
+				}
 				let status = 0;
 				let response = "";
 				request.setEncoding("utf8");
@@ -157,7 +190,7 @@ export function makeApnsAdapter(
 				request.on("data", (chunk: string) => {
 					if (response.length < 1024) response += chunk;
 				});
-				request.once("error", () => finish(new Error("apns_transport_error")));
+				request.once("error", () => finish(new ApnsTransportError()));
 				request.on("end", () => {
 					let reason: string | undefined;
 					try {
