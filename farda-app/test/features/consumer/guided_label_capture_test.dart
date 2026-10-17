@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:farda/features/consumer/consumer_controller.dart';
 import 'package:farda/features/consumer/data/consumer_demo_repository.dart';
@@ -12,13 +13,16 @@ class ScanRepository extends ConsumerDemoRepository
     implements LabelScanRepository {
   int calls = 0;
   bool fail = false;
+  Completer<LabelScanDraft>? pending;
   @override
   Future<LabelScanDraft> extractLabel(List<LabelPhoto> photos) async {
     calls++;
-    if (fail)
+    if (pending != null) return pending!.future;
+    if (fail) {
       throw const ConsumerRepositoryException(
         'Scan unavailable. Enter manually or retry.',
       );
+    }
     return const LabelScanDraft(
       medicationName: 'Sample medication',
       directions: 'Exact label wording.',
@@ -35,11 +39,14 @@ void main() {
     WidgetTester tester,
     ScanRepository repo, {
     ValueChanged<LabelScanDraft?>? result,
+    ValueChanged<ConsumerController>? onController,
+    Future<LabelPhoto?> Function(BuildContext)? takePhoto,
   }) async {
     await tester.binding.setSurfaceSize(const Size(320, 800));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     final controller = ConsumerController(repo);
     addTearDown(controller.dispose);
+    onController?.call(controller);
     await tester.pumpWidget(
       MaterialApp(
         builder:
@@ -61,7 +68,7 @@ void main() {
                         builder:
                             (_) => GuidedLabelCaptureScreen(
                               controller: controller,
-                              takePhoto: (_) async => photo,
+                              takePhoto: takePhoto ?? (_) async => photo,
                             ),
                       ),
                     );
@@ -83,6 +90,7 @@ void main() {
       220,
       scrollable: find.byType(Scrollable).last,
     );
+    await tester.pumpAndSettle();
     await tester.tap(find.text(text));
     await tester.pumpAndSettle();
   }
@@ -173,6 +181,61 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('session expiry discards a late gallery or camera result', (
+    tester,
+  ) async {
+    final repo = ScanRepository();
+    final pending = Completer<LabelPhoto?>();
+    late ConsumerController controller;
+    await mount(
+      tester,
+      repo,
+      onController: (value) => controller = value,
+      takePhoto: (_) => pending.future,
+    );
+    await tester.scrollUntilVisible(find.text('Take first photo'), 180);
+    await tester.tap(find.text('Take first photo'));
+    await tester.pump();
+    await controller.mutate(() async {
+      throw const ConsumerRepositoryException(
+        'Session ended',
+        sessionExpired: true,
+      );
+    });
+    await tester.pumpAndSettle();
+    pending.complete(photo);
+    await tester.pumpAndSettle();
+    expect(find.text('Sign in again to continue'), findsOneWidget);
+    expect(find.byType(Image), findsNothing);
+    expect(find.text('Review label details'), findsNothing);
+    expect(repo.calls, 0);
+  });
+
+  testWidgets('manual fallback ignores an extraction still in flight', (
+    tester,
+  ) async {
+    final repo = ScanRepository()..pending = Completer<LabelScanDraft>();
+    LabelScanDraft? draft;
+    await mount(tester, repo, result: (value) => draft = value);
+    await tap(tester, 'Take first photo');
+    await tester.scrollUntilVisible(find.byType(CheckboxListTile), 180);
+    await tester.tap(find.byType(CheckboxListTile));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.text('Review label details'), 180);
+    await tester.tap(find.text('Review label details'));
+    await tester.pump();
+    await tester.scrollUntilVisible(find.text('Enter manually instead'), 180);
+    await tester.tap(find.text('Enter manually instead'));
+    await tester.pumpAndSettle();
+    repo.pending!.complete(
+      const LabelScanDraft(medicationName: 'Late private label'),
+    );
+    await tester.pumpAndSettle();
+    expect(draft?.manualEntry, true);
+    expect(find.text('Open scanner'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('camera unavailable keeps manual route accessible', (
     tester,
   ) async {
@@ -190,7 +253,10 @@ void main() {
       const MaterialApp(home: LabelViewfinderScreen(photoNumber: 2)),
     );
     await tester.pumpAndSettle();
-    await tester.scrollUntilVisible(find.textContaining('Camera unavailable.'), 180);
+    await tester.scrollUntilVisible(
+      find.textContaining('Camera unavailable.'),
+      180,
+    );
     expect(find.textContaining('Camera unavailable.'), findsOneWidget);
     await tester.scrollUntilVisible(find.text('Enter manually instead'), 180);
     expect(find.text('Enter manually instead'), findsOneWidget);
