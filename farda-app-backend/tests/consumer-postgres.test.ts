@@ -83,6 +83,20 @@ describe.skipIf(!testUrl)('PostgreSQL HTTP contract and persistence', () => {
     expect(await prisma.scheduleVersion.count({where:{prescriptionId:record.id}})).toBe(1);
     expect(await prisma.dose.count({where:{prescriptionId:record.id}})).toBe(7);
   });
+  it.skipIf(process.env.TEST_DATABASE_SINGLE_CONNECTION === 'true')('rejects a simultaneous different draft using the same save ID',async()=>{
+    const clientRequestId=randomUUID();
+    const results=await Promise.all([
+      call('/prescriptions',tokens[0],'POST',{...draft,clientRequestId,medicationName:'Concurrent draft A'}),
+      call('/prescriptions',tokens[0],'POST',{...draft,clientRequestId,medicationName:'Concurrent draft B'}),
+    ]);
+    expect(results.map(r=>r.status).sort()).toEqual([201,409]);
+    const saved=results.find(r=>r.status===201)!;const rejected=results.find(r=>r.status===409)!;
+    expect(rejected.body.code).toBe('idempotency_conflict');
+    const record=await prisma.prescription.findUnique({where:{userId_clientRequestId:{userId:a,clientRequestId}}});
+    expect(record.id).toBe(saved.body.data.id);expect(record.medicationName).toBe(saved.body.data.medicationName);
+    expect(await prisma.scheduleVersion.count({where:{prescriptionId:record.id}})).toBe(1);
+    expect(await prisma.dose.count({where:{prescriptionId:record.id}})).toBe(7);
+  });
   it('round-trips notes independently and preserves correction history',async()=>{
     const note=await call(`/doses/${dose}`,tokens[0],'PATCH',{note:'Real saved note',mood:'okay',expectedRevision:0});
     expect(note.status).toBe(200);expect(note.body.data.status).toBe('unconfirmed');expect(note.body.data.takenAt).toBeNull();
