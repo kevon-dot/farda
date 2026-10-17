@@ -13,6 +13,9 @@ and device-event ingestion.
 
 Feature handoffs: [Family Circle](reviews/FAMILY_CIRCLE_HANDOFF.md).
 
+Deployment images, probe contracts, migration jobs, and the local/staging
+Compose template are documented in [deploy/README.md](deploy/README.md).
+
 ## Repository layout
 
 | Path | Component | Stack | Role |
