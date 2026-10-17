@@ -276,6 +276,69 @@ void main() {
     });
 
     test(
+      'dispose blocks a delayed multipart response before PHI is parsed',
+      () async {
+        final sent = Completer<void>();
+        final pending = Completer<http.StreamedResponse>();
+        final repository = _repository((_) {
+          sent.complete();
+          return pending.future;
+        });
+
+        final scan = repository.extractLabel([_png()]);
+        await sent.future;
+        repository.dispose();
+        pending.complete(
+          _response(
+            _draft(directions: 'PRIVATE directions from a cancelled scan'),
+          ),
+        );
+
+        await expectLater(
+          scan,
+          throwsA(
+            allOf(
+              _safeError(),
+              isA<ConsumerRepositoryException>().having(
+                (error) => error.message,
+                'message',
+                contains('cancelled'),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+
+    test('dispose maps multipart transport failure to cancellation', () async {
+      final sent = Completer<void>();
+      final pending = Completer<http.StreamedResponse>();
+      final repository = _repository((_) {
+        sent.complete();
+        return pending.future;
+      });
+
+      final scan = repository.extractLabel([_png()]);
+      await sent.future;
+      repository.dispose();
+      pending.completeError(http.ClientException('PRIVATE closed transport'));
+
+      await expectLater(
+        scan,
+        throwsA(
+          allOf(
+            _safeError(),
+            isA<ConsumerRepositoryException>().having(
+              (error) => error.message,
+              'message',
+              contains('cancelled'),
+            ),
+          ),
+        ),
+      );
+    });
+
+    test(
       '401 invalidates only the request session and hides server body',
       () async {
         final invalidated = <String>[];

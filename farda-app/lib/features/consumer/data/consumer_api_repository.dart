@@ -349,15 +349,16 @@ class ConsumerApiRepository
     String? requestToken,
     bool cacheRead = false,
   }) async {
-    String? token;
+    String? sessionToken;
     try {
-      token = requestToken ?? await _tokenProvider();
+      sessionToken = await _tokenProvider();
     } catch (_) {
       throw const ConsumerRepositoryException(
         'Your saved session could not be read. Sign in again to continue.',
         sessionExpired: true,
       );
     }
+    final token = requestToken ?? sessionToken;
     if (token == null || token.isEmpty) {
       throw const ConsumerRepositoryException(
         'Sign in to see your private routine.',
@@ -365,16 +366,22 @@ class ConsumerApiRepository
       );
     }
     if (_disposed) {
-      throw const ConsumerRepositoryException(
-        'This request was cancelled. Reopen Farda to refresh.',
-      );
+      throw _cancelledRequest;
     }
-    _bindSession(token);
+    if (sessionToken != null && sessionToken.isNotEmpty) {
+      _bindSession(sessionToken);
+    }
     final uri = Uri.parse('$_base/$path').replace(queryParameters: query);
     if (method == 'GET' && body == null) {
       return _read(uri, token, cache: cacheRead);
     }
-    final result = await _send(method, uri, token, body: body);
+    final result = await _send(
+      method,
+      uri,
+      token,
+      sessionToken: sessionToken,
+      body: body,
+    );
     // A confirmed mutation makes every cached representation suspect. Advance
     // the generation as well as clearing entries so a slower earlier GET cannot
     // repopulate the cache after this write.
@@ -422,7 +429,7 @@ class ConsumerApiRepository
       owned =
           (() async {
             try {
-              final value = await _send('GET', uri, token);
+              final value = await _send('GET', uri, token, sessionToken: token);
               if (!_disposed &&
                   _activeToken == token &&
                   _readGeneration == generation &&
@@ -491,6 +498,29 @@ class ConsumerApiRepository
     }
   }
 
+  Future<void> _requireSessionSnapshot(String? token) async {
+    if (_disposed) throw _cancelledRequest;
+    String? currentToken;
+    try {
+      currentToken = await _tokenProvider();
+    } catch (_) {
+      _invalidateReads();
+      throw const ConsumerRepositoryException(
+        'Your saved session could not be read. Private records are hidden until you sign in again.',
+        sessionExpired: true,
+      );
+    }
+    if (currentToken != token ||
+        (token != null && token.isNotEmpty && _activeToken != token)) {
+      _invalidateReads();
+      throw const ConsumerRepositoryException(
+        'Your account session changed. Refresh to continue.',
+        sessionExpired: true,
+        sessionChanged: true,
+      );
+    }
+  }
+
   Map<String, dynamic> _copy(Map<String, dynamic> value) =>
       Map<String, dynamic>.from(jsonDecode(jsonEncode(value)) as Map);
 
@@ -498,6 +528,7 @@ class ConsumerApiRepository
     String method,
     Uri uri,
     String token, {
+    required String? sessionToken,
     Map<String, Object?>? body,
   }) async {
     final request =
@@ -513,7 +544,7 @@ class ConsumerApiRepository
           .send(request)
           .then(http.Response.fromStream)
           .timeout(const Duration(seconds: 20));
-      await _requireCurrentSession(token);
+      await _requireSessionSnapshot(sessionToken);
       String? recovery;
       if (response.statusCode >= 400) {
         try {
@@ -601,10 +632,12 @@ class ConsumerApiRepository
       }
       return decoded;
     } on TimeoutException {
+      if (_disposed) throw _cancelledRequest;
       throw const ConsumerRepositoryException(
         'The connection timed out. Refresh before retrying an update.',
       );
     } on http.ClientException {
+      if (_disposed) throw _cancelledRequest;
       throw const ConsumerRepositoryException(
         'You appear to be offline. Your last loaded record has not changed.',
       );
@@ -716,6 +749,8 @@ class ConsumerApiRepository
         sessionExpired: true,
       );
     }
+    if (_disposed) throw _cancelledRequest;
+    _bindSession(token);
     final request =
         http.MultipartRequest(
             'POST',
@@ -740,23 +775,9 @@ class ConsumerApiRepository
           .send(request)
           .then(http.Response.fromStream)
           .timeout(const Duration(seconds: 60));
-      String? currentToken;
-      try {
-        currentToken = await _tokenProvider();
-      } catch (_) {
-        throw const ConsumerRepositoryException(
-          'Sign in again to review your label.',
-          sessionExpired: true,
-        );
-      }
-      if (currentToken != token) {
-        throw const ConsumerRepositoryException(
-          'Your account changed. Reopen the scanner.',
-          sessionExpired: true,
-          sessionChanged: true,
-        );
-      }
+      await _requireCurrentSession(token);
       if (response.statusCode == 401) {
+        _invalidateReads();
         try {
           await _tokenInvalidator?.call(token);
         } catch (_) {
@@ -791,10 +812,12 @@ class ConsumerApiRepository
       }
       return LabelScanDraft.fromJson(decoded);
     } on TimeoutException {
+      if (_disposed) throw _cancelledRequest;
       throw const ConsumerRepositoryException(
         'Scanning took too long. Try again or enter manually. Nothing was saved.',
       );
     } on http.ClientException {
+      if (_disposed) throw _cancelledRequest;
       throw const ConsumerRepositoryException(
         'Check your connection, or enter the label manually. Nothing was saved.',
       );
@@ -1173,9 +1196,15 @@ class ConsumerApiRepository
 
   @override
   Future<bool> signOut(String token) async {
+    var wasCurrent = false;
+    try {
+      wasCurrent = await _tokenProvider() == token;
+    } catch (_) {
+      return false;
+    }
     try {
       await _request('POST', 'auth/sign-out', body: {}, requestToken: token);
-      return true;
+      return wasCurrent && await _tokenProvider() == token;
     } on ConsumerRepositoryException catch (error) {
       return error.sessionExpired && !error.sessionChanged;
     } catch (_) {
@@ -1199,3 +1228,7 @@ class _CachedRead {
   final Map<String, dynamic> value;
   final DateTime expiresAt;
 }
+
+const _cancelledRequest = ConsumerRepositoryException(
+  'This request was cancelled. Reopen Farda to refresh.',
+);

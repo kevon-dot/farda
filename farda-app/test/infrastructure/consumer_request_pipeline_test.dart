@@ -244,4 +244,46 @@ void main() {
       ),
     );
   });
+
+  test(
+    'pinned old-account logout cannot corrupt a concurrent current read',
+    () async {
+      final firstRead = Completer<http.Response>();
+      final readStarted = Completer<void>();
+      var readCalls = 0;
+      final authorizations = <String?>[];
+      final repository = ConsumerApiRepository(
+        baseUrl: 'https://example.test/api',
+        tokenProvider: () async => 'account-b',
+        client: MockClient((request) async {
+          authorizations.add(request.headers['Authorization']);
+          if (request.url.path.endsWith('/billing/status')) {
+            readCalls++;
+            if (readCalls == 1) {
+              readStarted.complete();
+              return firstRead.future;
+            }
+            return http.Response('{"tier":"plus"}', 200);
+          }
+          expect(request.url.path, '/api/auth/sign-out');
+          return http.Response('{}', 200);
+        }),
+      );
+
+      final reading = repository.loadBillingStatus();
+      await readStarted.future;
+      expect(await repository.signOut('account-a'), isFalse);
+      firstRead.complete(http.Response('{"tier":"stale"}', 200));
+
+      expect((await reading).tier, 'plus');
+      expect(readCalls, 2);
+      expect(authorizations, [
+        'Bearer account-b',
+        'Bearer account-a',
+        'Bearer account-b',
+      ]);
+      expect((await repository.loadBillingStatus()).tier, 'plus');
+      repository.dispose();
+    },
+  );
 }
