@@ -5,8 +5,9 @@ const config = require('./config/config');
 const connectDB = require('./config/databaseConfig');
 const { requestLimit } = require('./middleware/requestLimit');
 const { checkSessionStore, closePool } = require('./middleware/verifyUserToken');
+const { createOperationsRouter, buildInfo } = require('./lib/operations');
 
-function createApp() {
+function createApp({ readinessProbe } = {}) {
   const app = express();
   app.disable('x-powered-by');
   // Proxy trust must be deliberately configured at the gateway, never accepted
@@ -15,7 +16,12 @@ function createApp() {
   app.use(cors({ origin: config.corsOrigins, credentials: false }));
   app.use(requestLimit({ max: 180, windowMs: 60000 }));
   app.use(express.json({ limit: '16kb', strict: true }));
-  app.get('/health', (_req, res) => res.json({ status: 'ok', contract: 'vial-observations-v1' }));
+  app.use(createOperationsRouter({
+    readinessProbe: readinessProbe || (async () => {
+      if (mongoose.connection.readyState !== 1) throw new Error('MongoDB is not connected');
+      await checkSessionStore();
+    }),
+  }));
   app.use('/api/ingest', require('./routes/ingestionAPI'));
   app.use('/api/caregiver', require('./routes/caregiverAPI'));
   app.use('/api/user', require('./routes/userAPI'));
@@ -32,20 +38,29 @@ async function start() {
   config.validateConfig(config);
   await connectDB(config.mongoUri);
   await checkSessionStore();
-  const server = createApp().listen(config.port, () => console.info('Vial API ready'));
+  const server = createApp().listen(config.port, () => {
+    const build = buildInfo();
+    console.info(`Vial API ready (version=${build.version} commit=${build.commit})`);
+  });
   const stop = () => server.close(async () => { await closePool(); await mongoose.disconnect(); });
   process.once('SIGTERM', stop);
   process.once('SIGINT', stop);
   return server;
 }
 
-if (require.main === module) {
-  start().catch(async () => {
+async function run() {
+  try {
+    await start();
+  } catch {
     console.error('Vial API startup failed: verify database configuration, schema, indexes and replica-set support.');
     await closePool().catch(() => {});
     await mongoose.disconnect().catch(() => {});
     process.exitCode = 1;
-  });
+  }
 }
 
-module.exports = { createApp, start };
+if (require.main === module) {
+  void run();
+}
+
+module.exports = { createApp, start, run };

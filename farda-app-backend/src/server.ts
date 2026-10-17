@@ -2,6 +2,7 @@ import express, { type ErrorRequestHandler } from 'express';
 import helmet from 'helmet';
 import apiRouter from './routes/apiRouter';
 import { createBillingWebhookRouter } from './billing/routes';
+import { createOperationsRouter } from './operations/routes';
 
 const app = express();
 app.disable('x-powered-by');
@@ -9,7 +10,7 @@ app.use(helmet());
 app.use(createBillingWebhookRouter());
 app.use(express.json({ limit: '64kb' }));
 app.use(express.urlencoded({ extended: false, limit: '16kb' }));
-app.get('/health', (_req, res) => res.json({ status: 'ok' }));
+app.use(createOperationsRouter());
 app.use('/api', apiRouter);
 app.use((_req, res) => res.status(404).json({ error: 'Route not found', code: 'not_found' }));
 const errors: ErrorRequestHandler = (error, _req, res, _next) => {
