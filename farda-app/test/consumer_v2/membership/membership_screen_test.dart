@@ -99,47 +99,35 @@ void main() {
     },
   );
 
-  testWidgets(
-    '320px large text keeps annual totals readable and native purchase disabled',
-    (tester) async {
-      tester.view.physicalSize = const Size(320, 740);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
-      final repo = BillingFake();
-      await tester.pumpWidget(
-        MaterialApp(
-          home: MediaQuery(
-            data: const MediaQueryData(textScaler: TextScaler.linear(1.3)),
-            child: FardaMembershipScreen(repository: repo),
-          ),
+  testWidgets('320px large text keeps native unavailable state readable', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(320, 740);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final repo = BillingFake();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MediaQuery(
+          data: const MediaQueryData(textScaler: TextScaler.linear(1.3)),
+          child: FardaMembershipScreen(repository: repo),
         ),
-      );
-      await tester.pumpAndSettle();
-      await tester.scrollUntilVisible(find.text('\$149.99 / year'), 150);
-      expect(find.text('\$149.99 / year'), findsOneWidget);
-      await tester.scrollUntilVisible(find.text('Family'), -150);
-      await tester.tap(find.text('Family'));
-      await tester.pumpAndSettle();
-      expect(find.text('\$249.99 / year'), findsOneWidget);
-      await tester.scrollUntilVisible(find.text('Monthly'), -150);
-      await tester.tap(find.text('Monthly'));
-      await tester.pumpAndSettle();
-      expect(find.text('\$24.99 / month'), findsOneWidget);
-      await tester.scrollUntilVisible(find.text('Plus'), -150);
-      await tester.tap(find.text('Plus'));
-      await tester.pumpAndSettle();
-      expect(find.text('\$14.99 / month'), findsOneWidget);
-      expect(tester.takeException(), isNull);
-      await tester.scrollUntilVisible(find.text('Purchases unavailable'), 300);
-      final button = tester.widget<FilledButton>(
-        find.widgetWithText(FilledButton, 'Purchases unavailable'),
-      );
-      expect(button.onPressed, isNull);
-      expect(repo.checkouts, 0);
-      expect(tester.takeException(), isNull);
-    },
-  );
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.text('Price unavailable'), 150);
+    expect(find.text('Price unavailable'), findsOneWidget);
+    expect(find.textContaining('149.99'), findsNothing);
+    expect(tester.takeException(), isNull);
+    await tester.scrollUntilVisible(find.text('Purchases unavailable'), 300);
+    final button = tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, 'Purchases unavailable'),
+    );
+    expect(button.onPressed, isNull);
+    expect(repo.checkouts, 0);
+    expect(tester.takeException(), isNull);
+  });
   testWidgets(
     'load failure does not claim free or paid membership and allows retry',
     (tester) async {
@@ -154,6 +142,41 @@ void main() {
       await tester.tap(find.text('Refresh membership'));
       await tester.pumpAndSettle();
       expect(find.textContaining('couldn’t load'), findsNothing);
+    },
+  );
+  testWidgets(
+    'past-due billing remains manageable without paid access or checkout',
+    (tester) async {
+      final repo =
+          BillingFake()
+            ..status = const BillingStatus(
+              tier: 'free',
+              status: 'past_due',
+              source: 'web',
+              managementAvailable: true,
+            );
+      await tester.pumpWidget(
+        MaterialApp(home: FardaMembershipScreen(repository: repo)),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Your membership.'), findsOneWidget);
+      expect(find.text('past due'), findsOneWidget);
+      expect(
+        find.text(
+          'Premium access is not active. Your free essentials remain available.',
+        ),
+        findsOneWidget,
+      );
+      await tester.scrollUntilVisible(find.text('Manage membership'), 200);
+      expect(find.text('Manage membership'), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.textContaining('Open Farda in your browser'),
+        150,
+      );
+      expect(find.textContaining('Open Farda in your browser'), findsOneWidget);
+      expect(find.text('Purchases unavailable'), findsNothing);
+      expect(find.textContaining('Continue with'), findsNothing);
+      expect(repo.checkouts, 0);
     },
   );
   testWidgets(

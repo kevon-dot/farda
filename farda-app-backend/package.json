@@ -11,6 +11,7 @@
 		"test": "vitest run",
 		"db:migrate": "prisma migrate deploy",
 		"db:validate": "prisma validate",
+		"runtime:readiness": "tsx scripts/runtime-readiness.ts",
 		"stripe:bootstrap:test": "tsx scripts/bootstrap-stripe-test-catalog.ts"
 	},
 	"engines": {
