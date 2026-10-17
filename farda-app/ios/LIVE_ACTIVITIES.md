@@ -8,7 +8,7 @@ Implemented from Figma `BeSPZ5VOwOOlrwKFTpMA4K`, active screen `2:38`, on 2026-1
 - Heads-up at −10 minutes, due, snoozed, confirmed, cancelled and stale content.
 - Outfit fonts, navy/cream tokens with dark variants, and the exact lock/arrow vector source used by the committed Figma construction script.
 - ActivityKit start/update/end, revision ordering, duplicate reconciliation, permission state, foreground-start guard and restart observation.
-- Rotating per-activity tokens and iOS 17.2+ push-to-start tokens exposed through the Dart event stream. No tokens are logged or sent to an endpoint by this bridge.
+- Rotating per-activity tokens and iOS 17.2+ push-to-start tokens exposed through the Dart event stream. The authenticated Flutter adapter serializes registration to the server; tokens are excluded from diagnostics and responses.
 - Deep links that open the matching authenticated occurrence. Neither a link, a call, a device observation nor an ActivityKit event records ingestion.
 
 The Figma Lock Screen card was approximately 330 points tall. Apple documents possible truncation above 160 points, so the native version compresses the same hierarchy and actions into a compact layout with 44-point links. System wallpaper, clock, status bar and phone-call UI belong to iOS. The native layout still needs simulator and physical-device review, including large text and Always-On display.
@@ -56,7 +56,8 @@ The bridge returns `supported:false` on non-iOS and iOS below 16.2. Permission d
 
 | Method/event | Shape |
 | --- | --- |
-| `availability` | `{supported, enabled, supportsPushToStart, backgroundDeliveryConfigured:false}` |
+| `availability` | `{supported, enabled, supportsPushToStart, backgroundDeliveryConfigured:false}`; the authenticated server capability is reported separately. |
+| `refreshTokens` | Re-emits current tokens through the event stream after opt-in; returns no token value. |
 | `upsert` | `{occurrenceId, dueAt, windowEndsAt, updatedAt, revision, phase, callAt?, snoozedUntil?, requestPushToken:false}` |
 | `end` | `{occurrenceId, outcome:confirmed\|cancelled, revision}` |
 | `endAll` | End all local activities, including on logout |
@@ -72,7 +73,7 @@ Channel timestamps are Unix **milliseconds**. Native `ContentState` and APNs `co
 
 ## Background delivery and provisioning
 
-The foreground coordinator is not a background scheduler. Without an APNs sender and token-registration adapter, the app cannot promise a Live Activity appears at −10 minutes while suspended. A countdown can continue, but changing heads-up into due requires a native update or APNs; the heads-up becomes stale at the due boundary if it receives neither. Snoozed content becomes stale at its resume boundary. Stale copy asks the user to open Farda rather than claiming an up-to-date status.
+The foreground coordinator is not a background scheduler. The backend now includes authenticated token registration and an APNs start/update sender, but it remains disabled until every server credential/configuration check succeeds. A countdown can continue, but changing heads-up into due requires a native update or APNs; the heads-up becomes stale at the due boundary if it receives neither. Snoozed content becomes stale at its resume boundary. Stale copy asks the user to open Farda rather than claiming an up-to-date status.
 
 For app-initiated starts this implementation uses the iOS 16.2 ActivityContent APIs. Background push-to-start uses the observed iOS 17.2+ token. Older supported devices can receive per-activity updates after an activity has been started from the app. Later scheduling APIs are not used here.
 
@@ -81,11 +82,11 @@ Before enabling remote delivery:
 1. Set real Runner and extension bundle identifiers with a shared prefix and select the same signing team. The repository still uses `com.example.farda` and `com.example.farda.LiveActivity`.
 2. Enable Push Notifications for the Runner App ID, regenerate provisioning profiles, and add the correctly signed `aps-environment` entitlement for development or production. Local Live Activities do not require adding a fabricated ActivityKit entitlement.
 3. Configure server APNs key ID, team ID, private key, environment, and topic `<Runner bundle ID>.push-type.liveactivity`. Keep keys server-side.
-4. Authenticated registration binds an installation's current push-to-start token, and each activity token, to the owning user and consent. Rotate/invalidate prior tokens; revoke on logout, opt-out, end or APNs token rejection.
-5. Set `requestPushToken:true` only after that path is configured. Enable remote start/update capability in both server capability responses and app configuration after end-to-end validation; the native availability response is deliberately false in this base implementation.
+4. Apply the Live Activity database migration and set a distinct 32-byte base64 token-encryption key. Authenticated registration binds the installation and each activity token to the signed-in owner; per-activity registration verifies the occurrence owner. Opt-out, sign-out, expiry and APNs token rejection revoke credentials.
+5. The app sets `requestPushToken:true` only when the authenticated server capability is enabled. The native availability field remains false because native code cannot attest to server configuration.
 6. Durable workers recheck occurrence status, schedule version, consent, expiry and snooze immediately before delivery. End notifications must cancel a displayed reminder after confirmation. Never retry an ambiguous remote start as if no activity was created.
 
-Exact APNs delivery is not guaranteed. Do not infer that a dose was taken, that a call was answered, or that an activity was seen from an accepted push. Ordinary notification fallback is a separate integration and is not implemented by this extension.
+An APNs HTTP 200 is provider acceptance, never proof of device display or viewing. Do not infer that a dose was taken, that a call was answered, or that an activity was seen from an accepted push. Ordinary notification fallback is a separate integration and is not implemented by this extension.
 
 ## Verification
 

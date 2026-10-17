@@ -5,6 +5,7 @@ import { prisma } from './lib/prisma';
 import { reminderService } from './reminders/routes';
 import { startReminderWorker } from './reminders/service';
 import { circleAlertService } from './circle/routes';
+import { liveActivityDeliveryService } from './live-activities/runtime';
 
 if (env.NODE_ENV === 'production') {
   if (!env.DATABASE_URL || !process.env.BETTER_AUTH_SECRET || process.env.BETTER_AUTH_SECRET.length < 32) throw new Error('Production requires DATABASE_URL and a strong BETTER_AUTH_SECRET');
@@ -16,6 +17,7 @@ if (env.NODE_ENV === 'production') {
 const stopWorkers: Array<() => void | Promise<void>> = [];
 const backgroundTasks: Array<() => Promise<void>> = [
   () => reminderService.tick(),
+  () => liveActivityDeliveryService.tick(),
   () => circleAlertService.materialize(100).then(() => undefined),
 ];
 export const httpServer = app.listen(env.PORT, env.HOST, error => {

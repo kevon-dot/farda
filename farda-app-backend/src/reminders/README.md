@@ -21,6 +21,12 @@ Inside canonical explicit dose-status and schedule-change transactions, call can
 | FARDA_PUBLIC_BASE_URL | Canonical HTTPS origin only, for example https://api.example.com. No path or forwarded-host inference. |
 | FARDA_VOICE_ALLOWED_PREFIXES | Explicit comma-separated dialing prefixes, for example +1. A dialing prefix may cover multiple countries; this is not a legal market-approval system. |
 | FARDA_VOICE_MAX_CALLS_PER_HOUR | Global attempt cap, default 20, hard maximum 100. |
+| FARDA_LIVE_ACTIVITY_ENABLED | Must equal `true`; remains off unless every APNs and encryption value below validates. |
+| FARDA_APNS_ENVIRONMENT | Exact `development` or `production` APNs host selection. |
+| FARDA_APNS_TEAM_ID / FARDA_APNS_KEY_ID | Ten-character Apple identifiers for provider-token signing. |
+| FARDA_APNS_PRIVATE_KEY | P-256 PKCS#8 APNs signing key, held only by the server. Literal newlines and escaped `\\n` are accepted. |
+| FARDA_APNS_LIVE_ACTIVITY_TOPIC | Exact Runner bundle ID plus `.push-type.liveactivity`. |
+| FARDA_LIVE_ACTIVITY_ENCRYPTION_KEY | Exactly 32 random bytes encoded as base64. Plan an application data migration before rotating it. |
 
 Before a consented pilot, provision caller identity, validate the real public callback URL/proxy, review market requirements and monitor carrier delivery. A verified number alone is not call consent. The app must display the returned wording and submit callConsent:true and consentVersion:voice-v1 when enabling calls. New numbers require a new consent record. Disable/press 9 withdraws active consent and cancels pending calls.
 
@@ -35,6 +41,9 @@ All paths below are relative to /api and use the authenticated session, never a 
 | POST /reminders/occurrences/:id/plan | Idempotently create intents for an owned occurrence. |
 | GET /reminders/occurrences/:id | occurrenceId, scheduledFor, status, takenAt, snoozedUntil, updatedAt, revision, windowEndsAt, callAt, intents and cadence. |
 | POST /reminders/occurrences/:id/snooze | minutes (5–30), optional expected revision. Only an unconfirmed active occurrence may be snoozed. |
+| PUT /live-activities/tokens/push-to-start | Authenticated idempotent registration of `{installationId, token}` after Live Activities are enabled. |
+| PUT /live-activities/tokens/activity | Authenticated idempotent registration of `{installationId, activityId, occurrenceId, token}`; the occurrence must belong to the session owner. |
+| DELETE /live-activities/tokens/:installationId | Revokes that authenticated account's installation and activity tokens; does not disclose whether another account owns the ID. |
 | GET /refills | User-labelled plans; pharmacyConnected:false; receiptReconciled and receipt summary (id/quantity/delta/createdAt). |
 | POST /refills | prescriptionId, kind (refill/renewal/transfer/new), optional plannedFor ISO timestamp. Reuses an active same-kind plan. |
 | PUT /refills/:id/status | status: contacted/ready/received/cancelled. These are user reports, not pharmacy acknowledgement. |
@@ -53,7 +62,9 @@ Supply is an explicit count/receipt ledger. It is not decremented when a dose is
 - A process crash or provider timeout may occur after acceptance. Such attempts stay uncertain and are never blindly retried. Signed callbacks can reconcile the provider SID/status. Unknown outcomes without a callback/SID require operational review; no automatic retry is implemented.
 - A confirmation racing a provider request can still allow a brief ring. The worker and post-dispatch recheck make best-effort call termination, and the voice endpoint suppresses the script after cancellation. This is not a distributed instantaneous-cancellation guarantee.
 - Generic reminder plays only when synchronous answering-machine detection says human. Machine/unknown/fax hangs up; detection is imperfect. No recording, medication name, PIN prompt, or health-record mutation is included. Press 1 directs the person to an authenticated app check-in; press 9 opts out. A call callback never means taken.
-- Live Activity intents persist on the same occurrence. liveActivityDeliveryEnabled:false is intentional: APNs token registration, background start/update delivery and multi-device delivery retries are not implemented by this module. The native foreground bridge is a separate implementation.
+- Live Activity tokens are accepted only for an authenticated account with the preference enabled. A random installation UUID is kept in device-only secure storage; per-activity registration also proves canonical occurrence ownership. Server rows contain AES-256-GCM ciphertext and keyed fingerprints, never plaintext tokens. API responses, errors and worker logs omit tokens.
+- The APNs client and registration endpoints fail closed unless the explicit enablement flag, environment, topic, P-256 signing key, Apple identifiers and 32-byte encryption key all validate. Opt-out and authenticated sign-out revoke stored tokens. Installation tokens expire after 30 days unless rotated; activity tokens expire at the occurrence window boundary. APNs invalid-token responses revoke the matching token.
+- Each intent/target fingerprint has one durable attempt. A crash or transport error after dispatch becomes `uncertain` and is not blindly retried. A 200 response is recorded as `submitted`, meaning only that APNs accepted the request; it never means the device displayed it or the user saw it. Heads-up starts expire at the due boundary, due updates go only to owned activity tokens, and payloads contain opaque occurrence IDs plus generic presentation state.
 - Account deletion cascades consent, intents, attempts and refill/inventory records through database foreign keys. Production retention, encrypted backups, monitoring and access policy still need operational configuration.
 
 ## Validation
@@ -62,4 +73,4 @@ Unit/service/HTTP tests cover cadence, DST quiet hours, consent, duplicate reser
 
 The local PGlite server supports one database connection rather than native multi-session concurrency. Set TEST_DATABASE_SINGLE_CONNECTION=true for that runner: persistence/replay/foreign-key cases still execute, and the two concurrent-transaction cases are explicitly skipped. Those concurrency cases require native PostgreSQL in CI; no claim of native concurrency validation follows from the local PGlite result.
 
-Provider references: [Twilio Call resource](https://www.twilio.com/docs/voice/api/call-resource), [webhook security](https://www.twilio.com/docs/usage/webhooks/webhooks-security). Real carrier delivery and native device behavior are not established by passing local tests.
+Provider references: [Twilio Call resource](https://www.twilio.com/docs/voice/api/call-resource), [webhook security](https://www.twilio.com/docs/usage/webhooks/webhooks-security), and [Apple ActivityKit push notifications](https://developer.apple.com/documentation/activitykit/starting-and-updating-live-activities-with-activitykit-push-notifications). Real carrier/APNs delivery and native device behavior are not established by passing local tests.

@@ -46,6 +46,9 @@ export function memoryDb(seed: Record<string, Row[]> = {}) {
 		"channelConsent",
 		"reminderIntent",
 		"deliveryAttempt",
+		"liveActivityInstallation",
+		"liveActivityToken",
+		"liveActivityAttempt",
 		"refillIntent",
 		"refillEvent",
 		"inventoryBalance",
@@ -104,6 +107,14 @@ export function memoryDb(seed: Record<string, Row[]> = {}) {
 						providerId: null,
 						providerStatus: null,
 						providerSequence: -1,
+						...data,
+					});
+				if (name === "liveActivityAttempt")
+					Object.assign(base, {
+						state: "reserved",
+						startedAt: null,
+						providerStatus: null,
+						reason: null,
 						...data,
 					});
 				if (name === "channelConsent")

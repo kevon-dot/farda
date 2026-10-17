@@ -48,7 +48,12 @@ const PhoneAuthRoutes = {
   },
   signOut: async (req: Request, res: Response) => {
     try {
-      await prisma.session.deleteMany({ where: { token: req.headers.authorization!.slice(7), userId: req.user!.id } });
+      const now = new Date();
+      await prisma.$transaction(async tx => {
+        await tx.liveActivityInstallation.updateMany({ where: { userId: req.user!.id, revokedAt: null }, data: { revokedAt: now } });
+        await tx.liveActivityToken.updateMany({ where: { userId: req.user!.id, revokedAt: null }, data: { revokedAt: now } });
+        await tx.session.deleteMany({ where: { token: req.headers.authorization!.slice(7), userId: req.user!.id } });
+      });
       return res.status(204).end();
     } catch (error) { return authError(res, error); }
   },

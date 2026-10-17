@@ -276,10 +276,20 @@ export class ReminderService {
 				update: data,
 			});
 			if (!input.liveActivitiesEnabled)
-				await tx.reminderIntent.updateMany({
-					where: { userId, channel: "live_activity", state: "pending" },
-					data: { state: "cancelled", reason: "preference_disabled" },
-				});
+				await Promise.all([
+					tx.reminderIntent.updateMany({
+						where: { userId, channel: "live_activity", state: "pending" },
+						data: { state: "cancelled", reason: "preference_disabled" },
+					}),
+					tx.liveActivityInstallation.updateMany({
+						where: { userId, revokedAt: null },
+						data: { revokedAt: now },
+					}),
+					tx.liveActivityToken.updateMany({
+						where: { userId, revokedAt: null },
+						data: { revokedAt: now },
+					}),
+				]);
 		});
 		return this.preferences(userId);
 	}

@@ -113,7 +113,8 @@ export function reminderPlan(dose: Occurrence) {
 			channel: "live_activity",
 			stage: "before",
 			dueAt: new Date(dose.scheduledFor.getTime() - 10 * 60_000),
-			expiresAt: end,
+			// Never turn a delayed heads-up into a surprise start after the due time.
+			expiresAt: dose.scheduledFor,
 		},
 		{
 			channel: "live_activity",

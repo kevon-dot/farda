@@ -28,6 +28,8 @@ final class LiveActivityBridge: NSObject, FlutterStreamHandler {
                   "backgroundDeliveryConfigured": false])
         } else if call.method == "activeActivities" {
           result([])
+        } else if call.method == "refreshTokens" {
+          result(nil)
         } else if call.method == "endAll" || call.method == "end" {
           result(["status": "unsupported"])
         } else {
@@ -104,6 +106,9 @@ private final class FardaActivityManager {
         let args = call.arguments as? [String: Any] ?? [:]
         switch call.method {
         case "availability": result(self.availability())
+        case "refreshTokens":
+          self.emitSnapshot()
+          result(nil)
         case "activeActivities": result(Routine.activities.map(self.snapshot))
         case "upsert": result(try await self.upsert(args))
         case "end": result(try await self.end(args))

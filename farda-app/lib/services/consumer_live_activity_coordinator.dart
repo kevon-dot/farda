@@ -4,10 +4,8 @@ import 'package:flutter/widgets.dart';
 
 import 'live_activity_service.dart';
 
-typedef OpenLiveRoutine = FutureOr<void> Function(
-  String occurrenceId,
-  LiveRoutineAction action,
-);
+typedef OpenLiveRoutine =
+    FutureOr<void> Function(String occurrenceId, LiveRoutineAction action);
 
 /// Bridges authenticated consumer snapshots to native display. Foreground
 /// timers improve continuity while the app is open; they are not a background
@@ -34,6 +32,7 @@ class ConsumerLiveActivityCoordinator with WidgetsBindingObserver {
   bool _disposed = false;
   bool _foreground = true;
   int _generation = 0;
+  bool _refreshRegistration = false;
   Future<void> _queue = Future.value();
 
   void attach() {
@@ -67,6 +66,7 @@ class ConsumerLiveActivityCoordinator with WidgetsBindingObserver {
     required bool enabled,
   }) {
     _occurrences = List.unmodifiable(occurrences);
+    if (enabled && !_enabled) _refreshRegistration = true;
     _enabled = enabled;
     _generation++;
     return _scheduleSync();
@@ -132,6 +132,10 @@ class ConsumerLiveActivityCoordinator with WidgetsBindingObserver {
 
   Future<void> _sync(int generation) async {
     _boundary?.cancel();
+    if (_enabled && _refreshRegistration) {
+      _refreshRegistration = false;
+      await service.refreshTokens();
+    }
     final availability = await service.availability();
     if (_disposed || generation != _generation || !availability.supported) {
       return;

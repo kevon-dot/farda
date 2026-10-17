@@ -13,6 +13,7 @@ import { createRefillAssistantRouter } from '../refills/assistant-routes';
 import { DeviceTrackingService } from '../services/DeviceTrackingService';
 import { createCircleRouter } from '../circle/routes';
 import { createBillingRouter } from '../billing/routes';
+import { createLiveActivityRouter } from '../live-activities/routes';
 
 const apiRouter = Router();
 apiRouter.post(Paths.Auth.SendOTP, rateLimit('otp-send', 5), PhoneAuthRoutes.sendOTP);
@@ -29,6 +30,7 @@ apiRouter.use(createBillingRouter());
 apiRouter.get('/auth/session', PhoneAuthRoutes.session);
 apiRouter.post('/auth/sign-out', PhoneAuthRoutes.signOut);
 apiRouter.use(createReminderRouter());
+apiRouter.use(createLiveActivityRouter());
 apiRouter.use(createRefillRouter());
 apiRouter.use(createRefillAssistantRouter());
 apiRouter.use(createCircleRouter());

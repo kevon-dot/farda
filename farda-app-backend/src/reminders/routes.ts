@@ -16,6 +16,7 @@ import {
 	validWebhook,
 	voiceConfig,
 } from "./voice";
+import { liveActivityDeliveryService } from "../live-activities/runtime";
 
 export const route =
 	(handler: (req: Request, res: Response) => Promise<unknown>) =>
@@ -50,7 +51,12 @@ const preferenceSchema = z
 		consentVersion: z.string().max(40).optional(),
 	})
 	.strict();
-export const reminderService = new ReminderService(prisma, makeVoiceAdapter());
+export const reminderService = new ReminderService(
+	prisma,
+	makeVoiceAdapter(),
+	voiceConfig(),
+	(userId) => liveActivityDeliveryService.readyForUser(userId),
+);
 export function createReminderRouter(service = reminderService) {
 	const router = Router();
 	router.use(isAuthenticated);

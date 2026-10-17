@@ -15,6 +15,7 @@ import 'refill_agent.dart';
 import 'pharmacy_handoff.dart';
 
 import 'package:http_parser/http_parser.dart';
+import 'package:farda/services/live_activity_registration.dart';
 
 /// The production adapter never substitutes fixture data after a failed request.
 /// Transport logs deliberately contain neither bearer tokens nor health records.
@@ -28,7 +29,8 @@ class ConsumerApiRepository
         LabelScanRepository,
         RefillAgentRepository,
         PharmacyHandoffRepository,
-        RefillQuestionRepository {
+        RefillQuestionRepository,
+        LiveActivityRegistrationRepository {
   ConsumerApiRepository({
     required String baseUrl,
     required Future<String?> Function() tokenProvider,
@@ -1023,6 +1025,45 @@ class ConsumerApiRepository
         'alreadyIncluded': alreadyIncluded,
         'idempotencyKey': 'receipt-$id',
       },
+    );
+  }
+
+  @override
+  Future<void> registerPushToStartToken({
+    required String installationId,
+    required String token,
+  }) async {
+    await _request(
+      'PUT',
+      'live-activities/tokens/push-to-start',
+      body: {'installationId': installationId, 'token': token},
+    );
+  }
+
+  @override
+  Future<void> registerActivityToken({
+    required String installationId,
+    required String activityId,
+    required String occurrenceId,
+    required String token,
+  }) async {
+    await _request(
+      'PUT',
+      'live-activities/tokens/activity',
+      body: {
+        'installationId': installationId,
+        'activityId': activityId,
+        'occurrenceId': occurrenceId,
+        'token': token,
+      },
+    );
+  }
+
+  @override
+  Future<void> revokeLiveActivityInstallation(String installationId) async {
+    await _request(
+      'DELETE',
+      'live-activities/tokens/${Uri.encodeComponent(installationId)}',
     );
   }
 
