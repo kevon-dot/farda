@@ -23,6 +23,10 @@ describe('Photon documented refill provider contract', () => {
     const fetcher = fake();
     const provider = new PhotonRefillsProvider({}, fetcher);
     expect(provider.configured).toBe(false);
+    expect(provider.capabilities).toEqual({
+      verifyEligibility: true, submitOrders: true,
+      lookupOrders: true, reconcileUnknownOutcomes: true,
+    });
     await expect(provider.submitOrder(input)).rejects.toMatchObject({ code: 'provider_unavailable', outcome: 'not_submitted' });
     expect(fetcher).not.toHaveBeenCalled();
   });

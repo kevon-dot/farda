@@ -6,11 +6,20 @@ import type {
 import { ConsumerError } from "../reminders/policy";
 import { lock, serial } from "../reminders/service";
 import {
-	RefillProviderError,
 	type ProviderOrder,
+	RefillProviderError,
 	type RefillsProvider,
 	type VerifiedProviderLink,
 } from "./providers/types";
+import {
+	canRefreshStatus,
+	isRequestStatus,
+	nextAction,
+	nextProviderStatus,
+	type RefillReasonCode,
+	type RefillRequestStatus,
+	statusReason,
+} from "./workflow";
 
 const hash = (value: unknown) =>
 	createHash("sha256").update(JSON.stringify(value)).digest("hex");
@@ -35,9 +44,49 @@ const labels: Record<string, string> = {
 	canceled: "Provider reports order canceled",
 	failed: "Request was not sent",
 };
-const terminalStates = ["delivered", "picked_up", "completed", "canceled"];
 const consentText =
 	"Send this refill request with the medication, pharmacy and address shown. The pharmacy will confirm availability and any payment.";
+
+const actionLabels = {
+	confirm_and_submit: "Review and confirm request",
+	wait: "Wait before checking again",
+	refresh_status: "Check provider status",
+	contact_pharmacy: "Contact your pharmacy",
+	collect_refill: "Follow the pharmacy's pickup instructions",
+	track_delivery: "Check delivery status",
+	confirm_supply: "Confirm what you received",
+	review_again: "Review a new request",
+} as const;
+
+const verificationReasons: Record<string, RefillReasonCode> = {
+	provider_unavailable: "provider_not_configured",
+	provider_authentication: "eligibility_check_unavailable",
+	provider_timeout: "eligibility_check_unavailable",
+	provider_request_failed: "eligibility_check_unavailable",
+	provider_link_invalid: "link_verification_failed",
+	provider_prescription_unavailable: "prescription_not_eligible",
+	provider_address_missing: "delivery_address_required",
+	provider_response_invalid: "eligibility_check_failed",
+};
+
+export type RefillAgentEvent = {
+	operation: "review" | "submit" | "refresh";
+	outcome:
+		| "ready"
+		| "blocked"
+		| "reserved"
+		| "replayed"
+		| "confirmed"
+		| "uncertain"
+		| "failed"
+		| "unchanged";
+	environment: "sandbox" | "production";
+	status?: RefillRequestStatus;
+	reasonCode?: RefillReasonCode;
+	durationMs?: number;
+};
+
+export type RefillAgentObserver = (event: RefillAgentEvent) => void;
 
 export function providerOrderStatus(order: ProviderOrder): string {
 	if (order.orderState === "CANCELED" || order.orderState === "CANCELLED")
@@ -73,7 +122,41 @@ export class RefillAgentService {
 		private db: PrismaClient,
 		private provider: RefillsProvider,
 		private now = () => new Date(),
+		private observe: RefillAgentObserver = () => undefined,
 	) {}
+	private event(
+		event: Omit<RefillAgentEvent, "environment" | "status" | "durationMs"> & {
+			status?: string;
+			durationMs?: number;
+		},
+	) {
+		try {
+			const status: RefillRequestStatus | undefined = event.status
+				? isRequestStatus(event.status)
+					? event.status
+					: "unknown"
+				: undefined;
+			const durationMs =
+				event.durationMs === undefined
+					? undefined
+					: Math.max(0, Math.min(30_000, Math.round(event.durationMs)));
+			this.observe({
+				operation: event.operation,
+				outcome: event.outcome,
+				environment: this.provider.environment,
+				...(event.reasonCode ? { reasonCode: event.reasonCode } : {}),
+				...(status ? { status } : {}),
+				...(durationMs === undefined ? {} : { durationMs }),
+			});
+		} catch {
+			// Telemetry can never change a refill decision or expose request data.
+		}
+	}
+	private verificationReason(error: unknown): RefillReasonCode {
+		return error instanceof RefillProviderError
+			? (verificationReasons[error.code] ?? "eligibility_check_failed")
+			: "eligibility_check_failed";
+	}
 	private async owned(userId: string, prescriptionId: string) {
 		const prescription = await this.db.prescription.findFirst({
 			where: { id: prescriptionId, userId, archivedAt: null },
@@ -89,23 +172,32 @@ export class RefillAgentService {
 	}
 	private requestView(request: RefillAgentRequest | null) {
 		if (!request) return null;
-		const status =
+		const rawStatus =
 			request.status === "submitting" &&
 			this.now().getTime() - request.createdAt.getTime() > 120_000
 				? "unknown"
 				: request.status;
+		const status = isRequestStatus(rawStatus) ? rawStatus : "unknown";
+		const action = nextAction(status);
 		return {
 			id: request.id,
 			status,
+			statusCode: status,
 			providerConfirmed: request.providerConfirmed,
 			statusLabel: labels[status] ?? "Checking request status",
+			reasonCode: statusReason(status),
+			nextStep: { action, label: actionLabels[action] },
+			outcomeCertain: status !== "submitting" && status !== "unknown",
 			submittedAt: request.createdAt,
 			updatedAt: request.updatedAt,
 			lastCheckedAt: request.lastCheckedAt,
 			canRefresh:
 				this.provider.configured &&
+				this.provider.capabilities.lookupOrders &&
 				request.environment === this.provider.environment &&
-				request.status !== "failed" &&
+				canRefreshStatus(status) &&
+				(request.providerOrderId !== null ||
+					this.provider.capabilities.reconcileUnknownOutcomes) &&
 				!(
 					request.status === "submitting" &&
 					this.now().getTime() - request.createdAt.getTime() < 120_000
@@ -117,7 +209,20 @@ export class RefillAgentService {
 		request: RefillAgentRequest | null,
 		blockedReason: string | null,
 		review: unknown = null,
+		reasonCode?: RefillReasonCode,
 	) {
+		const latestRequest = this.requestView(request);
+		const resolvedReason =
+			reasonCode ??
+			(review !== null
+				? "review_ready"
+				: (latestRequest?.reasonCode ?? "eligibility_check_failed"));
+		const action =
+			review !== null && blockedReason === null
+				? "confirm_and_submit"
+				: latestRequest
+					? latestRequest.nextStep.action
+					: "contact_pharmacy";
 		return {
 			prescriptionId,
 			provider: {
@@ -126,11 +231,25 @@ export class RefillAgentService {
 				environment: this.provider.configured
 					? this.provider.environment
 					: null,
+				capabilities: this.provider.capabilities,
 			},
-			canSubmit: review !== null && blockedReason === null,
+			canSubmit:
+				review !== null &&
+				blockedReason === null &&
+				this.provider.configured &&
+				this.provider.capabilities.submitOrders,
+			reasonCode: resolvedReason,
 			blockedReason,
+			nextStep: { action, label: actionLabels[action] },
+			manualFallback: {
+				available: true,
+				action: "contact_pharmacy" as const,
+				label: actionLabels.contact_pharmacy,
+				message:
+					"Contact the pharmacy yourself to confirm eligibility, timing, cost and delivery. Farda will not mark the request as sent or change your supply count.",
+			},
 			review,
-			latestRequest: this.requestView(request),
+			latestRequest,
 		};
 	}
 	private async link(userId: string, prescriptionId: string) {
@@ -179,33 +298,90 @@ export class RefillAgentService {
 				},
 			});
 		const latest = await this.latest(userId, prescriptionId);
-		if (await this.active(userId, prescriptionId))
+		const active = await this.active(userId, prescriptionId);
+		if (active) {
+			this.event({
+				operation: "review",
+				outcome: "blocked",
+				reasonCode: "request_in_progress",
+				status: active.status,
+			});
 			return this.response(
 				prescriptionId,
-				latest,
+				active,
 				"A request is already in progress. Check its status before starting another.",
+				null,
+				"request_in_progress",
 			);
-		if (!this.provider.configured)
+		}
+		if (!this.provider.configured) {
+			this.event({
+				operation: "review",
+				outcome: "blocked",
+				reasonCode: "provider_not_configured",
+			});
 			return this.response(
 				prescriptionId,
 				latest,
 				"Pharmacy requests are not connected yet. You can still prepare a request to share yourself.",
+				null,
+				"provider_not_configured",
 			);
+		}
+		if (
+			!this.provider.capabilities.verifyEligibility ||
+			!this.provider.capabilities.submitOrders
+		) {
+			this.event({
+				operation: "review",
+				outcome: "blocked",
+				reasonCode: "provider_submission_unsupported",
+			});
+			return this.response(
+				prescriptionId,
+				latest,
+				"This pharmacy connection cannot submit refill orders. Contact your pharmacy directly.",
+				null,
+				"provider_submission_unsupported",
+			);
+		}
 		const link = await this.link(userId, prescriptionId);
-		if (!link)
+		if (!link) {
+			this.event({
+				operation: "review",
+				outcome: "blocked",
+				reasonCode: "prescription_not_linked",
+			});
 			return this.response(
 				prescriptionId,
 				latest,
 				"This prescription is not linked to a verified pharmacy record. You can still prepare a request to share yourself.",
+				null,
+				"prescription_not_linked",
 			);
+		}
 		let verified: VerifiedProviderLink;
+		const verificationStarted = Date.now();
 		try {
 			verified = await this.verify(link);
-		} catch {
+		} catch (error) {
+			const reasonCode = this.verificationReason(error);
+			this.event({
+				operation: "review",
+				outcome: "blocked",
+				reasonCode,
+				durationMs: Date.now() - verificationStarted,
+			});
 			return this.response(
 				prescriptionId,
 				latest,
-				"We could not verify this prescription for a refill. Check with your pharmacy or try reviewing it again later.",
+				reasonCode === "prescription_not_eligible"
+					? "The provider does not currently show this prescription as eligible for a refill. Contact your pharmacy for the available options."
+					: reasonCode === "delivery_address_required"
+						? "The provider needs a valid delivery address before it can accept this request. Contact your pharmacy to update it."
+						: "We could not verify this prescription for a refill. Check with your pharmacy or try reviewing it again later.",
+				null,
+				reasonCode,
 			);
 		}
 		const expiresAt = new Date(this.now().getTime() + 10 * 60_000);
@@ -239,16 +415,28 @@ export class RefillAgentService {
 						expiresAt,
 					},
 				});
-		return this.response(prescriptionId, latest, null, {
-			token: review.id,
-			expiresAt: review.expiresAt,
-			medicationName: verified.medicationName,
-			instructions: verified.instructions,
-			pharmacyName: verified.pharmacyName,
-			deliveryAddress: verified.address,
-			fillsRemaining: verified.fillsRemaining,
-			consentText,
+		this.event({
+			operation: "review",
+			outcome: "ready",
+			reasonCode: "review_ready",
+			durationMs: Date.now() - verificationStarted,
 		});
+		return this.response(
+			prescriptionId,
+			latest,
+			null,
+			{
+				token: review.id,
+				expiresAt: review.expiresAt,
+				medicationName: verified.medicationName,
+				instructions: verified.instructions,
+				pharmacyName: verified.pharmacyName,
+				deliveryAddress: verified.address,
+				fillsRemaining: verified.fillsRemaining,
+				consentText,
+			},
+			"review_ready",
+		);
 	}
 	async submit(
 		userId: string,
@@ -275,14 +463,30 @@ export class RefillAgentService {
 					409,
 					"This request key belongs to a different refill request.",
 				);
+			this.event({
+				operation: "submit",
+				outcome: "replayed",
+				reasonCode: "request_already_recorded",
+				status: previous.status,
+			});
 			return this.response(
 				prescriptionId,
 				previous,
 				"This request has already been recorded. Check its status.",
+				null,
+				"request_already_recorded",
 			);
 		}
 		if (!this.provider.configured)
 			throw new ConsumerError(409, "Pharmacy requests are not connected yet.");
+		if (
+			!this.provider.capabilities.verifyEligibility ||
+			!this.provider.capabilities.submitOrders
+		)
+			throw new ConsumerError(
+				409,
+				"This pharmacy connection cannot submit refill orders.",
+			);
 		const [review, link] = await Promise.all([
 			this.db.refillAgentReview.findFirst({
 				where: { id: input.reviewToken, userId, prescriptionId },
@@ -381,13 +585,28 @@ export class RefillAgentService {
 			});
 			return { request, send: true };
 		});
-		if (!reserved.send)
+		if (!reserved.send) {
+			this.event({
+				operation: "submit",
+				outcome: "replayed",
+				reasonCode: "request_already_recorded",
+				status: reserved.request.status,
+			});
 			return this.response(
 				prescriptionId,
 				reserved.request,
 				"This request is already recorded.",
+				null,
+				"request_already_recorded",
 			);
+		}
 		let request = reserved.request;
+		this.event({
+			operation: "submit",
+			outcome: "reserved",
+			status: request.status,
+		});
+		const submitStarted = Date.now();
 		try {
 			const order = await this.provider.submitOrder({
 				externalId: request.id,
@@ -407,6 +626,12 @@ export class RefillAgentService {
 					failureCode: null,
 				},
 			});
+			this.event({
+				operation: "submit",
+				outcome: "confirmed",
+				status: request.status,
+				durationMs: Date.now() - submitStarted,
+			});
 		} catch (error) {
 			// Unknown transport outcomes (including a crash after reservation) never authorize another send.
 			const definite =
@@ -422,6 +647,15 @@ export class RefillAgentService {
 							: "provider_outcome_unknown",
 				},
 			});
+			this.event({
+				operation: "submit",
+				outcome: definite ? "failed" : "uncertain",
+				status: request.status,
+				reasonCode: definite
+					? "request_not_submitted"
+					: "submission_outcome_uncertain",
+				durationMs: Date.now() - submitStarted,
+			});
 		}
 		return this.response(
 			prescriptionId,
@@ -429,6 +663,12 @@ export class RefillAgentService {
 			request.status === "failed"
 				? "Your request was not sent. Review it again before trying another request."
 				: "Your request is recorded. Check its status for verified updates.",
+			null,
+			request.status === "failed"
+				? "request_not_submitted"
+				: request.status === "unknown"
+					? "submission_outcome_uncertain"
+					: "provider_status_available",
 		);
 	}
 	private assertOrder(request: RefillAgentRequest, order: ProviderOrder) {
@@ -448,28 +688,80 @@ export class RefillAgentService {
 		if (
 			!this.provider.configured ||
 			request.environment !== this.provider.environment
-		)
+		) {
+			this.event({
+				operation: "refresh",
+				outcome: "blocked",
+				reasonCode: "provider_not_configured",
+				status: request.status,
+			});
 			return this.response(
 				prescriptionId,
 				request,
 				"The pharmacy connection is unavailable. Your recorded request is unchanged.",
+				null,
+				"provider_not_configured",
 			);
-		if (request.status === "failed")
+		}
+		if (
+			!this.provider.capabilities.lookupOrders ||
+			(!request.providerOrderId &&
+				!this.provider.capabilities.reconcileUnknownOutcomes)
+		) {
+			this.event({
+				operation: "refresh",
+				outcome: "blocked",
+				reasonCode: "provider_status_unsupported",
+				status: request.status,
+			});
 			return this.response(
 				prescriptionId,
 				request,
-				"Your request was not sent. Review it again before trying another request.",
+				"This pharmacy connection cannot check this request automatically. Contact your pharmacy and do not send it again.",
+				null,
+				"provider_status_unsupported",
 			);
+		}
+		const storedStatus = isRequestStatus(request.status)
+			? request.status
+			: "unknown";
+		if (!canRefreshStatus(storedStatus)) {
+			const reasonCode = statusReason(storedStatus);
+			this.event({
+				operation: "refresh",
+				outcome: "unchanged",
+				reasonCode,
+				status: storedStatus,
+			});
+			return this.response(
+				prescriptionId,
+				request,
+				storedStatus === "failed"
+					? "Your request was not sent. Review it again before trying another request."
+					: "This provider request is complete. Confirm your actual supply separately when you receive it.",
+				null,
+				reasonCode,
+			);
+		}
 		const now = this.now();
 		if (
 			request.status === "submitting" &&
 			now.getTime() - request.createdAt.getTime() < 120_000
-		)
+		) {
+			this.event({
+				operation: "refresh",
+				outcome: "unchanged",
+				reasonCode: "submission_in_progress",
+				status: request.status,
+			});
 			return this.response(
 				prescriptionId,
 				request,
 				"Your request is still being sent. Check back in a moment.",
+				null,
+				"submission_in_progress",
 			);
+		}
 		const claimed = await this.db.refillAgentRequest.updateMany({
 			where: {
 				id: request.id,
@@ -481,12 +773,22 @@ export class RefillAgentService {
 			},
 			data: { refreshClaimedAt: now },
 		});
-		if (!claimed.count)
+		if (!claimed.count) {
+			this.event({
+				operation: "refresh",
+				outcome: "unchanged",
+				reasonCode: "status_check_recent",
+				status: request.status,
+			});
 			return this.response(
 				prescriptionId,
 				request,
 				"Status was checked recently. Give the pharmacy a moment to update.",
+				null,
+				"status_check_recent",
 			);
+		}
+		const refreshStarted = Date.now();
 		try {
 			const order = request.providerOrderId
 				? await this.provider.getOrder(request.providerOrderId)
@@ -494,28 +796,26 @@ export class RefillAgentService {
 						patientId: request.patientId,
 						externalId: request.id,
 					});
-			if (!order)
+			if (!order) {
+				this.event({
+					operation: "refresh",
+					outcome: "unchanged",
+					reasonCode: "provider_status_pending",
+					status: request.status,
+					durationMs: Date.now() - refreshStarted,
+				});
 				return this.response(
 					prescriptionId,
 					request,
 					"The provider has not confirmed this request yet. Do not send it again; check back or contact your pharmacy.",
+					null,
+					"provider_status_pending",
 				);
+			}
 			this.assertOrder(request, order);
-			const incoming = providerOrderStatus(order);
-			// A delayed refresh cannot roll back a newer read or a known terminal fulfillment.
-			const ranks: Record<string, number> = {
-				sent: 0,
-				received: 1,
-				ready: 2,
-				shipped: 2,
-			};
-			const status =
-				terminalStates.includes(request.status) ||
-				((ranks[request.status] ?? -1) > (ranks[incoming] ?? -1) &&
-					incoming !== "unknown" &&
-					!terminalStates.includes(incoming))
-					? request.status
-					: incoming;
+			const mapped = providerOrderStatus(order);
+			const incoming = isRequestStatus(mapped) ? mapped : "unknown";
+			const status = nextProviderStatus(request.status, incoming);
 			await this.db.refillAgentRequest.updateMany({
 				where: { id: request.id, userId, refreshClaimedAt: now },
 				data: {
@@ -529,16 +829,34 @@ export class RefillAgentService {
 			const updated = await this.db.refillAgentRequest.findFirst({
 				where: { id: request.id, userId },
 			});
+			this.event({
+				operation: "refresh",
+				outcome: "confirmed",
+				reasonCode: statusReason(status),
+				status,
+				durationMs: Date.now() - refreshStarted,
+			});
 			return this.response(
 				prescriptionId,
 				updated,
 				"Status comes from the provider. Your supply count changes only when you confirm a receipt.",
+				null,
+				statusReason(status),
 			);
 		} catch {
+			this.event({
+				operation: "refresh",
+				outcome: "unchanged",
+				reasonCode: "status_check_unavailable",
+				status: request.status,
+				durationMs: Date.now() - refreshStarted,
+			});
 			return this.response(
 				prescriptionId,
 				request,
 				"We could not check the provider just now. Your recorded request is unchanged; do not send it again.",
+				null,
+				"status_check_unavailable",
 			);
 		}
 	}

@@ -16,7 +16,7 @@ export const providerLinkInput = z.object({
 
 export async function provisionRefillLink(db: PrismaClient, provider: RefillsProvider, input: z.infer<typeof providerLinkInput>, apply = false) {
   const checked = providerLinkInput.parse(input);
-  if (!provider.configured || provider.environment !== checked.environment) throw new ConsumerError(409, 'Provider environment is not configured.');
+  if (!provider.configured || provider.environment !== checked.environment || !provider.capabilities.verifyEligibility) throw new ConsumerError(409, 'Provider environment is not configured for eligibility verification.');
   const prescription = await db.prescription.findFirst({ where: { id: checked.prescriptionId, userId: checked.userId, archivedAt: null } });
   if (!prescription) throw new ConsumerError(404, 'Prescription not found.');
   await provider.verifyLink({ userId: checked.userId, patientId: checked.patientId, prescriptionId: checked.providerPrescriptionId, pharmacyId: checked.pharmacyId });

@@ -1,14 +1,19 @@
 import { describe, expect, it, vi } from "vitest";
-import { RefillAgentService, providerOrderStatus } from "../src/refills/agent";
 import {
-	RefillProviderError,
+	providerOrderStatus,
+	type RefillAgentEvent,
+	RefillAgentService,
+} from "../src/refills/agent";
+import {
 	type ProviderOrder,
+	RefillProviderError,
 	type RefillsProvider,
 } from "../src/refills/providers/types";
 import { RefillService } from "../src/refills/service";
 import { memoryDb } from "./consumer-memory-db";
+
 const date = new Date("2026-10-16T00:00:00Z");
-function fixture() {
+function fixture(observe: (event: RefillAgentEvent) => void = () => undefined) {
 	const f = memoryDb({
 		prescription: [
 			{ id: "rx", userId: "u", archivedAt: null, updatedAt: date },
@@ -59,13 +64,19 @@ function fixture() {
 	const provider = {
 		configured: true as boolean,
 		environment: "sandbox" as const,
+		capabilities: {
+			verifyEligibility: true,
+			submitOrders: true,
+			lookupOrders: true,
+			reconcileUnknownOutcomes: true,
+		},
 		verifyLink: vi.fn(async () => structuredClone(verified)),
 		submitOrder: vi.fn(async ({ externalId }) => order(externalId)),
 		getOrder: vi.fn(async () => null as ProviderOrder | null),
 		findOrder: vi.fn(async () => null as ProviderOrder | null),
 	} satisfies RefillsProvider;
 	let now = date;
-	const service = new RefillAgentService(f.db, provider, () => now);
+	const service = new RefillAgentService(f.db, provider, () => now, observe);
 	async function input() {
 		const result = await service.review("u", "rx");
 		return {
@@ -105,6 +116,9 @@ describe("durable provider refill agent", () => {
 		f.provider.configured = false;
 		expect(await f.service.review("u", "rx")).toMatchObject({
 			canSubmit: false,
+			reasonCode: "provider_not_configured",
+			nextStep: { action: "contact_pharmacy" },
+			manualFallback: { available: true, action: "contact_pharmacy" },
 			review: null,
 		});
 		f.provider.configured = true;
@@ -114,8 +128,36 @@ describe("durable provider refill agent", () => {
 		});
 		expect(await f.service.review("u", "rx")).toMatchObject({
 			canSubmit: false,
+			reasonCode: "prescription_not_linked",
 			review: null,
 		});
+	});
+	it("gates unsupported provider capabilities before eligibility or submission", async () => {
+		const f = fixture();
+		f.provider.capabilities.submitOrders = false;
+		const result = await f.service.review("u", "rx");
+		expect(result).toMatchObject({
+			canSubmit: false,
+			reasonCode: "provider_submission_unsupported",
+			nextStep: { action: "contact_pharmacy" },
+		});
+		expect(f.provider.verifyLink).not.toHaveBeenCalled();
+		expect(f.provider.submitOrder).not.toHaveBeenCalled();
+	});
+	it("returns stable eligibility reasons without exposing provider errors", async () => {
+		const f = fixture();
+		f.provider.verifyLink.mockRejectedValueOnce(
+			new RefillProviderError("provider_prescription_unavailable"),
+		);
+		const result = await f.service.review("u", "rx");
+		expect(result).toMatchObject({
+			canSubmit: false,
+			reasonCode: "prescription_not_eligible",
+			blockedReason: expect.stringContaining("not currently show"),
+		});
+		expect(JSON.stringify(result)).not.toContain(
+			"provider_prescription_unavailable",
+		);
 	});
 	it("reserves once across concurrent duplicate submissions and never changes supply", async () => {
 		const f = fixture(),
@@ -307,6 +349,60 @@ describe("durable provider refill agent", () => {
 		expect((await f.service.refresh("u", "rx")).latestRequest?.status).toBe(
 			"picked_up",
 		);
+	});
+	it("does not regress a known provider status to unknown", async () => {
+		const f = fixture(),
+			input = await f.input();
+		const sent = await f.service.submit("u", "rx", input);
+		await f.db.refillAgentRequest.update({
+			where: { id: sent.latestRequest!.id },
+			data: { refreshClaimedAt: null },
+		});
+		f.provider.getOrder.mockResolvedValueOnce({
+			...f.order(sent.latestRequest!.id),
+			orderState: "UNRECOGNIZED",
+		});
+		expect((await f.service.refresh("u", "rx")).latestRequest?.status).toBe(
+			"sent",
+		);
+	});
+	it("does not call the provider when a request is already terminal", async () => {
+		const f = fixture(),
+			input = await f.input();
+		const sent = await f.service.submit("u", "rx", input);
+		await f.db.refillAgentRequest.update({
+			where: { id: sent.latestRequest!.id },
+			data: { status: "delivered", refreshClaimedAt: null },
+		});
+		f.provider.getOrder.mockClear();
+		const result = await f.service.refresh("u", "rx");
+		expect(result).toMatchObject({
+			reasonCode: "request_fulfilled",
+			nextStep: { action: "confirm_supply" },
+			latestRequest: { canRefresh: false },
+		});
+		expect(f.provider.getOrder).not.toHaveBeenCalled();
+	});
+	it("emits only bounded operational fields, without account or prescription data", async () => {
+		const events: RefillAgentEvent[] = [];
+		const f = fixture((event) => events.push(event));
+		const input = await f.input();
+		await f.service.submit("u", "rx", input);
+		expect(
+			events.some(
+				(event) =>
+					event.operation === "submit" && event.outcome === "confirmed",
+			),
+		).toBe(true);
+		for (const event of events) {
+			expect(Object.keys(event).sort()).toEqual(
+				expect.arrayContaining(["environment", "operation", "outcome"]),
+			);
+			const serialized = JSON.stringify(event);
+			expect(serialized).not.toContain("patient");
+			expect(serialized).not.toContain("remote-rx");
+			expect(serialized).not.toContain("Test address");
+		}
 	});
 	it("batches only owned active prescription inventory and includes missing counts", async () => {
 		const f = fixture();

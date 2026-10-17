@@ -1,5 +1,13 @@
 export type ProviderEnvironment = 'sandbox' | 'production';
 
+/** Static connector abilities; availability and eligibility are separate. */
+export type RefillProviderCapabilities = {
+  verifyEligibility: boolean;
+  submitOrders: boolean;
+  lookupOrders: boolean;
+  reconcileUnknownOutcomes: boolean;
+};
+
 export type ProviderAddress = {
   street1: string;
   street2?: string;
@@ -53,6 +61,7 @@ export type SubmitProviderOrder = {
 export interface RefillsProvider {
   readonly configured: boolean;
   readonly environment: ProviderEnvironment;
+  readonly capabilities: RefillProviderCapabilities;
   verifyLink(input: ProviderLinkInput): Promise<VerifiedProviderLink>;
   submitOrder(input: SubmitProviderOrder): Promise<ProviderOrder>;
   getOrder(orderId: string): Promise<ProviderOrder | null>;
