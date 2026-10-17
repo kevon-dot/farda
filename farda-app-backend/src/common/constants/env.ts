@@ -6,7 +6,10 @@ import dotenv from "dotenv";
 const envFile =
 	process.env.NODE_ENV === "production" ? ".env" : ".env.development";
 
-dotenv.config({ path: path.resolve(__dirname, "../../../", envFile), quiet: true });
+dotenv.config({
+	path: path.resolve(__dirname, "../../../", envFile),
+	quiet: true,
+});
 
 // 2. Define types for better IntelliSense
 export interface EnvConfig {
@@ -25,6 +28,7 @@ export interface EnvConfig {
 	FARDA_REFILL_AI_MODEL: string;
 	FARDA_REFILL_PROVIDER_ENABLED: boolean;
 	FARDA_REFILL_PROVIDER_ENVIRONMENT: "sandbox" | "production";
+	FARDA_REFILL_RECONCILIATION_WORKER_ENABLED: boolean;
 	PHOTON_CLIENT_ID?: string;
 	PHOTON_CLIENT_SECRET?: string;
 	GOOGLE_CLIENT_ID?: string;
@@ -75,9 +79,17 @@ const env: EnvConfig = {
 	OPENAI_API_KEY,
 	FARDA_REFILL_AI_ENABLED: process.env.FARDA_REFILL_AI_ENABLED === "true",
 	FARDA_REFILL_AI_MODEL: process.env.FARDA_REFILL_AI_MODEL || "gpt-4o-mini",
-	FARDA_REFILL_PROVIDER_ENABLED: process.env.FARDA_REFILL_PROVIDER_ENABLED === "true" &&
-		["sandbox", "production"].includes(process.env.FARDA_REFILL_PROVIDER_ENVIRONMENT || "sandbox"),
-	FARDA_REFILL_PROVIDER_ENVIRONMENT: process.env.FARDA_REFILL_PROVIDER_ENVIRONMENT === "production" ? "production" : "sandbox",
+	FARDA_REFILL_PROVIDER_ENABLED:
+		process.env.FARDA_REFILL_PROVIDER_ENABLED === "true" &&
+		["sandbox", "production"].includes(
+			process.env.FARDA_REFILL_PROVIDER_ENVIRONMENT || "sandbox",
+		),
+	FARDA_REFILL_PROVIDER_ENVIRONMENT:
+		process.env.FARDA_REFILL_PROVIDER_ENVIRONMENT === "production"
+			? "production"
+			: "sandbox",
+	FARDA_REFILL_RECONCILIATION_WORKER_ENABLED:
+		process.env.FARDA_REFILL_RECONCILIATION_WORKER_ENABLED === "true",
 	PHOTON_CLIENT_ID: process.env.PHOTON_CLIENT_ID,
 	PHOTON_CLIENT_SECRET: process.env.PHOTON_CLIENT_SECRET,
 	GOOGLE_CLIENT_ID,

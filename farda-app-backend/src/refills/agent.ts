@@ -581,6 +581,7 @@ export class RefillAgentService {
 					status: "submitting",
 					providerConfirmed: false,
 					createdAt: this.now(),
+					nextReconcileAt: new Date(this.now().getTime() + 120_000),
 				},
 			});
 			return { request, send: true };
@@ -616,14 +617,20 @@ export class RefillAgentService {
 				address: verified.address,
 			});
 			this.assertOrder(request, order);
+			const status = providerOrderStatus(order);
 			request = await this.db.refillAgentRequest.update({
 				where: { id: request.id },
 				data: {
 					providerOrderId: order.id,
-					status: providerOrderStatus(order),
+					status,
 					providerConfirmed: true,
 					lastCheckedAt: this.now(),
 					failureCode: null,
+					refreshClaimedAt: null,
+					reconcileAttempts: 0,
+					nextReconcileAt: activeStates.includes(status)
+						? new Date(this.now().getTime() + 60_000)
+						: null,
 				},
 			});
 			this.event({
@@ -645,6 +652,11 @@ export class RefillAgentService {
 						error instanceof RefillProviderError
 							? error.code
 							: "provider_outcome_unknown",
+					refreshClaimedAt: null,
+					reconcileAttempts: definite ? 0 : 1,
+					nextReconcileAt: definite
+						? null
+						: new Date(this.now().getTime() + 60_000),
 				},
 			});
 			this.event({
@@ -797,16 +809,41 @@ export class RefillAgentService {
 						externalId: request.id,
 					});
 			if (!order) {
+				const retryStatus =
+					request.status === "submitting" ? "unknown" : storedStatus;
+				const attempts = request.reconcileAttempts + 1;
+				const updated = await this.db.refillAgentRequest.updateMany({
+					where: { id: request.id, userId, refreshClaimedAt: now },
+					data: {
+						status: retryStatus,
+						lastCheckedAt: now,
+						failureCode: "provider_status_pending",
+						refreshClaimedAt: null,
+						reconcileAttempts: attempts,
+						nextReconcileAt: new Date(
+							now.getTime() +
+								Math.min(
+									6 * 60 * 60_000,
+									60_000 * 2 ** Math.min(16, attempts - 1),
+								),
+						),
+					},
+				});
+				const current = updated.count
+					? await this.db.refillAgentRequest.findFirst({
+							where: { id: request.id, userId },
+						})
+					: request;
 				this.event({
 					operation: "refresh",
 					outcome: "unchanged",
 					reasonCode: "provider_status_pending",
-					status: request.status,
+					status: retryStatus,
 					durationMs: Date.now() - refreshStarted,
 				});
 				return this.response(
 					prescriptionId,
-					request,
+					current,
 					"The provider has not confirmed this request yet. Do not send it again; check back or contact your pharmacy.",
 					null,
 					"provider_status_pending",
@@ -816,6 +853,9 @@ export class RefillAgentService {
 			const mapped = providerOrderStatus(order);
 			const incoming = isRequestStatus(mapped) ? mapped : "unknown";
 			const status = nextProviderStatus(request.status, incoming);
+			const terminal = !activeStates.includes(status);
+			const advanced = status !== storedStatus;
+			const attempts = advanced ? 0 : request.reconcileAttempts + 1;
 			await this.db.refillAgentRequest.updateMany({
 				where: { id: request.id, userId, refreshClaimedAt: now },
 				data: {
@@ -824,6 +864,18 @@ export class RefillAgentService {
 					providerConfirmed: true,
 					lastCheckedAt: now,
 					failureCode: null,
+					refreshClaimedAt: null,
+					reconcileAttempts: attempts,
+					nextReconcileAt: terminal
+						? null
+						: new Date(
+								now.getTime() +
+									Math.min(
+										6 * 60 * 60_000,
+										60_000 * 2 ** Math.min(16, Math.max(0, attempts - 1)),
+									),
+							),
+					...(advanced ? { operatorAlertedAt: null } : {}),
 				},
 			});
 			const updated = await this.db.refillAgentRequest.findFirst({
@@ -844,16 +896,39 @@ export class RefillAgentService {
 				statusReason(status),
 			);
 		} catch {
+			const retryStatus =
+				request.status === "submitting" ? "unknown" : storedStatus;
+			const attempts = request.reconcileAttempts + 1;
+			await this.db.refillAgentRequest.updateMany({
+				where: { id: request.id, userId, refreshClaimedAt: now },
+				data: {
+					status: retryStatus,
+					lastCheckedAt: now,
+					failureCode: "status_check_unavailable",
+					refreshClaimedAt: null,
+					reconcileAttempts: attempts,
+					nextReconcileAt: new Date(
+						now.getTime() +
+							Math.min(
+								6 * 60 * 60_000,
+								60_000 * 2 ** Math.min(16, attempts - 1),
+							),
+					),
+				},
+			});
+			const current = await this.db.refillAgentRequest.findFirst({
+				where: { id: request.id, userId },
+			});
 			this.event({
 				operation: "refresh",
 				outcome: "unchanged",
 				reasonCode: "status_check_unavailable",
-				status: request.status,
+				status: retryStatus,
 				durationMs: Date.now() - refreshStarted,
 			});
 			return this.response(
 				prescriptionId,
-				request,
+				current,
 				"We could not check the provider just now. Your recorded request is unchanged; do not send it again.",
 				null,
 				"status_check_unavailable",

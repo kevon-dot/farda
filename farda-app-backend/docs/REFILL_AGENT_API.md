@@ -45,6 +45,16 @@ regresses to `unknown` or an earlier step. Pickup and shipping paths do not cros
 and terminal states are immutable. Inventory changes only through the separate
 user-confirmed receipt endpoint.
 
+When `FARDA_REFILL_RECONCILIATION_WORKER_ENABLED=true`, persisted `submitting`,
+`unknown`, and other nonterminal requests are checked in the background. The
+worker only calls Photon order lookup APIs; it never calls the order mutation.
+Each record has a database lease, attempt count, and next-check timestamp so
+multiple processes and restarts do not multiply work. Unchanged, missing, and
+failed lookups use exponential backoff from one minute to a six-hour maximum.
+Terminal states clear the schedule. A stale `submitting` record becomes
+`unknown` and remains blocked from resubmission until Photon confirms an order
+or an operator resolves it outside this automated path.
+
 ## Manual path and eligibility
 
 `provider_not_configured`, `provider_submission_unsupported`,
@@ -59,3 +69,11 @@ Structured refill events include only operation, outcome, environment,
 normalized status/reason code, and a duration capped at 30 seconds. Do not add
 user IDs, prescription IDs, provider IDs, medication text, addresses,
 credentials, raw exceptions, or upstream response bodies.
+
+After five checks without progress, reconciliation emits one
+`reconciliation_attention_required` event for that stalled stage. Its attempt
+count is bucketed and it contains no request or patient identifiers. Progress
+clears the persisted alert marker so a later, separately stalled stage can
+produce a new signal. Enable alerting on this event in the deployment telemetry
+system; investigate through access-controlled operational tooling rather than
+adding identifiers to logs.

@@ -5,6 +5,8 @@ import { prisma } from './lib/prisma';
 import { reminderService } from './reminders/routes';
 import { startReminderWorker } from './reminders/service';
 import { circleAlertService } from './circle/routes';
+import { refillReconciliationService } from './refills/runtime';
+import { startRefillReconciliationWorker } from './refills/reconciliation';
 
 if (env.NODE_ENV === 'production') {
   if (!env.DATABASE_URL || !process.env.BETTER_AUTH_SECRET || process.env.BETTER_AUTH_SECRET.length < 32) throw new Error('Production requires DATABASE_URL and a strong BETTER_AUTH_SECRET');
@@ -24,6 +26,7 @@ export const httpServer = app.listen(env.PORT, env.HOST, error => {
   stopWorkers.push(startReminderWorker({ tick: async () => {
     for (const run of backgroundTasks) await run();
   } }));
+  stopWorkers.push(startRefillReconciliationWorker(refillReconciliationService, env.FARDA_REFILL_RECONCILIATION_WORKER_ENABLED));
 });
 
 let shutdownPromise: Promise<void> | undefined;

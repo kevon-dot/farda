@@ -1,6 +1,7 @@
 // Transactional in-memory test double, not a substitute for PostgreSQL tests.
 // Tests use this to inject failures and recheck races without provider calls.
 import type { PrismaClient } from "../generated/prisma/client";
+
 type Row = Record<string, any>;
 function match(row: Row, where: Row = {}): boolean {
 	return Object.entries(where).every(([key, value]) => {
@@ -117,6 +118,18 @@ export function memoryDb(seed: Record<string, Row[]> = {}) {
 					Object.assign(base, { status: "planned", ...data });
 				if (name === "inventoryBalance")
 					Object.assign(base, { source: "user_count", revision: 1, ...data });
+				if (name === "refillAgentRequest")
+					Object.assign(base, {
+						providerOrderId: null,
+						providerConfirmed: false,
+						failureCode: null,
+						lastCheckedAt: null,
+						refreshClaimedAt: null,
+						reconcileAttempts: 0,
+						nextReconcileAt: null,
+						operatorAlertedAt: null,
+						...data,
+					});
 				rows().push(base);
 				return structuredClone(base);
 			},
