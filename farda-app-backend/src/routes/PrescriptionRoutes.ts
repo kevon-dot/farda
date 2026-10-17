@@ -4,7 +4,7 @@ import { ConsumerError, DosePatch, PrescriptionInput, PrescriptionPatch, Schedul
 import type { Prisma } from '../../generated/prisma/client';
 import type { Request, Response } from 'express';
 import { z } from 'zod';
-import { cancelOccurrenceReminders, serial } from '../reminders/service';
+import { cancelOccurrenceReminders, lock, serial } from '../reminders/service';
 
 export function authenticatedUser(req: Request) {
   if (!req.user?.id) throw new ConsumerError(401, 'unauthorized', 'Sign in to continue');
@@ -72,17 +72,21 @@ export const createPrescription = async (req: Request, res: Response) => {
     const hash = requestHash;
     if (input.deviceId) throw new ConsumerError(409, 'pairing_required', 'Save your prescription first, then pair your vial through verified setup');
     const now = new Date();
-    const result = await serial(prisma, async tx => {
+    const result = await prisma.$transaction(async tx => {
+      // Serialize the complete create by idempotency key. Read committed gives
+      // the waiter a fresh snapshot after the winning transaction releases the
+      // lock, so it can return that row instead of racing the unique index.
+      await lock(tx, canonical(['prescription_create', userId, input.clientRequestId]));
       const existing = await tx.prescription.findUnique({ where: { userId_clientRequestId: { userId, clientRequestId: input.clientRequestId } }, include: { schedules: { orderBy: { version: 'desc' } } } });
       if (existing) return { record: matchingRequest(existing, hash), created: false };
       const record = await tx.prescription.create({ data: { ...recordFields(input), medicationName: input.medicationName, userId, clientRequestId: input.clientRequestId, requestHash: hash } });
       if (input.schedule) await addSchedule(tx, userId, record.id, input.schedule, now);
       return { record: await tx.prescription.findUniqueOrThrow({ where: { id: record.id }, include: { schedules: { orderBy: { version: 'desc' } } } }), created: true };
-    });
+    }, { isolationLevel: 'ReadCommitted', maxWait: 5000, timeout: 10000 });
     return res.status(result.created ? 201 : 200).json({ data: publicPrescription(result.record) });
   } catch (error) {
-    // A racing identical request may commit while this serializable transaction
-    // loses its unique-index/serialization race. Return that committed record;
+    // A racing identical request may commit while this transaction loses an
+    // unexpected unique-index race. Return that committed record;
     // never run schedule generation again on an uncertain retry.
     if (owner && clientRequestId && requestHash && typeof error === 'object' && error && 'code' in error && ['P2002', 'P2034'].includes(String(error.code))) {
       try {
