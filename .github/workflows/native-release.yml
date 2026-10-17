@@ -11,8 +11,12 @@ on:
         description: Store version name, for example 1.2.0
         required: true
         type: string
-      build_number:
-        description: Positive, monotonically increasing Android versionCode and iOS CFBundleVersion
+      android_version_code:
+        description: Positive Play versionCode, at most 2100000000
+        required: true
+        type: string
+      ios_build_number:
+        description: Apple CFBundleVersion with one to three numeric components
         required: true
         type: string
 
@@ -20,7 +24,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: native-release-${{ inputs.release_commit }}-${{ inputs.build_number }}
+  group: native-release-${{ inputs.release_commit }}-${{ inputs.android_version_code }}-${{ inputs.ios_build_number }}
   cancel-in-progress: false
 
 jobs:
@@ -30,7 +34,7 @@ jobs:
     outputs:
       release_sha: ${{ steps.source.outputs.release_sha }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ inputs.release_commit }}
           fetch-depth: 0
@@ -39,19 +43,21 @@ jobs:
         env:
           REQUESTED_SHA: ${{ inputs.release_commit }}
           VERSION_NAME: ${{ inputs.version_name }}
-          BUILD_NUMBER: ${{ inputs.build_number }}
+          ANDROID_VERSION_CODE: ${{ inputs.android_version_code }}
+          IOS_BUILD_NUMBER: ${{ inputs.ios_build_number }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           set -euo pipefail
           [[ "$REQUESTED_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "release_commit must be a full lowercase SHA" >&2; exit 1; }
-          [[ "$VERSION_NAME" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]] || { echo "version_name must be an explicit store version" >&2; exit 1; }
-          [[ "$BUILD_NUMBER" =~ ^[1-9][0-9]*$ ]] || { echo "build_number must be a positive integer" >&2; exit 1; }
-          (( BUILD_NUMBER <= 2147483647 )) || { echo "build_number exceeds the native platform limit" >&2; exit 1; }
           ACTUAL_SHA="$(git rev-parse HEAD)"
           [[ "$ACTUAL_SHA" == "$REQUESTED_SHA" ]] || { echo "checkout does not match requested commit" >&2; exit 1; }
           git fetch --no-tags origin "$DEFAULT_BRANCH"
           git merge-base --is-ancestor "$ACTUAL_SHA" FETCH_HEAD || { echo "release commit is not merged to the default branch" >&2; exit 1; }
           [[ -z "$(git status --porcelain)" ]] || { echo "release checkout is dirty" >&2; exit 1; }
+          python3 farda-app/ios/scripts/configure_release.py --validate-versions \
+            --version-name "$VERSION_NAME" \
+            --ios-build-number "$IOS_BUILD_NUMBER" \
+            --android-version-code "$ANDROID_VERSION_CODE"
           echo "release_sha=$ACTUAL_SHA" >> "$GITHUB_OUTPUT"
 
   android-aab:
@@ -64,43 +70,42 @@ jobs:
         working-directory: farda-app
     env:
       FARDA_RELEASE_COMMIT: ${{ needs.source-gate.outputs.release_sha }}
-      FARDA_BUILD_NUMBER: ${{ inputs.build_number }}
+      FARDA_BUILD_NUMBER: ${{ inputs.android_version_code }}
       FARDA_VERSION_NAME: ${{ inputs.version_name }}
       FARDA_ANDROID_APPLICATION_ID: ${{ vars.FARDA_ANDROID_APPLICATION_ID }}
       FARDA_ANDROID_CERT_SHA256: ${{ vars.FARDA_ANDROID_CERT_SHA256 }}
-      FARDA_ANDROID_KEY_ALIAS: ${{ secrets.FARDA_ANDROID_KEY_ALIAS }}
-      FARDA_ANDROID_KEY_PASSWORD: ${{ secrets.FARDA_ANDROID_KEY_PASSWORD }}
-      FARDA_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.FARDA_ANDROID_KEYSTORE_PASSWORD }}
-      FARDA_ANDROID_KEYSTORE_BASE64: ${{ secrets.FARDA_ANDROID_KEYSTORE_BASE64 }}
       FARDA_BASE_API_URL: ${{ vars.FARDA_BASE_API_URL }}
       FARDA_VIAL_API_URL: ${{ vars.FARDA_VIAL_API_URL }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ needs.source-gate.outputs.release_sha }}
           fetch-depth: 1
-      - uses: subosito/flutter-action@v2
+      - uses: subosito/flutter-action@1508160852fb97248640997f7cfb38da241df0ba # v2.9.1
         with:
           channel: stable
           flutter-version: '3.47.7'
           cache: true
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
         with:
           distribution: temurin
           java-version: '17'
       - name: Require external Android release inputs
         run: |
           set -euo pipefail
-          required=(FARDA_ANDROID_APPLICATION_ID FARDA_ANDROID_CERT_SHA256 FARDA_ANDROID_KEY_ALIAS FARDA_ANDROID_KEY_PASSWORD FARDA_ANDROID_KEYSTORE_PASSWORD FARDA_ANDROID_KEYSTORE_BASE64 FARDA_BASE_API_URL FARDA_VIAL_API_URL)
+          required=(FARDA_ANDROID_APPLICATION_ID FARDA_ANDROID_CERT_SHA256 FARDA_BASE_API_URL FARDA_VIAL_API_URL)
           for name in "${required[@]}"; do [[ -n "${!name:-}" ]] || { echo "Missing external release setting: $name" >&2; exit 1; }; done
           [[ "$FARDA_ANDROID_APPLICATION_ID" != com.example.* ]] || { echo "Placeholder Android application ID refused" >&2; exit 1; }
           [[ "$FARDA_ANDROID_CERT_SHA256" =~ ^([0-9A-Fa-f]{2}:?){32}$ ]] || { echo "Invalid expected Android certificate SHA-256" >&2; exit 1; }
           [[ "$FARDA_BASE_API_URL" == https://* && "$FARDA_BASE_API_URL" != *example.com* ]] || { echo "Production API URL must be non-placeholder HTTPS" >&2; exit 1; }
           [[ "$FARDA_VIAL_API_URL" == https://* && "$FARDA_VIAL_API_URL" != *example.com* ]] || { echo "Vial API URL must be non-placeholder HTTPS" >&2; exit 1; }
       - name: Materialize ephemeral signing and public app configuration
+        env:
+          FARDA_ANDROID_KEYSTORE_BASE64: ${{ secrets.FARDA_ANDROID_KEYSTORE_BASE64 }}
         run: |
           set -euo pipefail
           umask 077
+          : "${FARDA_ANDROID_KEYSTORE_BASE64:?Missing FARDA_ANDROID_KEYSTORE_BASE64}"
           export FARDA_ANDROID_KEYSTORE_PATH="$RUNNER_TEMP/farda-release.jks"
           printf '%s' "$FARDA_ANDROID_KEYSTORE_BASE64" | base64 --decode > "$FARDA_ANDROID_KEYSTORE_PATH"
           [[ -s "$FARDA_ANDROID_KEYSTORE_PATH" ]] || { echo "Decoded Android keystore is empty" >&2; exit 1; }
@@ -111,6 +116,10 @@ jobs:
       - name: Install dependencies
         run: flutter pub get --enforce-lockfile
       - name: Build signed production AAB
+        env:
+          FARDA_ANDROID_KEY_ALIAS: ${{ secrets.FARDA_ANDROID_KEY_ALIAS }}
+          FARDA_ANDROID_KEY_PASSWORD: ${{ secrets.FARDA_ANDROID_KEY_PASSWORD }}
+          FARDA_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.FARDA_ANDROID_KEYSTORE_PASSWORD }}
         run: >-
           flutter build appbundle --release
           --build-name="$FARDA_VERSION_NAME"
@@ -148,9 +157,12 @@ jobs:
           }
           Path("build/release-evidence/android.json").write_text(json.dumps(evidence, indent=2, sort_keys=True) + "\n")
           PY
-      - uses: actions/upload-artifact@v4
+      - name: Remove temporary Android signing material
+        if: always()
+        run: rm -f "$FARDA_ANDROID_KEYSTORE_PATH"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: farda-android-${{ needs.source-gate.outputs.release_sha }}-${{ inputs.build_number }}
+          name: farda-android-${{ needs.source-gate.outputs.release_sha }}-${{ inputs.android_version_code }}
           path: |
             farda-app/build/app/outputs/bundle/release/app-release.aab
             farda-app/build/release-evidence/android.json
@@ -167,7 +179,7 @@ jobs:
         working-directory: farda-app
     env:
       FARDA_RELEASE_COMMIT: ${{ needs.source-gate.outputs.release_sha }}
-      FARDA_BUILD_NUMBER: ${{ inputs.build_number }}
+      FARDA_BUILD_NUMBER: ${{ inputs.ios_build_number }}
       FARDA_VERSION_NAME: ${{ inputs.version_name }}
       FARDA_IOS_APP_BUNDLE_ID: ${{ vars.FARDA_IOS_APP_BUNDLE_ID }}
       FARDA_IOS_EXTENSION_BUNDLE_ID: ${{ vars.FARDA_IOS_EXTENSION_BUNDLE_ID }}
@@ -176,18 +188,14 @@ jobs:
       FARDA_IOS_EXTENSION_PROFILE: ${{ vars.FARDA_IOS_EXTENSION_PROFILE }}
       FARDA_IOS_EXPORT_METHOD: ${{ vars.FARDA_IOS_EXPORT_METHOD }}
       FARDA_IOS_CERT_SHA256: ${{ vars.FARDA_IOS_CERT_SHA256 }}
-      FARDA_IOS_CERTIFICATE_BASE64: ${{ secrets.FARDA_IOS_CERTIFICATE_BASE64 }}
-      FARDA_IOS_CERTIFICATE_PASSWORD: ${{ secrets.FARDA_IOS_CERTIFICATE_PASSWORD }}
-      FARDA_IOS_APP_PROFILE_BASE64: ${{ secrets.FARDA_IOS_APP_PROFILE_BASE64 }}
-      FARDA_IOS_EXTENSION_PROFILE_BASE64: ${{ secrets.FARDA_IOS_EXTENSION_PROFILE_BASE64 }}
       FARDA_BASE_API_URL: ${{ vars.FARDA_BASE_API_URL }}
       FARDA_VIAL_API_URL: ${{ vars.FARDA_VIAL_API_URL }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ needs.source-gate.outputs.release_sha }}
           fetch-depth: 1
-      - uses: subosito/flutter-action@v2
+      - uses: subosito/flutter-action@1508160852fb97248640997f7cfb38da241df0ba # v2.9.1
         with:
           channel: stable
           flutter-version: '3.47.7'
@@ -195,20 +203,35 @@ jobs:
       - name: Require external iOS release inputs
         run: |
           set -euo pipefail
-          required=(FARDA_IOS_APP_BUNDLE_ID FARDA_IOS_EXTENSION_BUNDLE_ID FARDA_IOS_TEAM_ID FARDA_IOS_APP_PROFILE FARDA_IOS_EXTENSION_PROFILE FARDA_IOS_EXPORT_METHOD FARDA_IOS_CERT_SHA256 FARDA_IOS_CERTIFICATE_BASE64 FARDA_IOS_CERTIFICATE_PASSWORD FARDA_IOS_APP_PROFILE_BASE64 FARDA_IOS_EXTENSION_PROFILE_BASE64 FARDA_BASE_API_URL FARDA_VIAL_API_URL)
+          required=(FARDA_IOS_APP_BUNDLE_ID FARDA_IOS_EXTENSION_BUNDLE_ID FARDA_IOS_TEAM_ID FARDA_IOS_APP_PROFILE FARDA_IOS_EXTENSION_PROFILE FARDA_IOS_EXPORT_METHOD FARDA_IOS_CERT_SHA256 FARDA_BASE_API_URL FARDA_VIAL_API_URL)
           for name in "${required[@]}"; do [[ -n "${!name:-}" ]] || { echo "Missing external release setting: $name" >&2; exit 1; }; done
           [[ "$FARDA_IOS_CERT_SHA256" =~ ^([0-9A-Fa-f]{2}:?){32}$ ]] || { echo "Invalid expected iOS certificate SHA-256" >&2; exit 1; }
           [[ "$FARDA_BASE_API_URL" == https://* && "$FARDA_BASE_API_URL" != *example.com* ]] || { echo "Production API URL must be non-placeholder HTTPS" >&2; exit 1; }
           [[ "$FARDA_VIAL_API_URL" == https://* && "$FARDA_VIAL_API_URL" != *example.com* ]] || { echo "Vial API URL must be non-placeholder HTTPS" >&2; exit 1; }
           python3 ios/scripts/configure_release.py --check
       - name: Install signing certificate and profiles
+        env:
+          FARDA_IOS_CERTIFICATE_BASE64: ${{ secrets.FARDA_IOS_CERTIFICATE_BASE64 }}
+          FARDA_IOS_CERTIFICATE_PASSWORD: ${{ secrets.FARDA_IOS_CERTIFICATE_PASSWORD }}
+          FARDA_IOS_APP_PROFILE_BASE64: ${{ secrets.FARDA_IOS_APP_PROFILE_BASE64 }}
+          FARDA_IOS_EXTENSION_PROFILE_BASE64: ${{ secrets.FARDA_IOS_EXTENSION_PROFILE_BASE64 }}
         run: |
           set -euo pipefail
           umask 077
+          : "${FARDA_IOS_CERTIFICATE_BASE64:?Missing FARDA_IOS_CERTIFICATE_BASE64}"
+          : "${FARDA_IOS_CERTIFICATE_PASSWORD:?Missing FARDA_IOS_CERTIFICATE_PASSWORD}"
+          : "${FARDA_IOS_APP_PROFILE_BASE64:?Missing FARDA_IOS_APP_PROFILE_BASE64}"
+          : "${FARDA_IOS_EXTENSION_PROFILE_BASE64:?Missing FARDA_IOS_EXTENSION_PROFILE_BASE64}"
           KEYCHAIN_PATH="$RUNNER_TEMP/farda-release.keychain-db"
           KEYCHAIN_PASSWORD="$(openssl rand -hex 24)"
           CERTIFICATE_PATH="$RUNNER_TEMP/farda-distribution.p12"
           printf '%s' "$FARDA_IOS_CERTIFICATE_BASE64" | base64 -D > "$CERTIFICATE_PATH"
+          openssl pkcs12 -in "$CERTIFICATE_PATH" -clcerts -nokeys \
+            -passin env:FARDA_IOS_CERTIFICATE_PASSWORD -out "$RUNNER_TEMP/p12-leaf.pem"
+          P12_CERT_SHA256="$(openssl x509 -in "$RUNNER_TEMP/p12-leaf.pem" -outform DER | shasum -a 256 | awk '{print toupper($1)}')"
+          EXPECTED_CERT_SHA256="$(printf '%s' "$FARDA_IOS_CERT_SHA256" | tr -d ': ' | tr '[:lower:]' '[:upper:]')"
+          [[ "$P12_CERT_SHA256" == "$EXPECTED_CERT_SHA256" ]] || { echo "P12 leaf certificate does not match FARDA_IOS_CERT_SHA256" >&2; exit 1; }
+          printf '%s\n' "$P12_CERT_SHA256" > "$RUNNER_TEMP/p12-certificate-sha256"
           security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
@@ -284,9 +307,20 @@ jobs:
           codesign --verify --strict --verbose=2 "$EXTENSION"
           codesign -d --entitlements :- "$APP" > "$RUNNER_TEMP/app-entitlements.plist"
           codesign -d --entitlements :- "$EXTENSION" > "$RUNNER_TEMP/extension-entitlements.plist"
+          mkdir -p "$RUNNER_TEMP/app-signature-certificates" "$RUNNER_TEMP/extension-signature-certificates"
+          (cd "$RUNNER_TEMP/app-signature-certificates" && codesign --display --extract-certificates "$APP")
+          (cd "$RUNNER_TEMP/extension-signature-certificates" && codesign --display --extract-certificates "$EXTENSION")
+          APP_CERT_SHA256="$(shasum -a 256 "$RUNNER_TEMP/app-signature-certificates/codesign0" | awk '{print toupper($1)}')"
+          EXTENSION_CERT_SHA256="$(shasum -a 256 "$RUNNER_TEMP/extension-signature-certificates/codesign0" | awk '{print toupper($1)}')"
+          P12_CERT_SHA256="$(cat "$RUNNER_TEMP/p12-certificate-sha256")"
+          EXPECTED_CERT_SHA256="$(printf '%s' "$FARDA_IOS_CERT_SHA256" | tr -d ': ' | tr '[:lower:]' '[:upper:]')"
+          [[ "$APP_CERT_SHA256" == "$EXPECTED_CERT_SHA256" ]] || { echo "App signing leaf does not match FARDA_IOS_CERT_SHA256" >&2; exit 1; }
+          [[ "$EXTENSION_CERT_SHA256" == "$EXPECTED_CERT_SHA256" ]] || { echo "Extension signing leaf does not match FARDA_IOS_CERT_SHA256" >&2; exit 1; }
+          [[ "$P12_CERT_SHA256" == "$EXPECTED_CERT_SHA256" ]] || { echo "Recorded P12 leaf fingerprint changed" >&2; exit 1; }
           security cms -D -i "$APP/embedded.mobileprovision" > "$RUNNER_TEMP/exported-app-profile.plist"
           security cms -D -i "$EXTENSION/embedded.mobileprovision" > "$RUNNER_TEMP/exported-extension-profile.plist"
           export FARDA_IPA_PATH="$IPA" FARDA_APP_PATH="$APP" FARDA_EXTENSION_PATH="$EXTENSION"
+          export APP_CERT_SHA256 EXTENSION_CERT_SHA256 P12_CERT_SHA256
           python3 - <<'PY'
           import hashlib, json, os, plistlib
           from pathlib import Path
@@ -334,10 +368,13 @@ jobs:
               "artifact": ipa.name,
               "artifactSha256": hashlib.sha256(ipa.read_bytes()).hexdigest(),
               "buildNumber": expected["build"],
-              "certificateSha256": expected_cert,
+              "appCertificateSha256": os.environ["APP_CERT_SHA256"],
+              "certificateSha256": os.environ["APP_CERT_SHA256"],
               "commit": expected["commit"],
               "exportMethod": os.environ["FARDA_IOS_EXPORT_METHOD"],
               "extensionBundleId": expected["extension"],
+              "extensionCertificateSha256": os.environ["EXTENSION_CERT_SHA256"],
+              "p12CertificateSha256": os.environ["P12_CERT_SHA256"],
               "teamId": expected["team"],
               "versionName": expected["version"],
           }
@@ -349,10 +386,11 @@ jobs:
         if: always()
         run: |
           security delete-keychain "$FARDA_KEYCHAIN_PATH" 2>/dev/null || true
-          rm -f "$RUNNER_TEMP/farda-distribution.p12" "$RUNNER_TEMP"/*.mobileprovision "$RUNNER_TEMP"/*-profile.plist "$RUNNER_TEMP/FardaExportOptions.plist"
-      - uses: actions/upload-artifact@v4
+          rm -rf "$RUNNER_TEMP/app-signature-certificates" "$RUNNER_TEMP/extension-signature-certificates"
+          rm -f "$RUNNER_TEMP/farda-distribution.p12" "$RUNNER_TEMP/p12-leaf.pem" "$RUNNER_TEMP/p12-certificate-sha256" "$RUNNER_TEMP"/*.mobileprovision "$RUNNER_TEMP"/*-profile.plist "$RUNNER_TEMP/FardaExportOptions.plist"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: farda-ios-${{ needs.source-gate.outputs.release_sha }}-${{ inputs.build_number }}
+          name: farda-ios-${{ needs.source-gate.outputs.release_sha }}-${{ inputs.ios_build_number }}
           path: |
             farda-app/build/ios/ipa/*.ipa
             farda-app/build/ios/archive/Runner.xcarchive

@@ -6,7 +6,12 @@ import plistlib
 import tempfile
 import unittest
 
-from configure_release import validated_environment, write_export_options, write_xcconfig
+from configure_release import (
+    validate_release_versions,
+    validated_environment,
+    write_export_options,
+    write_xcconfig,
+)
 
 
 VALID = {
@@ -17,8 +22,9 @@ VALID = {
     "FARDA_IOS_EXTENSION_PROFILE": "Farda Live Activity App Store",
     "FARDA_IOS_EXPORT_METHOD": "app-store-connect",
     "FARDA_RELEASE_COMMIT": "a" * 40,
-    "FARDA_BUILD_NUMBER": "42",
-    "FLUTTER_BUILD_NUMBER": "42",
+    "FARDA_BUILD_NUMBER": "1.2.3",
+    "FARDA_VERSION_NAME": "1.2.0",
+    "FLUTTER_BUILD_NUMBER": "1.2.3",
 }
 
 
@@ -54,7 +60,7 @@ class ReleaseConfigurationTests(unittest.TestCase):
             validated_environment(values)
 
     def test_rejects_build_number_mismatch(self) -> None:
-        values = VALID | {"FLUTTER_BUILD_NUMBER": "43"}
+        values = VALID | {"FLUTTER_BUILD_NUMBER": "1.2.4"}
         with self.assertRaisesRegex(ValueError, "does not match"):
             validated_environment(values)
 
@@ -63,6 +69,24 @@ class ReleaseConfigurationTests(unittest.TestCase):
         del values["FARDA_IOS_APP_PROFILE"]
         with self.assertRaisesRegex(ValueError, "FARDA_IOS_APP_PROFILE"):
             validated_environment(values)
+
+    def test_accepts_platform_version_boundaries(self) -> None:
+        validate_release_versions("1.2.0", "9999.99.99", "2100000000")
+        validate_release_versions("0.9.0", "1.2.3", "1")
+
+    def test_rejects_non_store_marketing_versions(self) -> None:
+        for value in ("1", "1.2", "1.2.3.4", "1.2.0-beta", "01.2.0"):
+            with self.subTest(value=value), self.assertRaisesRegex(ValueError, "version_name"):
+                validate_release_versions(value, "1", "1")
+
+    def test_rejects_invalid_apple_bundle_versions(self) -> None:
+        for value in ("0", "0.1", "10000", "1.100", "1.2.100", "01", "1-beta"):
+            with self.subTest(value=value), self.assertRaisesRegex(ValueError, "ios_build_number"):
+                validate_release_versions("1.2.0", value, "1")
+
+    def test_rejects_play_version_codes_over_limit(self) -> None:
+        with self.assertRaisesRegex(ValueError, "2100000000"):
+            validate_release_versions("1.2.0", "1", "2100000001")
 
 
 if __name__ == "__main__":

@@ -20,9 +20,36 @@ REQUIRED = (
     "FARDA_IOS_EXPORT_METHOD",
     "FARDA_RELEASE_COMMIT",
     "FARDA_BUILD_NUMBER",
+    "FARDA_VERSION_NAME",
 )
 EXPORT_METHODS = {"app-store-connect", "ad-hoc", "enterprise"}
 BUNDLE_ID = re.compile(r"[A-Za-z][A-Za-z0-9-]*(\.[A-Za-z][A-Za-z0-9-]*)+")
+MARKETING_VERSION = re.compile(
+    r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)"
+)
+APPLE_BUILD_VERSION = re.compile(
+    r"[1-9][0-9]{0,3}(\.(0|[1-9][0-9]?))?(\.(0|[1-9][0-9]?))?"
+)
+PLAY_MAX_VERSION_CODE = 2_100_000_000
+
+
+def validate_release_versions(
+    version_name: str, ios_build_number: str, android_version_code: str
+) -> None:
+    if not MARKETING_VERSION.fullmatch(version_name):
+        raise ValueError(
+            "version_name must contain three dot-separated numeric components without leading zeros"
+        )
+    if not APPLE_BUILD_VERSION.fullmatch(ios_build_number):
+        raise ValueError(
+            "ios_build_number must be a nonzero Apple bundle version with up to 4.2.2 digits"
+        )
+    if not re.fullmatch(r"[1-9][0-9]*", android_version_code):
+        raise ValueError("android_version_code must be a positive integer")
+    if int(android_version_code) > PLAY_MAX_VERSION_CODE:
+        raise ValueError(
+            f"android_version_code must not exceed {PLAY_MAX_VERSION_CODE}"
+        )
 
 
 def validated_environment(environ: dict[str, str]) -> dict[str, str]:
@@ -45,10 +72,11 @@ def validated_environment(environ: dict[str, str]) -> dict[str, str]:
         )
     if not re.fullmatch(r"[0-9a-f]{40}", values["FARDA_RELEASE_COMMIT"]):
         raise ValueError("FARDA_RELEASE_COMMIT must be an exact 40-character lowercase Git SHA")
-    if not re.fullmatch(r"[1-9][0-9]*", values["FARDA_BUILD_NUMBER"]):
-        raise ValueError("FARDA_BUILD_NUMBER must be a positive integer")
-    if int(values["FARDA_BUILD_NUMBER"]) > 2_147_483_647:
-        raise ValueError("FARDA_BUILD_NUMBER exceeds the Android/iOS release limit")
+    validate_release_versions(
+        values["FARDA_VERSION_NAME"],
+        values["FARDA_BUILD_NUMBER"],
+        "1",  # Android has a separate workflow input and Gradle gate.
+    )
 
     flutter_build_number = environ.get("FLUTTER_BUILD_NUMBER", "").strip()
     if flutter_build_number and flutter_build_number != values["FARDA_BUILD_NUMBER"]:
@@ -103,9 +131,24 @@ def write_export_options(path: Path, values: dict[str, str]) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--check", action="store_true", help="only validate the build environment")
+    parser.add_argument("--validate-versions", action="store_true")
+    parser.add_argument("--version-name")
+    parser.add_argument("--ios-build-number")
+    parser.add_argument("--android-version-code")
     parser.add_argument("--xcconfig", type=Path)
     parser.add_argument("--export-options", type=Path)
     args = parser.parse_args()
+    if args.validate_versions:
+        try:
+            validate_release_versions(
+                args.version_name or "",
+                args.ios_build_number or "",
+                args.android_version_code or "",
+            )
+        except ValueError as error:
+            print(f"error: {error}", file=sys.stderr)
+            return 2
+        return 0
     if not args.check and (args.xcconfig is None or args.export_options is None):
         parser.error("generation requires --xcconfig and --export-options")
 

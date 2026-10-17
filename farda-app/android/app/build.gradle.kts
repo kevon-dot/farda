@@ -36,10 +36,14 @@ if (releaseRequested) {
     if (releaseCommit == null || !releaseCommit.matches(Regex("[0-9a-f]{40}"))) {
         throw GradleException("Set FARDA_RELEASE_COMMIT to the exact 40-character lowercase Git commit before building a release.")
     }
-    if (releaseBuildNumber == null || !releaseBuildNumber.matches(Regex("[1-9][0-9]*"))) {
+    val parsedReleaseBuildNumber = releaseBuildNumber?.toLongOrNull()
+    if (releaseBuildNumber == null || !releaseBuildNumber.matches(Regex("[1-9][0-9]*")) || parsedReleaseBuildNumber == null) {
         throw GradleException("Set FARDA_BUILD_NUMBER to the positive store build number before building a release.")
     }
-    if (releaseBuildNumber.toIntOrNull() != flutter.versionCode) {
+    if (parsedReleaseBuildNumber > 2_100_000_000L) {
+        throw GradleException("FARDA_BUILD_NUMBER must not exceed Google Play's 2100000000 versionCode limit.")
+    }
+    if (parsedReleaseBuildNumber.toInt() != flutter.versionCode) {
         throw GradleException("FARDA_BUILD_NUMBER must exactly match Flutter's versionCode (${flutter.versionCode}).")
     }
 }

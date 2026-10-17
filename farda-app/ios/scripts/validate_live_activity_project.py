@@ -146,5 +146,41 @@ for catalog in (ROOT / "FardaLiveActivity/Assets.xcassets").rglob("Contents.json
         asset = catalog.parent / image["filename"]
         assert asset.is_file() and asset.stat().st_size > 0
         assert asset.read_text().startswith("<svg"), f"Invalid vector asset: {asset}"
+
+repository_root = ROOT.parents[1]
+workflow_paths = sorted((repository_root / ".github/workflows").glob("*.yml"))
+assert workflow_paths
+approved_actions = {
+    "actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+    "actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3",
+    "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020",
+    "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
+    "pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320",
+    "subosito/flutter-action@1508160852fb97248640997f7cfb38da241df0ba",
+}
+for workflow_path in workflow_paths:
+    workflow = workflow_path.read_text()
+    uses = re.findall(r"^\s*- uses: ([^\s#]+)", workflow, re.MULTILINE)
+    assert uses, f"No actions found in {workflow_path}"
+    assert all(re.fullmatch(r"[^@\s]+@[0-9a-f]{40}", action) for action in uses), (
+        f"Unpinned action in {workflow_path}: {uses}"
+    )
+    assert set(uses) <= approved_actions, f"Unreviewed action SHA in {workflow_path}: {uses}"
+
+release_workflow = (repository_root / ".github/workflows/native-release.yml").read_text()
+for line in release_workflow.splitlines():
+    if "${{ secrets." in line:
+        assert len(line) - len(line.lstrip()) >= 10, f"Job-level secret exposure: {line.strip()}"
+for required_gate in (
+    "android_version_code:",
+    "ios_build_number:",
+    "--validate-versions",
+    "P12 leaf certificate does not match FARDA_IOS_CERT_SHA256",
+    "App signing leaf does not match FARDA_IOS_CERT_SHA256",
+    "Extension signing leaf does not match FARDA_IOS_CERT_SHA256",
+    '\"appCertificateSha256\": os.environ[\"APP_CERT_SHA256\"]',
+    '\"extensionCertificateSha256\": os.environ[\"EXTENSION_CERT_SHA256\"]',
+):
+    assert required_gate in release_workflow, f"Missing native release gate: {required_gate}"
 print("PASS: Xcode project syntax/references, target embedding, release gates, build configs, plists, fonts and vectors")
 print("Not verified: Swift compilation, code signing, ActivityKit runtime or device rendering")

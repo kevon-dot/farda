@@ -41,7 +41,10 @@ settings. No signing value belongs in the repository.
 ## Gate behavior
 
 Run the workflow with an exact merged commit, a store version such as `1.2.0`,
-and a positive build number. Android release configuration refuses a
+an Android version code no greater than `2100000000`, and an Apple bundle
+version with one to three numeric components. Store versions contain exactly
+three numeric components; prerelease suffixes and ambiguous leading zeroes are
+rejected. Android release configuration refuses a
 placeholder application ID, missing keystore fields, an invalid commit, or a
 build number that differs from Flutter's `versionCode`. The workflow verifies
 the AAB JAR signature against the approved certificate fingerprint and checks
@@ -57,9 +60,17 @@ must grant it.
 Before uploading the artifacts, the workflow verifies both code signatures,
 the app and extension bundle IDs, build/version values, exact commit stored in
 both Info plists, team/application entitlements, and the app's production APNs
-entitlement. It records artifact SHA-256 values in JSON evidence files and
+entitlement. It extracts the signing leaf from the P12, exported app, and
+exported extension, requires all three SHA-256 fingerprints to match the
+approved certificate, and records the measured fingerprints. It records
+artifact SHA-256 values in JSON evidence files and
 retains the AAB, IPA, signed Xcode archive (including dSYMs), and evidence for
 14 days.
+
+All workflow actions are pinned to reviewed commit SHAs. Signing secrets are
+available only to the individual keystore import or native build step that
+needs them; subsequent verification and artifact upload steps receive no
+signing secret environment variables.
 
 The workflow deliberately stops after artifact creation. Store upload,
 notarization, phased release, and production deployment remain separate
