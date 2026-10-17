@@ -24,6 +24,9 @@ const WORKER_LIMITS = Object.freeze({
 	activeCalls: 20,
 	providerConcurrency: 4,
 });
+const MAX_CANCEL_ATTEMPTS = 3;
+const CANCEL_REQUESTED = "cancel_requested";
+const CANCEL_RESULT_UNKNOWN = "cancel_result_unknown";
 type ReminderEvent =
 	| {
 			event: "reminder_tick";
@@ -36,6 +39,8 @@ type ReminderEvent =
 			submittedCalls: number;
 			suppressedCalls: number;
 			cancelRequests: number;
+			cancelRetries: number;
+			cancelUncertain: number;
 			durationMs: number;
 	  }
 	| { event: "voice_dispatch_uncertain"; count: 1 };
@@ -58,6 +63,10 @@ async function mapWithConcurrency<T>(
 			}
 		}),
 	);
+}
+function cancellationAttempts(reason: string | null) {
+	const match = /^cancel_retry_(\d+)$/.exec(reason || "");
+	return match ? Number(match[1]) : 0;
 }
 export async function serial<T>(
 	db: PrismaClient,
@@ -855,24 +864,49 @@ export class ReminderService {
 				else suppressedCalls++;
 			},
 		);
-		let cancelRequests = 0;
+		let cancelRequests = 0,
+			cancelRetries = 0,
+			cancelUncertain = 0;
 		if (this.voice.enabled) {
 			const active = await this.db.deliveryAttempt.findMany({
 				where: {
 					channel: "voice",
 					providerId: { not: null },
+					state: {
+						notIn: ["cancel_requested", "cancel_uncertain", "cancelled"],
+					},
 					createdAt: { gte: new Date(now.getTime() - 60 * 60_000) },
-					OR: [
-						{ providerStatus: null },
+					AND: [
 						{
-							providerStatus: {
-								notIn: ["completed", "busy", "failed", "no-answer", "canceled"],
-							},
+							OR: [
+								{ reason: null },
+								{
+									reason: {
+										notIn: [CANCEL_REQUESTED, CANCEL_RESULT_UNKNOWN],
+									},
+								},
+							],
+						},
+						{
+							OR: [
+								{ providerStatus: null },
+								{
+									providerStatus: {
+										notIn: [
+											"completed",
+											"busy",
+											"failed",
+											"no-answer",
+											"canceled",
+										],
+									},
+								},
+							],
 						},
 					],
 				},
 				take: WORKER_LIMITS.activeCalls,
-				orderBy: { createdAt: "asc" },
+				orderBy: [{ updatedAt: "asc" }, { id: "asc" }],
 			});
 			await mapWithConcurrency(
 				active,
@@ -881,13 +915,49 @@ export class ReminderService {
 					const eligible = await serial(this.db, (tx) =>
 						this.eligibility(tx, attempt.intentId, now),
 					);
-					if ("reason" in eligible)
+					if ("reason" in eligible) {
 						try {
 							await this.voice.cancel(attempt.providerId!);
+							await this.db.deliveryAttempt.update({
+								where: { id: attempt.id },
+								data: {
+									state: "cancel_requested",
+									reason: CANCEL_REQUESTED,
+								},
+							});
 							cancelRequests++;
 						} catch {
-							/* retry next tick, no sensitive payload logging */
+							const failures = cancellationAttempts(attempt.reason) + 1;
+							const exhausted = failures >= MAX_CANCEL_ATTEMPTS;
+							await this.db.deliveryAttempt.updateMany({
+								where: {
+									id: attempt.id,
+									state: attempt.state,
+									updatedAt: attempt.updatedAt,
+								},
+								data: exhausted
+									? {
+											state: "cancel_uncertain",
+											reason: CANCEL_RESULT_UNKNOWN,
+										}
+									: {
+											state: "cancel_retry",
+											reason: `cancel_retry_${failures}`,
+										},
+							});
+							if (exhausted) cancelUncertain++;
+							else cancelRetries++;
 						}
+					} else
+						await this.db.deliveryAttempt.updateMany({
+							where: {
+								id: attempt.id,
+								state: attempt.state,
+								updatedAt: attempt.updatedAt,
+							},
+							// Touch checked rows so a bounded sweep fairly reaches later calls.
+							data: { updatedAt: now },
+						});
 				},
 			);
 		}
@@ -902,6 +972,8 @@ export class ReminderService {
 			submittedCalls,
 			suppressedCalls,
 			cancelRequests,
+			cancelRetries,
+			cancelUncertain,
 			durationMs: Date.now() - startedAt,
 		};
 		if (
@@ -910,7 +982,9 @@ export class ReminderService {
 			event.recoveredReservations ||
 			event.uncertainDispatches ||
 			event.dueCalls ||
-			event.cancelRequests
+			event.cancelRequests ||
+			event.cancelRetries ||
+			event.cancelUncertain
 		)
 			this.emit(event);
 		return event;

@@ -6,6 +6,7 @@ type Row = Record<string, any>;
 function match(row: Row, where: Row = {}): boolean {
 	return Object.entries(where).every(([key, value]) => {
 		if (key === "OR") return value.some((w: Row) => match(row, w));
+		if (key === "AND") return value.every((w: Row) => match(row, w));
 		if (key === "NOT") return !match(row, value);
 		if (key.includes("_") && !(key in row)) return match(row, value);
 		const current = row[key];
@@ -107,10 +108,17 @@ export function memoryDb(seed: Record<string, Row[]> = {}) {
 						: rows();
 				let found = candidates.filter((row) => match(row, args.where));
 				if (args.orderBy) {
-					const [key, dir] = Object.entries(args.orderBy)[0];
-					found = [...found].sort(
-						(a, b) => (a[key] < b[key] ? -1 : 1) * (dir === "asc" ? 1 : -1),
-					);
+					const clauses = Array.isArray(args.orderBy)
+						? args.orderBy
+						: [args.orderBy];
+					found = [...found].sort((a, b) => {
+						for (const clause of clauses) {
+							const [key, dir] = Object.entries(clause)[0];
+							if (a[key] === b[key]) continue;
+							return (a[key] < b[key] ? -1 : 1) * (dir === "asc" ? 1 : -1);
+						}
+						return 0;
+					});
 				}
 				const result = found.slice(0, args.take || Infinity);
 				if (name === "reminderIntent" && args.select?.attempt)
