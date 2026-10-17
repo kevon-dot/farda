@@ -6,6 +6,14 @@ export const CADENCE = Object.freeze({
 	callAfterMinutes: 10,
 	windowMinutes: 60,
 });
+export type ReminderWindowState =
+	| "scheduled"
+	| "reminder_window"
+	| "due_window"
+	| "call_window"
+	| "snoozed"
+	| "resolved"
+	| "closed";
 
 export class ConsumerError extends Error {
 	constructor(
@@ -104,7 +112,23 @@ export function occurrenceBlock(
 		return "window_expired";
 	return null;
 }
-export function reminderPlan(dose: Occurrence) {
+export function reminderWindowState(
+	dose: Occurrence,
+	now: Date,
+): ReminderWindowState {
+	const blocked = occurrenceBlock(dose, now);
+	if (blocked === "occurrence_resolved") return "resolved";
+	if (blocked === "occurrence_snoozed") return "snoozed";
+	if (blocked === "window_expired") return "closed";
+	const delta = now.getTime() - dose.scheduledFor.getTime();
+	if (delta < -CADENCE.beforeMinutes * 60_000) return "scheduled";
+	if (delta < 0) return "reminder_window";
+	if (delta < CADENCE.callAfterMinutes * 60_000) return "due_window";
+	return "call_window";
+}
+export function reminderPlan(
+	dose: Pick<Occurrence, "id" | "userId" | "scheduledFor">,
+) {
 	const end = new Date(
 		dose.scheduledFor.getTime() + CADENCE.windowMinutes * 60_000,
 	);
@@ -112,7 +136,9 @@ export function reminderPlan(dose: Occurrence) {
 		{
 			channel: "live_activity",
 			stage: "before",
-			dueAt: new Date(dose.scheduledFor.getTime() - 10 * 60_000),
+			dueAt: new Date(
+				dose.scheduledFor.getTime() - CADENCE.beforeMinutes * 60_000,
+			),
 			expiresAt: end,
 		},
 		{
@@ -124,7 +150,9 @@ export function reminderPlan(dose: Occurrence) {
 		{
 			channel: "voice",
 			stage: "follow_up",
-			dueAt: new Date(dose.scheduledFor.getTime() + 10 * 60_000),
+			dueAt: new Date(
+				dose.scheduledFor.getTime() + CADENCE.callAfterMinutes * 60_000,
+			),
 			expiresAt: end,
 		},
 	];

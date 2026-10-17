@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-	ReminderService,
-	cancelOccurrenceReminders,
-} from "../src/reminders/service";
-import {
 	DEFAULT_PREFERENCE,
 	VOICE_CONSENT_VERSION,
 } from "../src/reminders/policy";
+import {
+	cancelOccurrenceReminders,
+	ReminderService,
+} from "../src/reminders/service";
 import { memoryDb } from "./consumer-memory-db";
 
 const NOW = new Date("2026-10-14T16:10:00Z");
@@ -63,10 +63,18 @@ function fixture() {
 		send: vi.fn(async () => ({ providerId: SID })),
 		cancel: vi.fn(async () => {}),
 	};
-	const service = new ReminderService(database.db, adapter, config);
+	const observer = vi.fn();
+	const service = new ReminderService(
+		database.db,
+		adapter,
+		config,
+		async () => false,
+		observer,
+	);
 	return {
 		...database,
 		adapter,
+		observer,
 		service,
 		async plan() {
 			await service.plan("u1", "d1");
@@ -74,6 +82,45 @@ function fixture() {
 				.id as string;
 		},
 	};
+}
+async function addActiveAttempt(
+	f: ReturnType<typeof fixture>,
+	index: number,
+	resolved = false,
+) {
+	const dose = {
+		...f.rows("dose")[0],
+		id: `active-dose-${String(index).padStart(2, "0")}`,
+		status: "unconfirmed",
+		takenAt: null,
+	};
+	f.rows("dose").push(dose);
+	await f.service.plan("u1", dose.id);
+	if (resolved) {
+		dose.status = "taken";
+		dose.takenAt = NOW;
+	}
+	const intent = f
+		.rows("reminderIntent")
+		.find((row) => row.doseId === dose.id && row.channel === "voice")!;
+	intent.state = "dispatched";
+	const providerId = `CA${index.toString(16).padStart(32, "0")}`;
+	f.rows("deliveryAttempt").push({
+		id: `active-attempt-${String(index).padStart(2, "0")}`,
+		intentId: intent.id,
+		userId: "u1",
+		channel: "voice",
+		phoneNumber: "+15555550123",
+		state: "submitted",
+		startedAt: new Date("2026-10-14T16:09:00Z"),
+		providerId,
+		providerStatus: "ringing",
+		providerSequence: 1,
+		reason: null,
+		createdAt: new Date("2026-10-14T16:09:00Z"),
+		updatedAt: new Date(NOW.getTime() - 40_000 + index),
+	});
+	return { providerId, intent };
 }
 beforeEach(() => {
 	vi.useFakeTimers();
@@ -151,6 +198,181 @@ describe("durable reminder dispatch", () => {
 		await f.service.dispatch(intent);
 		expect(f.adapter.send).toHaveBeenCalledTimes(1);
 		expect(f.rows("deliveryAttempt")[0].state).toBe("uncertain");
+		const occurrence = await f.service.occurrence("u1", "d1");
+		expect(occurrence).toMatchObject({
+			status: "unconfirmed",
+			takenAt: null,
+			reminderState: "call_window",
+		});
+		expect(
+			occurrence.intents.find((row) => row.channel === "voice")?.attempt,
+		).toMatchObject({
+			state: "uncertain",
+			reason: "provider_result_unknown",
+		});
+		expect(f.observer).toHaveBeenCalledWith({
+			event: "voice_dispatch_uncertain",
+			count: 1,
+		});
+	});
+	it("retries a stale reservation only when provider dispatch never started", async () => {
+		const f = fixture(),
+			intentId = await f.plan();
+		const intent = f.rows("reminderIntent").find((row) => row.id === intentId)!;
+		intent.state = "reserved";
+		f.rows("deliveryAttempt").push({
+			id: "stale-reservation",
+			intentId,
+			userId: "u1",
+			channel: "voice",
+			phoneNumber: "+15555550123",
+			state: "reserved",
+			startedAt: null,
+			providerId: null,
+			providerStatus: null,
+			providerSequence: -1,
+			createdAt: new Date("2026-10-14T16:06:00Z"),
+			updatedAt: new Date("2026-10-14T16:06:00Z"),
+		});
+		await f.service.tick(NOW);
+		expect(f.adapter.send).toHaveBeenCalledTimes(1);
+		expect(f.rows("deliveryAttempt")).toHaveLength(1);
+		expect(f.rows("deliveryAttempt")[0]).toMatchObject({
+			id: "stale-reservation",
+			state: "submitted",
+			providerId: SID,
+		});
+		const event = f.observer.mock.calls.find(
+			([value]) => value.event === "reminder_tick",
+		)?.[0];
+		expect(event).toMatchObject({
+			event: "reminder_tick",
+			recoveredReservations: 1,
+			dueCalls: 1,
+			submittedCalls: 1,
+		});
+		expect(JSON.stringify(event)).not.toMatch(
+			/u1|15555550123|stale-reservation/,
+		);
+	});
+	it("never retries a stale attempt after provider dispatch started", async () => {
+		const f = fixture(),
+			intentId = await f.plan();
+		const intent = f.rows("reminderIntent").find((row) => row.id === intentId)!;
+		intent.state = "reserved";
+		f.rows("deliveryAttempt").push({
+			id: "stale-dispatch",
+			intentId,
+			userId: "u1",
+			channel: "voice",
+			phoneNumber: "+15555550123",
+			state: "dispatching",
+			startedAt: new Date("2026-10-14T16:06:00Z"),
+			providerId: null,
+			providerStatus: null,
+			providerSequence: -1,
+			createdAt: new Date("2026-10-14T16:06:00Z"),
+			updatedAt: new Date("2026-10-14T16:06:00Z"),
+		});
+		await f.service.tick(NOW);
+		expect(f.adapter.send).not.toHaveBeenCalled();
+		expect(f.rows("deliveryAttempt")[0]).toMatchObject({
+			state: "uncertain",
+			reason: "worker_interrupted",
+		});
+		expect(intent.state).toBe("dispatched");
+	});
+	it("bounds planning work and advances past a completed batch", async () => {
+		const f = fixture();
+		f.rows("prescription").push({ id: "rx", archivedAt: null });
+		for (let index = 0; index < 501; index++)
+			f.rows("dose").push({
+				...f.rows("dose")[0],
+				id: `batch-${String(index).padStart(3, "0")}`,
+				prescriptionId: "rx",
+				scheduledFor: new Date("2026-10-14T17:00:00Z"),
+			});
+		const first = await f.service.tick(NOW);
+		expect(first).toMatchObject({
+			plannedOccurrences: 500,
+			createdIntents: 1500,
+		});
+		const second = await f.service.tick(NOW);
+		expect(second).toMatchObject({
+			plannedOccurrences: 1,
+			createdIntents: 3,
+		});
+		expect(
+			new Set(
+				f
+					.rows("reminderIntent")
+					.filter((row) => row.doseId.startsWith("batch-"))
+					.map((row) => row.doseId),
+			).size,
+		).toBe(501);
+	});
+	it("rotates a bounded active-call sweep and persists successful cancellation", async () => {
+		const f = fixture();
+		for (let index = 0; index < 20; index++) await addActiveAttempt(f, index);
+		const blocked = await addActiveAttempt(f, 20, true);
+		await f.service.tick(NOW);
+		expect(f.adapter.cancel).not.toHaveBeenCalled();
+		await f.service.tick(NOW);
+		expect(f.adapter.cancel).toHaveBeenCalledTimes(1);
+		expect(f.adapter.cancel).toHaveBeenCalledWith(blocked.providerId);
+		const cancelled = f
+			.rows("deliveryAttempt")
+			.find((row) => row.providerId === blocked.providerId)!;
+		expect(cancelled).toMatchObject({
+			state: "cancel_requested",
+			reason: "cancel_requested",
+		});
+		await f.service.webhook(
+			cancelled.id,
+			{
+				To: "+15555550123",
+				CallSid: blocked.providerId,
+				CallStatus: "completed",
+				SequenceNumber: "2",
+			},
+			"status",
+		);
+		expect(cancelled).toMatchObject({
+			state: "provider_reported",
+			providerStatus: "completed",
+			reason: "cancel_requested",
+		});
+		await f.service.tick(NOW);
+		expect(f.adapter.cancel).toHaveBeenCalledTimes(1);
+	});
+	it("bounds retries when a cancellation result stays unknown", async () => {
+		const f = fixture();
+		const blocked = await addActiveAttempt(f, 0, true);
+		f.adapter.cancel.mockRejectedValue(new Error("provider timeout"));
+		await f.service.tick(NOW);
+		const attempt = f
+			.rows("deliveryAttempt")
+			.find((row) => row.providerId === blocked.providerId)!;
+		await f.service.webhook(
+			attempt.id,
+			{
+				To: "+15555550123",
+				CallSid: blocked.providerId,
+				CallStatus: "ringing",
+				SequenceNumber: "2",
+			},
+			"status",
+		);
+		expect(attempt).toMatchObject({
+			state: "provider_reported",
+			reason: "cancel_retry_1",
+		});
+		for (let retry = 0; retry < 3; retry++) await f.service.tick(NOW);
+		expect(f.adapter.cancel).toHaveBeenCalledTimes(3);
+		expect(attempt).toMatchObject({
+			state: "cancel_uncertain",
+			reason: "cancel_result_unknown",
+		});
 	});
 	it.each([
 		"withdrawn",
