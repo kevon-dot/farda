@@ -67,6 +67,28 @@ void main() {
     debugDisableShadows = true;
   });
 
+  testWidgets('Today pending remains readable at 320 with larger text', (
+    tester,
+  ) async {
+    await pumpToday(tester, width: 320, textScale: 1.6);
+    expect(tester.takeException(), isNull);
+    await expectLater(
+      find.byType(FardaTodayScreen),
+      matchesGoldenFile('goldens/today-pending-320-large-text.png'),
+    );
+    await tester.ensureVisible(
+      find.byKey(FardaTodayRoutineCard.snoozeButtonKey),
+    );
+    await tester.tap(find.byKey(FardaTodayRoutineCard.snoozeButtonKey));
+    await tester.pumpAndSettle();
+    expect(
+      find.text('Reminder snoozed. Your record is unconfirmed.'),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+    debugDisableShadows = true;
+  });
+
   testWidgets('Today confirmed receipt after explicit check-in', (
     tester,
   ) async {

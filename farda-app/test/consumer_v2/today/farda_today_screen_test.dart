@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:farda/consumer_v2/screens/today/farda_today_screen.dart';
 import 'package:farda/consumer_v2/screens/today/today_models.dart';
 import 'package:farda/consumer_v2/screens/today/today_routine_card.dart';
@@ -51,7 +53,9 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.byKey(FardaTodayRoutineCard.logDoseButtonKey));
+    await tester.ensureVisible(
+      find.byKey(FardaTodayRoutineCard.logDoseButtonKey),
+    );
     await tester.tap(find.byKey(FardaTodayRoutineCard.logDoseButtonKey));
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.text('Not now'));
@@ -85,7 +89,9 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.byKey(FardaTodayRoutineCard.logDoseButtonKey));
+    await tester.ensureVisible(
+      find.byKey(FardaTodayRoutineCard.logDoseButtonKey),
+    );
     await tester.tap(find.byKey(FardaTodayRoutineCard.logDoseButtonKey));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(FardaTodayScreen.confirmDoseButtonKey));
@@ -94,6 +100,49 @@ void main() {
     expect(find.text('You’re all set.'), findsNothing);
     expect(find.text('Could not save your entry.'), findsOneWidget);
   });
+
+  testWidgets(
+    'snooze progress blocks duplicate actions and failed save is retryable',
+    (tester) async {
+      var attempts = 0;
+      final pending = Completer<String?>();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: FardaTodayScreen(
+            initialDate: DateTime(2026, 10, 14),
+            liveRecords: true,
+            showBottomNavigation: false,
+            onPersistSnooze: () {
+              attempts++;
+              return pending.future;
+            },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final snooze = find.byKey(FardaTodayRoutineCard.snoozeButtonKey);
+      await tester.ensureVisible(snooze);
+      await tester.tap(snooze);
+      await tester.pumpAndSettle();
+      expect(find.text('Saving your choice…'), findsOneWidget);
+      final button = find.descendant(
+        of: snooze,
+        matching: find.byType(OutlinedButton),
+      );
+      expect(tester.widget<OutlinedButton>(button).onPressed, isNull);
+      expect(attempts, 1);
+      pending.completeError(StateError('Network unavailable'));
+      await tester.pumpAndSettle();
+      expect(
+        find.text('Couldn’t snooze this reminder. Please try again.'),
+        findsOneWidget,
+      );
+      expect(find.text('Not yet confirmed'), findsOneWidget);
+      expect(find.text('We’ll remind\nyou again.'), findsNothing);
+      expect(tester.widget<OutlinedButton>(button).onPressed, isNotNull);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('snooze changes reminder state without confirming the dose', (
     tester,

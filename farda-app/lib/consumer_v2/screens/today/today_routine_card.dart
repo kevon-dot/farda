@@ -15,6 +15,7 @@ class FardaTodayRoutineCard extends StatelessWidget {
     required this.onMoreOptions,
     required this.onCorrectEntry,
     this.neutralCopy = false,
+    this.isSaving = false,
   });
 
   static const logDoseButtonKey = Key('today_log_dose_button');
@@ -30,6 +31,7 @@ class FardaTodayRoutineCard extends StatelessWidget {
   final VoidCallback onMoreOptions;
   final VoidCallback onCorrectEntry;
   final bool neutralCopy;
+  final bool isSaving;
 
   @override
   Widget build(BuildContext context) {
@@ -37,6 +39,11 @@ class FardaTodayRoutineCard extends StatelessWidget {
     final isPending = status == TodayDoseStatus.pending;
     final reduceMotion =
         MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    final compact =
+        MediaQuery.sizeOf(context).width <= 340 ||
+        MediaQuery.textScalerOf(context).scale(14) > 18;
+    final companionSize = compact ? 72.0 : 104.0;
+    final largeText = MediaQuery.textScalerOf(context).scale(14) > 21;
     final switchDuration =
         reduceMotion ? Duration.zero : const Duration(milliseconds: 220);
 
@@ -93,38 +100,53 @@ class FardaTodayRoutineCard extends StatelessWidget {
                       ],
                     ),
                   ),
-                  Container(
-                    width: 104,
-                    height: 104,
-                    decoration: const BoxDecoration(
-                      color: _canvas,
-                      shape: BoxShape.circle,
+                  if (!largeText)
+                    Container(
+                      width: companionSize,
+                      height: companionSize,
+                      decoration: const BoxDecoration(
+                        color: _canvas,
+                        shape: BoxShape.circle,
+                      ),
+                      child: FardaCompanion(
+                        size: companionSize,
+                        mood: switch (status) {
+                          TodayDoseStatus.confirmed =>
+                            FardaCompanionMood.confirmed,
+                          TodayDoseStatus.skipped => FardaCompanionMood.skipped,
+                          TodayDoseStatus.pending when isSnoozed =>
+                            FardaCompanionMood.snoozed,
+                          TodayDoseStatus.pending => FardaCompanionMood.waving,
+                        },
+                      ),
                     ),
-                    child: FardaCompanion(
-                      size: 104,
-                      mood: switch (status) {
-                        TodayDoseStatus.confirmed =>
-                          FardaCompanionMood.confirmed,
-                        TodayDoseStatus.skipped => FardaCompanionMood.skipped,
-                        TodayDoseStatus.pending when isSnoozed =>
-                          FardaCompanionMood.snoozed,
-                        TodayDoseStatus.pending => FardaCompanionMood.waving,
-                      },
-                    ),
-                  ),
                 ],
               ),
             ),
             const SizedBox(height: 12),
-            AnimatedSwitcher(
-              duration: switchDuration,
-              child: Text(
-                copy.statusLine,
-                key: ValueKey(copy.statusLine),
-                style: _fardaTodayText(
-                  size: 12,
-                  lineHeight: 17,
-                  color: Colors.white,
+            Semantics(
+              liveRegion: true,
+              child: AnimatedSwitcher(
+                duration: switchDuration,
+                child: Container(
+                  key: ValueKey(isSaving ? 'saving' : copy.statusLine),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: design.FardaConsumerColors.deep,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFF6684B1)),
+                  ),
+                  child: Text(
+                    isSaving ? 'Saving your choice…' : copy.statusLine,
+                    style: _fardaTodayText(
+                      size: 12,
+                      lineHeight: 17,
+                      color: Colors.white,
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -134,7 +156,7 @@ class FardaTodayRoutineCard extends StatelessWidget {
                 key: logDoseButtonKey,
                 label: 'Log my dose',
                 backgroundColor: _canvas,
-                onPressed: onOpenLog,
+                onPressed: isSaving ? null : onOpenLog,
               ),
               const SizedBox(height: 12),
               LayoutBuilder(
@@ -145,12 +167,12 @@ class FardaTodayRoutineCard extends StatelessWidget {
                   final snooze = _RoutineSecondaryAction(
                     key: snoozeButtonKey,
                     label: isSnoozed ? 'Snoozed 15 min' : 'Remind in 15 min',
-                    onPressed: isSnoozed ? null : onSnooze,
+                    onPressed: isSnoozed || isSaving ? null : onSnooze,
                   );
                   final more = _RoutineSecondaryAction(
                     key: moreOptionsButtonKey,
                     label: 'More options',
-                    onPressed: onMoreOptions,
+                    onPressed: isSaving ? null : onMoreOptions,
                   );
 
                   if (shouldStack) {
@@ -173,7 +195,7 @@ class FardaTodayRoutineCard extends StatelessWidget {
                 key: correctEntryButtonKey,
                 label: 'Correct this entry',
                 backgroundColor: _canvas,
-                onPressed: onCorrectEntry,
+                onPressed: isSaving ? null : onCorrectEntry,
               ),
           ],
         ),
@@ -194,25 +216,25 @@ class _RoutineSecondaryAction extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: 48,
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: 48),
       child: OutlinedButton(
         onPressed: onPressed,
         style: OutlinedButton.styleFrom(
           foregroundColor: Colors.white,
           disabledForegroundColor: const Color(0xFFBFCBE0),
-          side: const BorderSide(color: Color(0xFF365C99)),
+          side: const BorderSide(color: Color(0xFF6684B1)),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(14),
           ),
-          padding: const EdgeInsets.symmetric(horizontal: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
           textStyle: _fardaTodayText(
             size: 14,
             lineHeight: 19,
             weight: FontWeight.w600,
           ),
         ),
-        child: FittedBox(fit: BoxFit.scaleDown, child: Text(label)),
+        child: Text(label, textAlign: TextAlign.center),
       ),
     );
   }
@@ -228,19 +250,23 @@ class _RoutineButton extends StatelessWidget {
 
   final String label;
   final Color backgroundColor;
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed;
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: double.infinity,
-      height: 48,
+    return ConstrainedBox(
+      constraints: const BoxConstraints(
+        minWidth: double.infinity,
+        minHeight: 48,
+      ),
       child: FilledButton(
         style: FilledButton.styleFrom(
           elevation: 0,
           backgroundColor: backgroundColor,
           foregroundColor: _navy,
-          padding: const EdgeInsets.symmetric(horizontal: 14),
+          disabledBackgroundColor: const Color(0xFFDCE2EB),
+          disabledForegroundColor: _navy,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(14),
           ),
@@ -251,7 +277,7 @@ class _RoutineButton extends StatelessWidget {
           ),
         ),
         onPressed: onPressed,
-        child: FittedBox(fit: BoxFit.scaleDown, child: Text(label)),
+        child: Text(label, textAlign: TextAlign.center),
       ),
     );
   }

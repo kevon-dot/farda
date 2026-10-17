@@ -307,14 +307,19 @@ class _BrandHeader extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Semantics(
-          header: true,
-          child: Text(
-            'farda.',
-            style: _FardaCalendarType.style(
-              size: 30,
-              lineHeight: 36,
-              weight: FontWeight.w600,
+        Flexible(
+          child: Semantics(
+            header: true,
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                'farda.',
+                style: _FardaCalendarType.style(
+                  size: 30,
+                  lineHeight: 36,
+                  weight: FontWeight.w600,
+                ),
+              ),
             ),
           ),
         ),
@@ -534,27 +539,34 @@ class _WeekRail extends StatelessWidget {
       ),
     );
     return SizedBox(
-      height: 68,
+      height: math.max(68, MediaQuery.textScalerOf(context).scale(34) + 24),
       child: LayoutBuilder(
         builder: (context, constraints) {
           final gap = constraints.maxWidth >= 338 ? 4.0 : 0.0;
-          final cellWidth = (constraints.maxWidth - gap * 6) / 7;
-          return Row(
-            children: [
-              for (var i = 0; i < days.length; i++) ...[
-                if (i > 0) SizedBox(width: gap),
-                SizedBox(
-                  width: cellWidth,
-                  child: _WeekDay(
-                    date: days[i],
-                    selected: isSameCalendarDay(days[i], selectedDate),
-                    today: isSameCalendarDay(days[i], today),
-                    markers: _markersForDate(events, days[i]),
-                    onPressed: () => onDateSelected(days[i]),
+          final largeText = MediaQuery.textScalerOf(context).scale(14) > 23;
+          final cellWidth =
+              largeText
+                  ? math.max(64.0, MediaQuery.textScalerOf(context).scale(36))
+                  : (constraints.maxWidth - gap * 6) / 7;
+          return SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                for (var i = 0; i < days.length; i++) ...[
+                  if (i > 0) SizedBox(width: gap),
+                  SizedBox(
+                    width: cellWidth,
+                    child: _WeekDay(
+                      date: days[i],
+                      selected: isSameCalendarDay(days[i], selectedDate),
+                      today: isSameCalendarDay(days[i], today),
+                      markers: _markersForDate(events, days[i]),
+                      onPressed: () => onDateSelected(days[i]),
+                    ),
                   ),
-                ),
+                ],
               ],
-            ],
+            ),
           );
         },
       ),
@@ -596,13 +608,17 @@ class _WeekDay extends StatelessWidget {
             key: Key('calendar-day-${date.toIso8601String().substring(0, 10)}'),
             onTap: onPressed,
             borderRadius: BorderRadius.circular(18),
-            child: Container(
+            child: AnimatedContainer(
+              duration:
+                  MediaQuery.disableAnimationsOf(context)
+                      ? Duration.zero
+                      : const Duration(milliseconds: 180),
               constraints: const BoxConstraints(minWidth: 44, minHeight: 68),
               decoration:
                   today && !selected
                       ? BoxDecoration(
                         border: Border.all(
-                          color: _FardaCalendarColors.sand,
+                          color: _FardaCalendarColors.navy,
                           width: 2,
                         ),
                         borderRadius: BorderRadius.circular(18),
@@ -1110,14 +1126,27 @@ class _FilterChip extends StatelessWidget {
                         : FardaConsumerColors.soft,
                 borderRadius: BorderRadius.circular(16),
               ),
-              child: Text(
-                filter.label,
-                style: FardaConsumerType.label.copyWith(
-                  color:
-                      selected
-                          ? FardaConsumerColors.textInverse
-                          : FardaConsumerColors.brand,
-                ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (selected) ...[
+                    const Icon(
+                      Icons.check_rounded,
+                      size: 14,
+                      color: Colors.white,
+                    ),
+                    const SizedBox(width: 4),
+                  ],
+                  Text(
+                    filter.label,
+                    style: FardaConsumerType.label.copyWith(
+                      color:
+                          selected
+                              ? FardaConsumerColors.textInverse
+                              : FardaConsumerColors.brand,
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
