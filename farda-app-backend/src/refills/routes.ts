@@ -1,4 +1,5 @@
 import { Router } from "express";
+import logger from "jet-logger";
 import { z } from "zod";
 import env from "../common/constants/env";
 import { prisma } from "../lib/prisma";
@@ -25,6 +26,8 @@ export function createRefillRouter(
 			clientId: env.PHOTON_CLIENT_ID,
 			clientSecret: env.PHOTON_CLIENT_SECRET,
 		}),
+		undefined,
+		(event) => logger.info(JSON.stringify({ event: "refill_agent", ...event })),
 	),
 	handoff = new PharmacyHandoffService(prisma),
 ) {
