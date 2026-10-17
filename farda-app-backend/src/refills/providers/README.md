@@ -44,6 +44,33 @@ Raw order and fulfillment states are deliberately separate. A routed order or
 `SENT` fulfillment is not pharmacy acceptance. `COMPLETED` alone does not mean
 the user picked it up, and no provider event changes the user's inventory count.
 
+## Orchestration contract
+
+The API exposes connector capabilities separately from runtime availability and
+prescription eligibility. A configured connector must explicitly support
+eligibility verification and order submission before a review can be submitted.
+Status refresh also requires order lookup; uncertain submissions additionally
+require external-reference reconciliation. If a capability is absent, the API
+returns a stable reason code and directs the user to contact the pharmacy.
+
+Every order submission requires a fresh, expiring review of provider-sourced
+medication, instructions, pharmacy, delivery address, and remaining fills. The
+review is single-use. An idempotency key can replay only the same review and
+prescription; it cannot authorize a new provider call. A definite pre-dispatch
+failure permits a new review, while any uncertain outcome remains blocked and is
+reconciled without resubmission.
+
+Responses include a stable `reasonCode`, deterministic `nextStep`, a
+`manualFallback`, and a normalized `latestRequest`. Terminal requests cannot be
+refreshed. Provider reads pass through a forward-only state machine, so stale or
+unknown reads cannot erase known progress or switch a request between pickup and
+shipping paths.
+
+Runtime telemetry contains only the operation, outcome, environment, normalized
+status/reason code, and a capped duration. It never includes local or provider
+identifiers, medication details, addresses, credentials, raw errors, or response
+bodies.
+
 Validation uses mocked fetch responses only. Partner credentials, organization
 authorization, real patient mapping, sandbox contract tests, fulfillment status
 reconciliation and operational approval are required before enabling live

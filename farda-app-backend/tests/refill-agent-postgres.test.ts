@@ -34,6 +34,7 @@ describe.skipIf(!databaseUrl)('refill agent PostgreSQL reservation and constrain
     const order = (externalId: string): ProviderOrder => ({ id: `order-${externalId}`, externalId, patientId, prescriptionIds: [remoteId], pharmacyId: 'synthetic-pharmacy', orderState: 'PENDING', fulfillmentType: null, fulfillmentState: null });
     const provider = {
       configured: true, environment: 'sandbox' as const,
+      capabilities: { verifyEligibility: true, submitOrders: true, lookupOrders: true, reconcileUnknownOutcomes: true },
       verifyLink: vi.fn(async () => ({ patientId, prescriptionId: remoteId, pharmacyId: 'synthetic-pharmacy', pharmacyName: 'Synthetic pharmacy', medicationName: 'Synthetic medication', instructions: 'Synthetic label', fillsRemaining: 1, expirationDate: '2027-01-01', effectiveDate: '2026-01-01', prescriptionState: 'ACTIVE', address: { street1: 'Synthetic street', postalCode: '11111', country: 'USA', state: 'NY', city: 'Synthetic city' } })),
       submitOrder: vi.fn(async ({ externalId }: { externalId: string }) => order(externalId)),
       getOrder: vi.fn(async () => null as ProviderOrder | null), findOrder: vi.fn(async () => null as ProviderOrder | null),

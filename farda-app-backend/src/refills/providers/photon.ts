@@ -43,6 +43,10 @@ export type PhotonProviderConfig = {
 export class PhotonRefillsProvider implements RefillsProvider {
   readonly environment: ProviderEnvironment;
   readonly configured: boolean;
+  readonly capabilities = {
+    verifyEligibility: true, submitOrders: true,
+    lookupOrders: true, reconcileUnknownOutcomes: true,
+  } as const;
   private readonly config: PhotonProviderConfig;
   private readonly timeoutMs: number;
   private token?: { value: string; expiresAt: number };

@@ -8,7 +8,9 @@ function fixture() {
   const memory = memoryDb({ prescription: [{ id: 'rx', userId: 'owner', archivedAt: null, updatedAt: stamp }] });
   const input = { userId: 'owner', prescriptionId: 'rx', patientId: 'patient', providerPrescriptionId: 'remote-rx', pharmacyId: 'pharmacy', environment: 'sandbox' as const, reviewedMedicationMatch: true as const };
   const verified: VerifiedProviderLink = { patientId: 'patient', prescriptionId: 'remote-rx', pharmacyId: 'pharmacy', pharmacyName: 'Synthetic pharmacy', medicationName: 'Synthetic medication', instructions: 'Synthetic label', fillsRemaining: 1, expirationDate: '2027-01-01', effectiveDate: '2026-01-01', prescriptionState: 'ACTIVE', address: { street1: 'Synthetic street', postalCode: '11111', country: 'USA', state: 'NY', city: 'Synthetic city' } };
-  const provider = { configured: true as boolean, environment: 'sandbox' as const, verifyLink: vi.fn(async () => verified), submitOrder: vi.fn(), getOrder: vi.fn(), findOrder: vi.fn() } satisfies RefillsProvider;
+  const provider = { configured: true as boolean, environment: 'sandbox' as const,
+    capabilities: { verifyEligibility: true, submitOrders: true, lookupOrders: true, reconcileUnknownOutcomes: true },
+    verifyLink: vi.fn(async () => verified), submitOrder: vi.fn(), getOrder: vi.fn(), findOrder: vi.fn() } satisfies RefillsProvider;
   return { ...memory, input, provider };
 }
 
