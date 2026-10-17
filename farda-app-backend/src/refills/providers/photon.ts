@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { photonProviderConfigured } from '../../common/activation';
 import {
   RefillProviderError,
   type ProviderEnvironment, type ProviderLinkInput, type ProviderOrder,
@@ -59,9 +60,7 @@ export class PhotonRefillsProvider implements RefillsProvider {
   ) {
     this.config = { ...config };
     this.environment = config.environment === 'production' ? 'production' : 'sandbox';
-    this.configured = config.enabled === true &&
-      (config.environment === undefined || config.environment === 'sandbox' || config.environment === 'production') &&
-      !!config.clientId?.trim() && !!config.clientSecret?.trim() && config.clientId.trim() !== config.clientSecret.trim();
+    this.configured = photonProviderConfigured(config);
     this.timeoutMs = Number.isFinite(config.timeoutMs)
       ? Math.max(100, Math.min(config.timeoutMs!, 30000)) : 10000;
   }

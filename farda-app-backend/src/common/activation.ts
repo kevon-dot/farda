@@ -102,8 +102,25 @@ export function revenueCatActivationReady(env: RuntimeEnvironment) {
     Boolean(publicHttpsUrl(env.FARDA_PUBLIC_BASE_URL, true));
 }
 
+export type PhotonConfiguration = {
+  enabled?: boolean;
+  environment?: string;
+  clientId?: string;
+  clientSecret?: string;
+};
+
+export function photonProviderConfigured(config: PhotonConfiguration) {
+  return config.enabled === true &&
+    (config.environment === 'sandbox' || config.environment === 'production') &&
+    configured(config.clientId) && configured(config.clientSecret) &&
+    config.clientId?.trim() !== config.clientSecret?.trim();
+}
+
 export function photonActivationReady(env: RuntimeEnvironment) {
-  return (env.FARDA_REFILL_PROVIDER_ENVIRONMENT === 'sandbox' || env.FARDA_REFILL_PROVIDER_ENVIRONMENT === 'production') &&
-    configured(env.PHOTON_CLIENT_ID) && configured(env.PHOTON_CLIENT_SECRET) &&
-    env.PHOTON_CLIENT_ID?.trim() !== env.PHOTON_CLIENT_SECRET?.trim();
+  return photonProviderConfigured({
+    enabled: true,
+    environment: env.FARDA_REFILL_PROVIDER_ENVIRONMENT,
+    clientId: env.PHOTON_CLIENT_ID,
+    clientSecret: env.PHOTON_CLIENT_SECRET,
+  });
 }
