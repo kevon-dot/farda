@@ -22,11 +22,17 @@ class _CircleRepository extends ConsumerDemoRepository {
     this.name, {
     this.shared = const [],
     this.failLeave = false,
+    this.routinePermissions = _permissions,
+    this.items = const [],
+    this.invitations = const [],
   });
 
   final String name;
   final List<SharedCircle> shared;
   final bool failLeave;
+  final CirclePermissions routinePermissions;
+  final List<CircleRoutineItem> items;
+  final List<CircleInvitation> invitations;
   Completer<CircleOverview>? circleCompleter;
   int leaveCalls = 0;
   int inviteCalls = 0;
@@ -42,7 +48,7 @@ class _CircleRepository extends ConsumerDemoRepository {
       );
 
   @override
-  Future<List<CircleInvitation>> loadCircleInvitations() async => const [];
+  Future<List<CircleInvitation>> loadCircleInvitations() async => invitations;
 
   @override
   Future<List<SharedCircle>> loadSharedCircles() async => shared;
@@ -70,8 +76,8 @@ class _CircleRepository extends ConsumerDemoRepository {
     required DateTime to,
   }) async => CircleRoutine(
     owner: shared.single.owner,
-    permissions: _permissions,
-    items: const [],
+    permissions: routinePermissions,
+    items: items,
     fetchedAt: DateTime.utc(2026),
     notice: 'Shared status',
   );
@@ -186,12 +192,153 @@ void main() {
 
     await tester.pumpWidget(_screen(newRepository));
     await tester.pump();
-    await tester.tap(find.text('Create invitation'));
     await tester.pumpAndSettle();
+    expect(find.text('Create invitation'), findsNothing);
 
     expect(oldRepository.inviteCalls, 0);
     expect(newRepository.inviteCalls, 0);
   });
+
+  testWidgets(
+    'account revision dismisses invitation details and disables old-session actions',
+    (tester) async {
+      final repository = _CircleRepository('Private family');
+      await tester.pumpWidget(_screen(repository));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Invite someone'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), '+15551234567');
+      AuthStorage.sessionRevision.value++;
+      await tester.pumpAndSettle();
+      expect(find.text('+15551234567'), findsNothing);
+      expect(find.text('Create invitation'), findsNothing);
+      final invite = tester.widget<FilledButton>(
+        find.widgetWithText(FilledButton, 'Invite someone'),
+      );
+      expect(invite.onPressed, isNull);
+      expect(find.text('Back to You'), findsOneWidget);
+      expect(repository.inviteCalls, 0);
+    },
+  );
+
+  testWidgets(
+    'account revision removes nested access confirmation and management sheet',
+    (tester) async {
+      final repository = _CircleRepository('Private family');
+      await tester.pumpWidget(_screen(repository));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.byTooltip('Manage sharing'));
+      await tester.tap(find.byTooltip('Manage sharing'));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('Remove from my circle'));
+      await tester.tap(find.text('Remove from my circle'));
+      await tester.pumpAndSettle();
+      expect(find.text('Remove access?'), findsOneWidget);
+      AuthStorage.sessionRevision.value++;
+      await tester.pumpAndSettle();
+      expect(find.text('Remove access?'), findsNothing);
+      expect(find.text('Sharing with Private family'), findsNothing);
+      expect(find.text('Private family'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'shared routine hides stale reminder times and all items when sharing pauses',
+    (tester) async {
+      for (final doses in [true, false]) {
+        final repository = _CircleRepository(
+          'Family',
+          routinePermissions: CirclePermissions(
+            doseStatus: doses,
+            reminders: false,
+          ),
+          shared: [
+            SharedCircle(
+              access: _member('grant', 'Viewer'),
+              owner: const CirclePerson(id: 'owner', displayName: 'Sam'),
+            ),
+          ],
+          items: [
+            CircleRoutineItem(
+              id: 'private',
+              label: 'Private routine item',
+              scheduledFor: DateTime(2026, 10, 17, 13, 37),
+              state: CircleRoutineState.taken,
+              evidence: CircleEvidence.selfReport,
+            ),
+          ],
+        );
+        await tester.pumpWidget(_screen(repository));
+        await tester.pumpAndSettle();
+        await tester.ensureVisible(find.textContaining('Shared with me'));
+        await tester.tap(find.textContaining('Shared with me'));
+        await tester.pumpAndSettle();
+        await tester.ensureVisible(find.byTooltip('Open shared routine'));
+        await tester.tap(find.byTooltip('Open shared routine'));
+        await tester.pumpAndSettle();
+        expect(find.text('1:37 PM'), findsNothing);
+        expect(
+          find.text('Private routine item'),
+          doses ? findsOneWidget : findsNothing,
+        );
+        expect(
+          find.text('Reported taken'),
+          doses ? findsOneWidget : findsNothing,
+        );
+      }
+    },
+  );
+
+  testWidgets(
+    'acceptance reviews permissions and prevents empty or expired code submission',
+    (tester) async {
+      for (final expired in [false, true]) {
+        final repository = _CircleRepository(
+          'Family',
+          invitations: [
+            CircleInvitation(
+              id: 'invite',
+              person: const CirclePerson(id: 'owner', displayName: 'Sam'),
+              permissions: _permissions,
+              createdAt: DateTime(2000),
+              expiresAt: DateTime(expired ? 2001 : 2099),
+            ),
+          ],
+        );
+        await tester.pumpWidget(_screen(repository));
+        await tester.pumpAndSettle();
+        await tester.ensureVisible(find.textContaining('Shared with me'));
+        await tester.tap(find.textContaining('Shared with me'));
+        await tester.pumpAndSettle();
+        await tester.ensureVisible(find.text('Review'));
+        await tester.tap(find.text('Review'));
+        await tester.pumpAndSettle();
+        expect(
+          find.text(
+            'You’ll be able to view dose updates. Reminder times stay private.',
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.text(
+            'Joining does not share your own routine. You can leave anytime.',
+          ),
+          findsOneWidget,
+        );
+        final accept = find.widgetWithText(FilledButton, 'Accept invitation');
+        expect(tester.widget<FilledButton>(accept).onPressed, isNull);
+        await tester.enterText(find.byType(TextField), 'invitation-code');
+        await tester.pump();
+        expect(
+          tester.widget<FilledButton>(accept).onPressed,
+          expired ? isNull : isNotNull,
+        );
+        await tester.tap(find.text('Not now'));
+        await tester.pumpAndSettle();
+      }
+    },
+  );
 
   testWidgets('an older refresh cannot overwrite a newer refresh', (
     tester,
