@@ -15,7 +15,7 @@ if (env.NODE_ENV === 'production') {
 // join this lifecycle without adding a second process-level signal handler.
 const stopWorkers: Array<() => void | Promise<void>> = [];
 const backgroundTasks: Array<() => Promise<void>> = [
-  () => reminderService.tick(),
+  () => reminderService.tick().then(() => undefined),
   () => circleAlertService.materialize(100).then(() => undefined),
 ];
 export const httpServer = app.listen(env.PORT, env.HOST, error => {

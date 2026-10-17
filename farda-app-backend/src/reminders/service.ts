@@ -1,21 +1,64 @@
 import type { Prisma, PrismaClient } from "../../generated/prisma/client";
 import {
+	acceptProviderEvent,
 	CADENCE,
 	ConsumerError,
 	DEFAULT_PREFERENCE,
-	type Occurrence,
-	type Preference,
-	VOICE_CONSENT_TEXT,
-	VOICE_CONSENT_VERSION,
-	acceptProviderEvent,
 	inQuietHours,
 	localDay,
+	type Occurrence,
 	occurrenceBlock,
+	type Preference,
 	reminderPlan,
+	reminderWindowState,
+	VOICE_CONSENT_TEXT,
+	VOICE_CONSENT_VERSION,
 } from "./policy";
 import { type VoiceAdapter, type VoiceConfig, voiceConfig } from "./voice";
 
 export type Transaction = Prisma.TransactionClient;
+const WORKER_LIMITS = Object.freeze({
+	planOccurrences: 500,
+	dueCalls: 20,
+	staleAttempts: 20,
+	activeCalls: 20,
+	providerConcurrency: 4,
+});
+type ReminderEvent =
+	| {
+			event: "reminder_tick";
+			plannedOccurrences: number;
+			createdIntents: number;
+			expiredIntents: number;
+			recoveredReservations: number;
+			uncertainDispatches: number;
+			dueCalls: number;
+			submittedCalls: number;
+			suppressedCalls: number;
+			cancelRequests: number;
+			durationMs: number;
+	  }
+	| { event: "voice_dispatch_uncertain"; count: 1 };
+export type ReminderObserver = (event: ReminderEvent) => void;
+const defaultObserver: ReminderObserver = (event) => {
+	console.info(JSON.stringify(event));
+};
+
+async function mapWithConcurrency<T>(
+	items: T[],
+	concurrency: number,
+	work: (item: T) => Promise<void>,
+) {
+	let cursor = 0;
+	await Promise.all(
+		Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+			while (cursor < items.length) {
+				const item = items[cursor++];
+				await work(item);
+			}
+		}),
+	);
+}
 export async function serial<T>(
 	db: PrismaClient,
 	work: (tx: Transaction) => Promise<T>,
@@ -129,7 +172,10 @@ export async function cancelOccurrenceReminders(
 		data: { state: "cancelled", reason },
 	});
 	await tx.deliveryAttempt.updateMany({
-		where: { intentId: { in: intents.map((i) => i.id) }, state: "reserved" },
+		where: {
+			intentId: { in: intents.map((i) => i.id) },
+			state: { in: ["reserved", "retryable"] },
+		},
 		data: { state: "cancelled", reason },
 	});
 }
@@ -152,7 +198,11 @@ async function withdrawCalls(tx: Transaction, userId: string, now: Date) {
 		data: { state: "cancelled", reason: "consent_withdrawn" },
 	});
 	await tx.deliveryAttempt.updateMany({
-		where: { userId, channel: "voice", state: "reserved" },
+		where: {
+			userId,
+			channel: "voice",
+			state: { in: ["reserved", "retryable"] },
+		},
 		data: { state: "cancelled", reason: "consent_withdrawn" },
 	});
 }
@@ -165,7 +215,36 @@ export class ReminderService {
 		private liveActivityReadyForUser: (
 			userId: string,
 		) => Promise<boolean> = async () => false,
+		private observe: ReminderObserver = defaultObserver,
 	) {}
+	private emit(event: ReminderEvent) {
+		try {
+			this.observe(event);
+		} catch {
+			/* Observability must not change reminder delivery state. */
+		}
+	}
+
+	private async ensurePlans(
+		doses: Array<Pick<Occurrence, "id" | "userId" | "scheduledFor">>,
+	) {
+		if (!doses.length) return 0;
+		const data = doses.flatMap((dose) =>
+			reminderPlan(dose).map((plan) => ({
+				userId: dose.userId,
+				doseId: dose.id,
+				...plan,
+				...(plan.channel === "voice"
+					? { expiresAt: new Date(plan.dueAt.getTime() + 5 * 60_000) }
+					: {}),
+			})),
+		);
+		const result = await this.db.reminderIntent.createMany({
+			data,
+			skipDuplicates: true,
+		});
+		return result.count;
+	}
 
 	async preferences(userId: string) {
 		const [preference, user] = await Promise.all([
@@ -291,30 +370,13 @@ export class ReminderService {
 		if (!dose) throw new ConsumerError(404, "Routine entry not found.");
 		if (!occurrenceBlock(dose, new Date())) {
 			// Create once: cancelling or changing a preference never resurrects an old call.
-			for (const plan of reminderPlan(dose))
-				await this.db.reminderIntent.upsert({
-					where: {
-						doseId_channel_stage: {
-							doseId,
-							channel: plan.channel,
-							stage: plan.stage,
-						},
-					},
-					create: {
-						userId,
-						doseId,
-						...plan,
-						...(plan.channel === "voice"
-							? { expiresAt: new Date(plan.dueAt.getTime() + 5 * 60_000) }
-							: {}),
-					},
-					update: {},
-				});
+			await this.ensurePlans([dose]);
 		}
 		return this.occurrence(userId, doseId);
 	}
 
 	async occurrence(userId: string, doseId: string) {
+		const now = new Date();
 		const dose = (await this.db.dose.findFirst({
 			where: { id: doseId, userId },
 		})) as Occurrence | null;
@@ -330,14 +392,23 @@ export class ReminderService {
 				expiresAt: true,
 				state: true,
 				reason: true,
+				attempt: {
+					select: {
+						state: true,
+						providerStatus: true,
+						reason: true,
+						updatedAt: true,
+					},
+				},
 			},
 		});
 		const callAt = this.voice.enabled
-			? await plannedCallAt(this.db, dose, new Date(), this.config)
+			? await plannedCallAt(this.db, dose, now, this.config)
 			: null;
 		return {
 			occurrenceId: dose.id,
 			scheduledFor: dose.scheduledFor,
+			reminderState: reminderWindowState(dose, now),
 			status: dose.status || (dose.takenAt ? "taken" : "unconfirmed"),
 			takenAt: dose.takenAt,
 			snoozedUntil: dose.snoozedUntil,
@@ -382,7 +453,8 @@ export class ReminderService {
 			if (
 				until.getTime() >
 					dose.scheduledFor.getTime() + CADENCE.windowMinutes * 60_000 ||
-				Date.now() < dose.scheduledFor.getTime() - 10 * 60_000
+				Date.now() <
+					dose.scheduledFor.getTime() - CADENCE.beforeMinutes * 60_000
 			)
 				throw new ConsumerError(
 					409,
@@ -474,7 +546,10 @@ export class ReminderService {
 			});
 			if (!intent || intent.state !== "pending") return null;
 			await lock(tx, `reminder:${intent.userId}`);
-			if (await tx.deliveryAttempt.findUnique({ where: { intentId } }))
+			const existing = await tx.deliveryAttempt.findUnique({
+				where: { intentId },
+			});
+			if (existing && (existing.state !== "retryable" || existing.startedAt))
 				return null;
 			const eligible = await this.eligibility(tx, intentId, now);
 			if ("reason" in eligible) {
@@ -484,6 +559,20 @@ export class ReminderService {
 						data: { state: "cancelled", reason: eligible.reason },
 					});
 				return null;
+			}
+			if (existing) {
+				await tx.reminderIntent.update({
+					where: { id: intentId },
+					data: { state: "reserved", reason: null },
+				});
+				return tx.deliveryAttempt.update({
+					where: { id: existing.id },
+					data: {
+						state: "reserved",
+						reason: null,
+						phoneNumber: eligible.user.phoneNumber,
+					},
+				});
 			}
 			const recent = await tx.deliveryAttempt.findMany({
 				where: {
@@ -529,6 +618,7 @@ export class ReminderService {
 		});
 		if (!attempt) return { state: "suppressed" };
 		const ready = await serial(this.db, async (tx) => {
+			await lock(tx, "voice-budget");
 			await lock(tx, `reminder:${attempt.userId}`);
 			const fresh = await tx.deliveryAttempt.findUnique({
 				where: { id: attempt.id },
@@ -589,6 +679,7 @@ export class ReminderService {
 				where: { id: attempt.id, state: "dispatching" },
 				data: { state: "uncertain", reason: "provider_result_unknown" },
 			});
+			this.emit({ event: "voice_dispatch_uncertain", count: 1 });
 			return { state: "uncertain", attemptId: attempt.id };
 		}
 	}
@@ -651,34 +742,97 @@ export class ReminderService {
 	}
 
 	async tick(now = new Date()) {
+		const startedAt = Date.now();
 		const doses = await this.db.dose.findMany({
 			where: {
 				status: "unconfirmed",
 				takenAt: null,
 				snoozedUntil: null,
 				canceledAt: null,
+				prescription: { archivedAt: null },
 				scheduledFor: {
 					gte: new Date(now.getTime() - 60 * 60_000),
 					lte: new Date(now.getTime() + 12 * 60 * 60_000),
 				},
+				OR: [
+					{
+						reminderIntents: {
+							none: { channel: "live_activity", stage: "before" },
+						},
+					},
+					{
+						reminderIntents: {
+							none: { channel: "live_activity", stage: "due" },
+						},
+					},
+					{
+						reminderIntents: {
+							none: { channel: "voice", stage: "follow_up" },
+						},
+					},
+				],
 			} as Prisma.DoseWhereInput,
-			take: 1000,
-			orderBy: { scheduledFor: "asc" },
+			select: { id: true, userId: true, scheduledFor: true },
+			take: WORKER_LIMITS.planOccurrences,
+			orderBy: [{ scheduledFor: "asc" }, { id: "asc" }],
 		});
-		for (const dose of doses)
-			if (!occurrenceBlock(dose as Occurrence, now))
-				await this.plan(dose.userId, dose.id);
-		await this.db.reminderIntent.updateMany({
+		const createdIntents = await this.ensurePlans(doses);
+		const expired = await this.db.reminderIntent.updateMany({
 			where: { state: "pending", expiresAt: { lte: now } },
 			data: { state: "expired", reason: "window_expired" },
 		});
-		// A process death after reservation is not a license to place a duplicate.
-		await this.db.deliveryAttempt.updateMany({
-			where: {
-				state: { in: ["reserved", "dispatching"] },
-				updatedAt: { lt: new Date(now.getTime() - 2 * 60_000) },
-			},
-			data: { state: "uncertain", reason: "worker_interrupted" },
+		const recovered = await serial(this.db, async (tx) => {
+			await lock(tx, "voice-budget");
+			const stale = await tx.deliveryAttempt.findMany({
+				where: {
+					state: { in: ["reserved", "dispatching"] },
+					updatedAt: { lt: new Date(now.getTime() - 2 * 60_000) },
+				},
+				select: { id: true, intentId: true, state: true, startedAt: true },
+				take: WORKER_LIMITS.staleAttempts,
+				orderBy: { updatedAt: "asc" },
+			});
+			const retryable = stale.filter(
+				(attempt) => attempt.state === "reserved" && !attempt.startedAt,
+			);
+			const uncertain = stale.filter((attempt) => !retryable.includes(attempt));
+			if (retryable.length) {
+				await tx.deliveryAttempt.updateMany({
+					where: {
+						id: { in: retryable.map((attempt) => attempt.id) },
+						state: "reserved",
+						startedAt: null,
+					},
+					data: {
+						state: "retryable",
+						reason: "worker_interrupted_before_dispatch",
+					},
+				});
+				await tx.reminderIntent.updateMany({
+					where: {
+						id: { in: retryable.map((attempt) => attempt.intentId) },
+						state: "reserved",
+					},
+					data: { state: "pending", reason: null },
+				});
+			}
+			if (uncertain.length) {
+				await tx.deliveryAttempt.updateMany({
+					where: {
+						id: { in: uncertain.map((attempt) => attempt.id) },
+						state: { in: ["reserved", "dispatching"] },
+					},
+					data: { state: "uncertain", reason: "worker_interrupted" },
+				});
+				await tx.reminderIntent.updateMany({
+					where: {
+						id: { in: uncertain.map((attempt) => attempt.intentId) },
+						state: "reserved",
+					},
+					data: { state: "dispatched" },
+				});
+			}
+			return { retryable: retryable.length, uncertain: uncertain.length };
 		});
 		const due = await this.db.reminderIntent.findMany({
 			where: {
@@ -687,10 +841,21 @@ export class ReminderService {
 				dueAt: { lte: now },
 				expiresAt: { gt: now },
 			},
-			take: 100,
+			take: WORKER_LIMITS.dueCalls,
 			orderBy: { dueAt: "asc" },
 		});
-		for (const intent of due) await this.dispatch(intent.id, now);
+		let submittedCalls = 0,
+			suppressedCalls = 0;
+		await mapWithConcurrency(
+			due,
+			WORKER_LIMITS.providerConcurrency,
+			async (intent) => {
+				const result = await this.dispatch(intent.id, now);
+				if (result.state === "submitted") submittedCalls++;
+				else suppressedCalls++;
+			},
+		);
+		let cancelRequests = 0;
 		if (this.voice.enabled) {
 			const active = await this.db.deliveryAttempt.findMany({
 				where: {
@@ -706,25 +871,54 @@ export class ReminderService {
 						},
 					],
 				},
-				take: 100,
+				take: WORKER_LIMITS.activeCalls,
+				orderBy: { createdAt: "asc" },
 			});
-			for (const attempt of active) {
-				const eligible = await serial(this.db, (tx) =>
-					this.eligibility(tx, attempt.intentId, now),
-				);
-				if ("reason" in eligible)
-					try {
-						await this.voice.cancel(attempt.providerId!);
-					} catch {
-						/* retry next tick, no sensitive payload logging */
-					}
-			}
+			await mapWithConcurrency(
+				active,
+				WORKER_LIMITS.providerConcurrency,
+				async (attempt) => {
+					const eligible = await serial(this.db, (tx) =>
+						this.eligibility(tx, attempt.intentId, now),
+					);
+					if ("reason" in eligible)
+						try {
+							await this.voice.cancel(attempt.providerId!);
+							cancelRequests++;
+						} catch {
+							/* retry next tick, no sensitive payload logging */
+						}
+				},
+			);
 		}
+		const event: ReminderEvent = {
+			event: "reminder_tick",
+			plannedOccurrences: doses.length,
+			createdIntents,
+			expiredIntents: expired.count,
+			recoveredReservations: recovered.retryable,
+			uncertainDispatches: recovered.uncertain,
+			dueCalls: due.length,
+			submittedCalls,
+			suppressedCalls,
+			cancelRequests,
+			durationMs: Date.now() - startedAt,
+		};
+		if (
+			event.plannedOccurrences ||
+			event.expiredIntents ||
+			event.recoveredReservations ||
+			event.uncertainDispatches ||
+			event.dueCalls ||
+			event.cancelRequests
+		)
+			this.emit(event);
+		return event;
 	}
 }
 
 export function startReminderWorker(
-	service: Pick<ReminderService, "tick">,
+	service: { tick(): Promise<unknown> },
 	enabled = process.env.FARDA_REMINDER_WORKER_ENABLED === "true",
 ) {
 	if (!enabled) return async () => {};
@@ -733,8 +927,9 @@ export function startReminderWorker(
 		if (currentTick) return;
 		currentTick = service
 			.tick()
+			.then(() => undefined)
 			.catch(() => {
-				console.error("reminder_worker_failed");
+				console.error(JSON.stringify({ event: "reminder_worker_failed" }));
 			})
 			.finally(() => {
 				currentTick = null;
