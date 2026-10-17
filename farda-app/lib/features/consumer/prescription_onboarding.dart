@@ -42,6 +42,19 @@ class _PrescriptionOnboardingState extends State<PrescriptionOnboarding> {
   bool _saving = false;
   bool _scanning = false;
   bool _scanned = false;
+  bool _sessionEnded = false;
+  int _scanGeneration = 0;
+  String? get _scanNotice {
+    if (!_scanned) return null;
+    final missing = <String>[
+      if (_name.text.trim().isEmpty) 'medication name and strength',
+      if (_directions.text.trim().isEmpty) 'complete directions',
+    ];
+    return missing.isEmpty
+        ? 'Scan added. Check every field against your label; scans can miss or misread text.'
+        : 'Still needed: ${missing.join(' and ')}. Copy this from your label, scan another section, or ask your pharmacy if it is unclear.';
+  }
+
   String? _error;
   String? _signature;
   String _requestId = _newRequestId();
@@ -52,10 +65,28 @@ class _PrescriptionOnboardingState extends State<PrescriptionOnboarding> {
   void initState() {
     super.initState();
     _start = ConsumerController.day(widget.controller.clock());
+    _sessionEnded = widget.controller.sessionExpired;
+    widget.controller.addListener(_checkSession);
+  }
+
+  void _checkSession() {
+    if (!mounted || _sessionEnded || !widget.controller.sessionExpired) return;
+    ++_scanGeneration;
+    for (final field in [_name, _directions, _pharmacy, _rx, _days]) {
+      field.clear();
+    }
+    setState(() {
+      _sessionEnded = true;
+      _times.clear();
+      _confirmed = false;
+      _scanned = false;
+    });
   }
 
   @override
   void dispose() {
+    ++_scanGeneration;
+    widget.controller.removeListener(_checkSession);
     for (final field in [_name, _directions, _pharmacy, _rx, _days]) {
       field.dispose();
     }
@@ -74,6 +105,8 @@ class _PrescriptionOnboardingState extends State<PrescriptionOnboarding> {
   }
 
   Future<void> _scan() async {
+    if (_scanning || _sessionEnded) return;
+    final generation = ++_scanGeneration;
     setState(() => _scanning = true);
     try {
       final draft =
@@ -86,7 +119,12 @@ class _PrescriptionOnboardingState extends State<PrescriptionOnboarding> {
                       ),
                 ),
               ));
-      if (!mounted || draft == null) return;
+      if (!mounted ||
+          _sessionEnded ||
+          generation != _scanGeneration ||
+          draft == null) {
+        return;
+      }
       // A rescan may fill blanks, but must never replace the user's corrections.
       void fill(TextEditingController field, String? candidate) {
         if (field.text.trim().isEmpty && candidate != null) {
@@ -101,7 +139,7 @@ class _PrescriptionOnboardingState extends State<PrescriptionOnboarding> {
       _scanned = !draft.manualEntry;
       _go(_step == 0 ? 1 : _step);
     } catch (_) {
-      if (mounted) {
+      if (mounted && !_sessionEnded && generation == _scanGeneration) {
         setState(
           () =>
               _error =
@@ -109,7 +147,9 @@ class _PrescriptionOnboardingState extends State<PrescriptionOnboarding> {
         );
       }
     } finally {
-      if (mounted) setState(() => _scanning = false);
+      if (mounted && generation == _scanGeneration) {
+        setState(() => _scanning = false);
+      }
     }
   }
 
@@ -167,7 +207,7 @@ class _PrescriptionOnboardingState extends State<PrescriptionOnboarding> {
   }
 
   Future<void> _save() async {
-    if (_saving || !_confirmed || _daily == null) return;
+    if (_saving || _sessionEnded || !_confirmed || _daily == null) return;
     final fields = _draft.toJson()..remove('clientRequestId');
     final signature = jsonEncode(fields);
     if (_signature != signature) {
@@ -186,7 +226,7 @@ class _PrescriptionOnboardingState extends State<PrescriptionOnboarding> {
     final error = await widget.controller.mutate(
       () => widget.controller.repository.savePrescription(draft),
     );
-    if (!mounted) return;
+    if (!mounted || _sessionEnded) return;
     setState(() {
       _saving = false;
       _error = error;
@@ -200,7 +240,7 @@ class _PrescriptionOnboardingState extends State<PrescriptionOnboarding> {
       initialTime:
           index == null ? const TimeOfDay(hour: 9, minute: 0) : _times[index],
     );
-    if (result != null && mounted) {
+    if (result != null && mounted && !_sessionEnded) {
       setState(() {
         if (index == null) {
           _times.add(result);
@@ -225,7 +265,9 @@ class _PrescriptionOnboardingState extends State<PrescriptionOnboarding> {
     minLines: lines,
     maxLines: lines == 1 ? 3 : 10,
     textCapitalization: TextCapitalization.sentences,
-    onChanged: (_) => _confirmed = false,
+    autocorrect: false,
+    enableSuggestions: false,
+    onChanged: (_) => setState(() => _confirmed = false),
     decoration: InputDecoration(
       labelText: label,
       alignLabelWithHint: true,
@@ -360,7 +402,7 @@ class _PrescriptionOnboardingState extends State<PrescriptionOnboarding> {
             style: consumerText(14, color: ConsumerPalette.muted),
           ),
           TextButton.icon(
-            onPressed: _scan,
+            onPressed: _scanning ? null : _scan,
             icon: const Icon(Icons.document_scanner_outlined),
             label: const Text('Scan another section'),
           ),
@@ -383,7 +425,7 @@ class _PrescriptionOnboardingState extends State<PrescriptionOnboarding> {
             'Include text that continues around the bottle. If anything is unclear, check with your pharmacy; Farda will not fill in missing instructions.',
           ),
           TextButton.icon(
-            onPressed: _scan,
+            onPressed: _scanning ? null : _scan,
             icon: const Icon(Icons.document_scanner_outlined),
             label: const Text('Scan another section'),
           ),
@@ -499,7 +541,9 @@ class _PrescriptionOnboardingState extends State<PrescriptionOnboarding> {
                   firstDate: today,
                   lastDate: DateTime(today.year + 1, today.month, today.day),
                 );
-                if (picked != null && mounted) setState(() => _start = picked);
+                if (picked != null && mounted && !_sessionEnded) {
+                  setState(() => _start = picked);
+                }
               },
               icon: const Icon(Icons.calendar_today_outlined),
               label: Text('Starts ${DateFormat.yMMMd().format(_start)}'),
@@ -626,6 +670,35 @@ class _PrescriptionOnboardingState extends State<PrescriptionOnboarding> {
       'Compare everything with your label.',
       'One less thing to keep in your head.',
     ];
+    if (_sessionEnded) {
+      return Theme(
+        data: ConsumerPalette.theme,
+        child: Scaffold(
+          appBar: AppBar(title: const Text('Session ended')),
+          body: SafeArea(
+            child: ListView(
+              padding: const EdgeInsets.all(24),
+              children: [
+                Text(
+                  'Sign in again to continue',
+                  style: consumerText(28, weight: FontWeight.w600),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Your session ended. This unsaved draft has been cleared.',
+                  style: consumerText(16),
+                ),
+                const SizedBox(height: 24),
+                _primary(
+                  'Close setup',
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
     return Theme(
       data: ConsumerPalette.theme,
       child: PopScope(
@@ -714,6 +787,14 @@ class _PrescriptionOnboardingState extends State<PrescriptionOnboarding> {
                               ),
                             ),
                             const SizedBox(height: 24),
+                            if (_scanNotice != null &&
+                                (_step == 1 || _step == 2)) ...[
+                              Semantics(
+                                liveRegion: true,
+                                child: ConsumerNotice(_scanNotice!),
+                              ),
+                              const SizedBox(height: 16),
+                            ],
                             ..._body(),
                             if (_error != null)
                               Padding(

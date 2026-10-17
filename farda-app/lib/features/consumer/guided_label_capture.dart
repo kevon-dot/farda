@@ -36,14 +36,45 @@ class _GuidedLabelCaptureScreenState extends State<GuidedLabelCaptureScreen> {
   bool _reading = false;
   String? _error;
   int _generation = 0;
+  bool _sessionEnded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _sessionEnded = widget.controller.sessionExpired;
+    widget.controller.addListener(_checkSession);
+  }
+
+  void _clearPhotos() {
+    for (final photo in _photos) {
+      unawaited(MemoryImage(photo.bytes).evict());
+    }
+    _photos.clear();
+    _covered = false;
+  }
+
+  void _checkSession() {
+    if (!mounted || _sessionEnded || !widget.controller.sessionExpired) return;
+    ++_generation;
+    setState(() {
+      _sessionEnded = true;
+      _clearPhotos();
+      _busy = false;
+      _reading = false;
+    });
+  }
 
   void _manual() {
+    if (_sessionEnded) return;
     ++_generation;
     Navigator.pop(context, const LabelScanDraft(manualEntry: true));
   }
 
   Future<void> _add({bool gallery = false, int? replace}) async {
-    if (_busy || (replace == null && _photos.length >= 4)) return;
+    if (_busy || _sessionEnded || (replace == null && _photos.length >= 4)) {
+      return;
+    }
+    final generation = ++_generation;
     setState(() {
       _busy = true;
       _error = null;
@@ -78,7 +109,12 @@ class _GuidedLabelCaptureScreenState extends State<GuidedLabelCaptureScreen> {
         }
         photo = result?.photo;
       }
-      if (!mounted || photo == null) return;
+      if (!mounted ||
+          _sessionEnded ||
+          generation != _generation ||
+          photo == null) {
+        return;
+      }
       if (photo.validationError != null) {
         setState(() => _error = photo!.validationError);
         return;
@@ -93,7 +129,7 @@ class _GuidedLabelCaptureScreenState extends State<GuidedLabelCaptureScreen> {
         _covered = false;
       });
     } catch (_) {
-      if (mounted) {
+      if (mounted && generation == _generation) {
         setState(
           () =>
               _error =
@@ -101,12 +137,12 @@ class _GuidedLabelCaptureScreenState extends State<GuidedLabelCaptureScreen> {
         );
       }
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted && generation == _generation) setState(() => _busy = false);
     }
   }
 
   Future<void> _read() async {
-    if (_busy || !_covered || _photos.isEmpty) return;
+    if (_busy || _sessionEnded || !_covered || _photos.isEmpty) return;
     final repository = widget.controller.repository;
     if (repository is! LabelScanRepository) {
       setState(
@@ -135,11 +171,8 @@ class _GuidedLabelCaptureScreenState extends State<GuidedLabelCaptureScreen> {
     } on ConsumerRepositoryException catch (e) {
       if (!mounted || generation != _generation) return;
       if (e.sessionExpired) {
-        for (final photo in _photos) {
-          unawaited(MemoryImage(photo.bytes).evict());
-        }
-        _photos.clear();
-        _covered = false;
+        _sessionEnded = true;
+        _clearPhotos();
         // Clear the parent account view through its existing authenticated load.
         unawaited(widget.controller.load());
       }
@@ -165,10 +198,8 @@ class _GuidedLabelCaptureScreenState extends State<GuidedLabelCaptureScreen> {
   @override
   void dispose() {
     ++_generation;
-    for (final photo in _photos) {
-      unawaited(MemoryImage(photo.bytes).evict());
-    }
-    _photos.clear();
+    widget.controller.removeListener(_checkSession);
+    _clearPhotos();
     super.dispose();
   }
 
@@ -181,159 +212,194 @@ class _GuidedLabelCaptureScreenState extends State<GuidedLabelCaptureScreen> {
         backgroundColor: FardaConsumerColors.canvas,
       ),
       body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(22, 12, 22, 24),
-          children: [
-            Text(
-              _photos.isEmpty
-                  ? 'Every word,\nin view.'
-                  : 'Have we got\nthe whole label?',
-              style: FardaConsumerType.display,
-            ),
-            const SizedBox(height: 12),
-            Text(
-              _photos.isEmpty
-                  ? 'One label at a time. Use up to four photos for long or curved labels.'
-                  : 'Zoom in to check the small print. Add another view if any text is missing.',
-              style: FardaConsumerType.body,
-            ),
-            const SizedBox(height: 20),
-            if (_photos.isEmpty) ...[
-              Container(
-                padding: const EdgeInsets.all(22),
-                decoration: BoxDecoration(
-                  color: FardaConsumerColors.brand,
-                  borderRadius: BorderRadius.circular(26),
-                ),
-                child: Column(
+        child:
+            _sessionEnded
+                ? ListView(
+                  padding: const EdgeInsets.all(24),
                   children: [
-                    const Icon(
-                      Icons.document_scanner_outlined,
-                      size: 64,
-                      color: FardaConsumerColors.mint,
-                    ),
-                    const SizedBox(height: 18),
                     const Text(
-                      'Start with the name + directions',
-                      style: TextStyle(
-                        fontFamily: 'Outfit',
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
-                      ),
+                      'Sign in again to continue',
+                      style: FardaConsumerType.heading,
+                    ),
+                    const SizedBox(height: 12),
+                    const Text(
+                      'Your session ended. The photos in this capture have been cleared.',
+                      style: FardaConsumerType.body,
+                    ),
+                    const SizedBox(height: 20),
+                    FilledButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('Close capture'),
+                    ),
+                  ],
+                )
+                : ListView(
+                  padding: const EdgeInsets.fromLTRB(22, 12, 22, 24),
+                  children: [
+                    Text(
+                      _photos.isEmpty
+                          ? 'Every word,\nin view.'
+                          : 'Have we got\nthe whole label?',
+                      style: FardaConsumerType.display,
                     ),
                     const SizedBox(height: 12),
                     Text(
-                      'Then turn the bottle slowly, or move along the label. Repeat a few lines in each photo.',
-                      style: FardaConsumerType.body.copyWith(
-                        color: Colors.white,
+                      _photos.isEmpty
+                          ? 'One label at a time. Use up to four photos for long or curved labels.'
+                          : 'Zoom in to check the small print. Add another view if any text is missing.',
+                      style: FardaConsumerType.body,
+                    ),
+                    const SizedBox(height: 12),
+                    const Text(
+                      'Reading photos needs a connection. You can enter details manually now; saving needs a connection too.',
+                      style: FardaConsumerType.caption,
+                    ),
+                    const SizedBox(height: 20),
+                    if (_photos.isEmpty) ...[
+                      Container(
+                        padding: const EdgeInsets.all(22),
+                        decoration: BoxDecoration(
+                          color: FardaConsumerColors.brand,
+                          borderRadius: BorderRadius.circular(26),
+                        ),
+                        child: Column(
+                          children: [
+                            const Icon(
+                              Icons.document_scanner_outlined,
+                              size: 64,
+                              color: FardaConsumerColors.mint,
+                            ),
+                            const SizedBox(height: 18),
+                            const Text(
+                              'Start with the name + directions',
+                              style: TextStyle(
+                                fontFamily: 'Outfit',
+                                fontSize: 18,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.white,
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              'Then turn the bottle slowly, or move along the label. Repeat a few lines in each photo.',
+                              style: FardaConsumerType.body.copyWith(
+                                color: Colors.white,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
+                    ] else ...[
+                      for (var i = 0; i < _photos.length; i++) ...[
+                        _PhotoCard(
+                          photo: _photos[i],
+                          number: i + 1,
+                          busy: _busy,
+                          onRetake: () => _add(replace: i),
+                          onRemove:
+                              () => setState(() {
+                                unawaited(
+                                  MemoryImage(_photos[i].bytes).evict(),
+                                );
+                                _photos.removeAt(i);
+                                _covered = false;
+                                _error = null;
+                              }),
+                        ),
+                        const SizedBox(height: 12),
+                      ],
+                      Text(
+                        '${_photos.length} of 4 photos · same label',
+                        style: FardaConsumerType.caption,
+                      ),
+                    ],
+                    const SizedBox(height: 16),
+                    if (_photos.length < 4) ...[
+                      FilledButton.icon(
+                        onPressed: _busy ? null : () => _add(),
+                        icon: const Icon(Icons.camera_alt_outlined),
+                        label: Text(
+                          _photos.isEmpty
+                              ? 'Take first photo'
+                              : 'Add another view',
+                        ),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: _busy ? null : () => _add(gallery: true),
+                        icon: const Icon(Icons.photo_library_outlined),
+                        label: const Text('Choose a photo'),
+                      ),
+                    ] else
+                      const Text(
+                        'Still missing text? Retake a view with more overlap, or enter the details manually.',
+                        style: FardaConsumerType.body,
+                      ),
+                    if (_photos.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      CheckboxListTile(
+                        contentPadding: EdgeInsets.zero,
+                        controlAffinity: ListTileControlAffinity.leading,
+                        value: _covered,
+                        title: const Text(
+                          'I can read all the label text across these photos.',
+                          style: FardaConsumerType.body,
+                        ),
+                        subtitle: const Text(
+                          'Check edges, directions and the text around the bottle.',
+                          style: FardaConsumerType.caption,
+                        ),
+                        onChanged:
+                            _busy
+                                ? null
+                                : (value) =>
+                                    setState(() => _covered = value ?? false),
+                      ),
+                      const SizedBox(height: 8),
+                      FilledButton(
+                        onPressed: _busy || !_covered ? null : _read,
+                        style: FilledButton.styleFrom(
+                          backgroundColor: FardaConsumerColors.mint,
+                          foregroundColor: FardaConsumerColors.brand,
+                        ),
+                        child: Text(
+                          _reading
+                              ? 'Reading your label…'
+                              : 'Review label details',
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'This sends these photos for AI text extraction. You will check the details before anything is saved.',
+                        style: FardaConsumerType.caption,
+                      ),
+                    ],
+                    if (_reading) ...[
+                      const SizedBox(height: 12),
+                      const LinearProgressIndicator(),
+                    ],
+                    if (_error != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 12),
+                        child: Semantics(
+                          liveRegion: true,
+                          child: Text(
+                            _error!,
+                            style: FardaConsumerType.body.copyWith(
+                              color: FardaConsumerColors.textWarm,
+                            ),
+                          ),
+                        ),
+                      ),
+                    const SizedBox(height: 12),
+                    TextButton(
+                      onPressed: _manual,
+                      style: TextButton.styleFrom(
+                        minimumSize: const Size(0, 48),
+                      ),
+                      child: const Text('Enter manually instead'),
                     ),
                   ],
                 ),
-              ),
-            ] else ...[
-              for (var i = 0; i < _photos.length; i++) ...[
-                _PhotoCard(
-                  photo: _photos[i],
-                  number: i + 1,
-                  busy: _busy,
-                  onRetake: () => _add(replace: i),
-                  onRemove:
-                      () => setState(() {
-                        unawaited(MemoryImage(_photos[i].bytes).evict());
-                        _photos.removeAt(i);
-                        _covered = false;
-                        _error = null;
-                      }),
-                ),
-                const SizedBox(height: 12),
-              ],
-              Text(
-                '${_photos.length} of 4 photos · same label',
-                style: FardaConsumerType.caption,
-              ),
-            ],
-            const SizedBox(height: 16),
-            if (_photos.length < 4) ...[
-              FilledButton.icon(
-                onPressed: _busy ? null : () => _add(),
-                icon: const Icon(Icons.camera_alt_outlined),
-                label: Text(
-                  _photos.isEmpty ? 'Take first photo' : 'Add another view',
-                ),
-              ),
-              OutlinedButton.icon(
-                onPressed: _busy ? null : () => _add(gallery: true),
-                icon: const Icon(Icons.photo_library_outlined),
-                label: const Text('Choose a photo'),
-              ),
-            ] else
-              const Text(
-                'Still missing text? Retake a view with more overlap, or enter the details manually.',
-                style: FardaConsumerType.body,
-              ),
-            if (_photos.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              CheckboxListTile(
-                contentPadding: EdgeInsets.zero,
-                controlAffinity: ListTileControlAffinity.leading,
-                value: _covered,
-                title: const Text(
-                  'I can read all the label text across these photos.',
-                  style: FardaConsumerType.body,
-                ),
-                subtitle: const Text(
-                  'Check edges, directions and the text around the bottle.',
-                  style: FardaConsumerType.caption,
-                ),
-                onChanged:
-                    _busy
-                        ? null
-                        : (value) => setState(() => _covered = value ?? false),
-              ),
-              const SizedBox(height: 8),
-              FilledButton(
-                onPressed: _busy || !_covered ? null : _read,
-                style: FilledButton.styleFrom(
-                  backgroundColor: FardaConsumerColors.mint,
-                  foregroundColor: FardaConsumerColors.brand,
-                ),
-                child: Text(
-                  _reading ? 'Reading your label…' : 'Review label details',
-                ),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'This sends these photos for AI text extraction. You will check the details before anything is saved.',
-                style: FardaConsumerType.caption,
-              ),
-            ],
-            if (_reading) ...[
-              const SizedBox(height: 12),
-              const LinearProgressIndicator(),
-            ],
-            if (_error != null)
-              Padding(
-                padding: const EdgeInsets.only(top: 12),
-                child: Semantics(
-                  liveRegion: true,
-                  child: Text(
-                    _error!,
-                    style: FardaConsumerType.body.copyWith(
-                      color: FardaConsumerColors.textWarm,
-                    ),
-                  ),
-                ),
-              ),
-            const SizedBox(height: 12),
-            TextButton(
-              onPressed: _manual,
-              style: TextButton.styleFrom(minimumSize: const Size(0, 48)),
-              child: const Text('Enter manually instead'),
-            ),
-          ],
-        ),
       ),
     ),
   );
@@ -675,12 +741,17 @@ class _LabelViewfinderScreenState extends State<LabelViewfinderScreen>
             ),
             const SizedBox(height: 12),
             const Text(
-              'Keep text sharp, avoid glare, and leave space around the edges.',
+              'Small print hard to read?',
               style: FardaConsumerType.bodyStrong,
             ),
             const SizedBox(height: 6),
             const Text(
-              'The outline is a guide. We keep the whole photo.',
+              'Blur: steady your phone and pause before capturing.\nGlare: tilt the bottle away from the light.\nToo close: move back until the letters look sharp.',
+              style: FardaConsumerType.caption,
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'The outline is a guide, not a quality check. We keep the whole photo; you will check readability next.',
               style: FardaConsumerType.caption,
             ),
             const SizedBox(height: 20),

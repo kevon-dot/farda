@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:farda/features/consumer/consumer_controller.dart';
 import 'package:farda/features/consumer/data/consumer_demo_repository.dart';
 import 'package:farda/features/consumer/data/consumer_models.dart';
@@ -21,6 +22,7 @@ Future<void> mount(
   WidgetTester tester,
   RecordingRepository repository, {
   Future<LabelScanDraft?> Function(BuildContext)? scan,
+  ValueChanged<ConsumerController>? onController,
 }) async {
   tester.view.devicePixelRatio = 1;
   tester.view.physicalSize = const Size(320, 740);
@@ -28,6 +30,7 @@ Future<void> mount(
   addTearDown(tester.view.resetDevicePixelRatio);
   final controller = ConsumerController(repository);
   addTearDown(controller.dispose);
+  onController?.call(controller);
   await tester.pumpWidget(
     MaterialApp(
       builder:
@@ -130,6 +133,86 @@ void main() {
       tester.widget<TextField>(find.byType(TextField).first).controller!.text,
       'OCR directions',
     );
+    expect(repository.saves, isEmpty);
+  });
+
+  testWidgets('missing scan directions stay blank until explicitly entered', (
+    tester,
+  ) async {
+    final repository = RecordingRepository();
+    await mount(
+      tester,
+      repository,
+      scan: (_) async => const LabelScanDraft(medicationName: 'Printed name'),
+    );
+    await tap(tester, 'Scan label');
+    expect(
+      find.textContaining('Still needed: complete directions.'),
+      findsOneWidget,
+    );
+    await tap(tester, 'Continue');
+    final field = tester.widget<TextField>(find.byType(TextField).first);
+    expect(field.controller!.text, isEmpty);
+    expect(field.autocorrect, isFalse);
+    expect(field.enableSuggestions, isFalse);
+    await tap(tester, 'Continue');
+    expect(
+      find.textContaining('Copy the complete directions.'),
+      findsOneWidget,
+    );
+    expect(repository.saves, isEmpty);
+    await tester.enterText(find.byType(TextField).first, 'Exactly as printed');
+    await tester.pump();
+    expect(find.textContaining('Still needed:'), findsNothing);
+  });
+
+  testWidgets('session expiry clears draft and ignores a pending scan', (
+    tester,
+  ) async {
+    final repository = RecordingRepository();
+    final pending = Completer<LabelScanDraft?>();
+    late ConsumerController controller;
+    var scans = 0;
+    await mount(
+      tester,
+      repository,
+      onController: (value) => controller = value,
+      scan: (_) {
+        scans++;
+        return pending.future;
+      },
+    );
+    await tap(tester, 'Enter manually');
+    await tester.enterText(find.byType(TextField).first, 'Private medication');
+    await tester.ensureVisible(find.text('Scan another section'));
+    await tester.tap(find.text('Scan another section'));
+    await tester.pump();
+    expect(
+      tester
+          .widget<TextButton>(
+            find.widgetWithText(TextButton, 'Scan another section'),
+          )
+          .onPressed,
+      isNull,
+    );
+    await controller.mutate(() async {
+      throw const ConsumerRepositoryException(
+        'Session ended',
+        sessionExpired: true,
+      );
+    });
+    await tester.pumpAndSettle();
+    expect(find.text('Sign in again to continue'), findsOneWidget);
+    expect(find.byType(TextField), findsNothing);
+    pending.complete(
+      const LabelScanDraft(
+        medicationName: 'Late result',
+        directions: 'Unconfirmed',
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Late result'), findsNothing);
+    expect(scans, 1);
     expect(repository.saves, isEmpty);
   });
 
