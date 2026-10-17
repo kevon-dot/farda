@@ -7,9 +7,12 @@ import 'package:farda/features/consumer/data/circle_models.dart';
 
 import '../../design_system/farda_consumer_tokens.dart' as design;
 import 'you_widgets.dart';
+import 'circle_routine_summary.dart';
 import 'circle_alert_panel.dart';
+
 import 'package:farda/features/consumer/data/circle_alerts.dart';
 import 'package:farda/features/consumer/data/billing.dart';
+
 import '../membership/farda_membership_screen.dart';
 
 /// Family sharing uses canonical account records, independently of a vial.
@@ -38,7 +41,7 @@ class _FardaCircleScreenState extends State<FardaCircleScreen>
   bool _loading = true;
   bool _busy = false;
   bool _familyTab = false;
-  BuildContext? _alertContext;
+  final _overlayRevision = ValueNotifier<int>(0);
   bool _sessionValid = true;
   int _requestGeneration = 0;
   int _mutationGeneration = 0;
@@ -54,6 +57,7 @@ class _FardaCircleScreenState extends State<FardaCircleScreen>
     if (!mounted) return;
     _requestGeneration++;
     _mutationGeneration++;
+    _overlayRevision.value++;
     setState(() {
       _sessionValid = false;
       _circle = null;
@@ -72,11 +76,11 @@ class _FardaCircleScreenState extends State<FardaCircleScreen>
     super.didUpdateWidget(oldWidget);
     if (!identical(oldWidget.repository, widget.repository)) {
       _sessionValid = true;
-      final alertContext = _alertContext;
-      if (alertContext != null && alertContext.mounted) {
-        Navigator.of(alertContext).pop();
-      }
-      _alertContext = null;
+      // Updating the repository can happen during build. Close its overlays
+      // after that frame; action handlers already reject the old repository.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _overlayRevision.value++;
+      });
       _requestGeneration++;
       _mutationGeneration++;
       _circle = null;
@@ -99,6 +103,7 @@ class _FardaCircleScreenState extends State<FardaCircleScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     AuthStorage.sessionRevision.removeListener(_sessionChanged);
+    _overlayRevision.dispose();
     _requestGeneration++;
     _mutationGeneration++;
     super.dispose();
@@ -206,17 +211,47 @@ class _FardaCircleScreenState extends State<FardaCircleScreen>
     if (isCurrent()) setState(() => _busy = false);
   }
 
+  Widget _accountOverlay(BuildContext context, Widget child, int revision) =>
+      ValueListenableBuilder<int>(
+        valueListenable: _overlayRevision,
+        builder: (context, current, _) {
+          if (current == revision && _sessionValid) return child;
+          final route = ModalRoute.of(context);
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (route != null && route.isActive) {
+              route.navigator?.removeRoute(route);
+            }
+          });
+          return const SizedBox.shrink();
+        },
+      );
+
+  Future<T?> _dialog<T>(WidgetBuilder builder) {
+    final revision = _overlayRevision.value;
+    return showDialog<T>(
+      context: context,
+      builder:
+          (context) => _accountOverlay(context, builder(context), revision),
+    );
+  }
+
+  Future<T?> _sheet<T>(WidgetBuilder builder) {
+    final revision = _overlayRevision.value;
+    return showModalBottomSheet<T>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder:
+          (context) => _accountOverlay(context, builder(context), revision),
+    );
+  }
+
   void _message(String text) =>
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
   Future<void> _invite() async {
     final repo = widget.repository;
     if (repo == null || !_sessionValid) return;
-    final result = await showModalBottomSheet<_InviteDraft>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      builder: (_) => const _InviteSheet(),
-    );
+    final result = await _sheet<_InviteDraft>((_) => const _InviteSheet());
     if (result == null || !mounted || !identical(repo, widget.repository)) {
       return;
     }
@@ -228,63 +263,63 @@ class _FardaCircleScreenState extends State<FardaCircleScreen>
       if (!mounted || !_sessionValid || !identical(repo, widget.repository)) {
         return;
       }
-      await showDialog<void>(
-        context: context,
-        builder:
-            (context) => AlertDialog(
-              scrollable: true,
-              title: const Text('Your invitation is ready'),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Share this code with ${invite.person.displayName}. They can accept it in their Farda circle.',
-                  ),
-                  const SizedBox(height: 16),
-                  if (invite.inviteCode != null)
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        color: design.FardaConsumerColors.soft,
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: SelectableText(
-                        invite.inviteCode!,
-                        style: const TextStyle(
-                          fontFamily: 'Outfit',
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: 0.5,
-                          height: 1.5,
-                          color: design.FardaConsumerColors.brand,
-                        ),
-                      ),
-                    ),
-                  const SizedBox(height: 12),
-                  const Text(
-                    'Nothing is shared until they accept. No text message has been sent.',
-                  ),
-                ],
+      await _dialog<void>(
+        (context) => AlertDialog(
+          scrollable: true,
+          title: const Text('Your invitation is ready'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Share this code with ${invite.person.displayName}. They can accept it in their Farda circle.',
               ),
-              actions: [
-                if (invite.inviteCode != null)
-                  FilledButton(
-                    onPressed: () async {
-                      await Clipboard.setData(
-                        ClipboardData(text: invite.inviteCode!),
-                      );
-                      if (mounted) _message('Invitation code copied');
-                    },
-                    child: const Text('Copy code'),
+              const SizedBox(height: 16),
+              if (invite.inviteCode != null)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: design.FardaConsumerColors.soft,
+                    borderRadius: BorderRadius.circular(16),
                   ),
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('Done'),
+                  child: SelectableText(
+                    invite.inviteCode!,
+                    style: const TextStyle(
+                      fontFamily: 'Outfit',
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0.5,
+                      height: 1.5,
+                      color: design.FardaConsumerColors.brand,
+                    ),
+                  ),
                 ),
-              ],
+              const SizedBox(height: 12),
+              const Text(
+                'Nothing is shared until they accept. No text message has been sent.',
+              ),
+              const SizedBox(height: 8),
+              Text(_invitationExpiry(invite)),
+            ],
+          ),
+          actions: [
+            if (invite.inviteCode != null)
+              FilledButton(
+                onPressed: () async {
+                  await Clipboard.setData(
+                    ClipboardData(text: invite.inviteCode!),
+                  );
+                  if (mounted) _message('Invitation code copied');
+                },
+                child: const Text('Copy code'),
+              ),
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Done'),
             ),
+          ],
+        ),
       );
     });
   }
@@ -292,9 +327,8 @@ class _FardaCircleScreenState extends State<FardaCircleScreen>
   Future<void> _accept(CircleInvitation invite) async {
     final repo = widget.repository;
     if (repo == null || !_sessionValid) return;
-    final code = await showDialog<String>(
-      context: context,
-      builder: (context) => _AcceptInvitationDialog(invite: invite),
+    final code = await _dialog<String>(
+      (context) => _AcceptInvitationDialog(invite: invite),
     );
     if (code == null ||
         code.isEmpty ||
@@ -310,11 +344,8 @@ class _FardaCircleScreenState extends State<FardaCircleScreen>
   Future<void> _manage(CircleMember member) async {
     final repo = widget.repository;
     if (repo == null || !_sessionValid) return;
-    final result = await showModalBottomSheet<_MemberEdit>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      builder: (_) => _PermissionsSheet(member: member),
+    final result = await _sheet<_MemberEdit>(
+      (_) => _PermissionsSheet(member: member, confirm: _dialog<bool>),
     );
     if (result == null || !mounted || !identical(repo, widget.repository)) {
       return;
@@ -335,47 +366,37 @@ class _FardaCircleScreenState extends State<FardaCircleScreen>
   }) async {
     final repo = widget.repository;
     if (repo is! CircleAlertsRepository || !_sessionValid) return;
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      builder: (sheetContext) {
-        _alertContext = sheetContext;
-        return CircleAlertPanel(
-          repository: repo as CircleAlertsRepository,
-          isCurrent:
-              () =>
-                  mounted &&
-                  _sessionValid &&
-                  identical(repo, widget.repository),
-          grantId: grantId,
-          personName: name,
-          recipient: recipient,
-          onFamilyPlan: () async {
-            if (!mounted ||
-                !_sessionValid ||
-                !identical(repo, widget.repository)) {
-              return;
-            }
-            Navigator.of(sheetContext).pop();
-            _alertContext = null;
-            await Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder:
-                    (_) => FardaMembershipScreen(
-                      repository:
-                          repo is BillingRepository
-                              ? repo as BillingRepository
-                              : null,
-                      initialTier: 'family',
-                    ),
-              ),
-            );
-          },
-        );
-      },
-    );
-    _alertContext = null;
+    await _sheet<void>((sheetContext) {
+      return CircleAlertPanel(
+        repository: repo as CircleAlertsRepository,
+        isCurrent:
+            () =>
+                mounted && _sessionValid && identical(repo, widget.repository),
+        grantId: grantId,
+        personName: name,
+        recipient: recipient,
+        onFamilyPlan: () async {
+          if (!mounted ||
+              !_sessionValid ||
+              !identical(repo, widget.repository)) {
+            return;
+          }
+          Navigator.of(sheetContext).pop();
+          await Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder:
+                  (_) => FardaMembershipScreen(
+                    repository:
+                        repo is BillingRepository
+                            ? repo as BillingRepository
+                            : null,
+                    initialTier: 'family',
+                  ),
+            ),
+          );
+        },
+      );
+    });
   }
 
   Widget _title(String value) => Padding(
@@ -507,6 +528,7 @@ class _FardaCircleScreenState extends State<FardaCircleScreen>
                     onPressed:
                         widget.repository == null ||
                                 widget.repository!.isDemo ||
+                                !_sessionValid ||
                                 _busy
                             ? null
                             : _invite,
@@ -545,7 +567,7 @@ class _FardaCircleScreenState extends State<FardaCircleScreen>
           Align(
             alignment: Alignment.centerLeft,
             child: TextButton.icon(
-              onPressed: () => _alerts(),
+              onPressed: !_sessionValid || _busy ? null : () => _alerts(),
               icon: const Icon(Icons.notifications_none),
               label: const Text('Check-in inbox'),
             ),
@@ -553,15 +575,23 @@ class _FardaCircleScreenState extends State<FardaCircleScreen>
         if (_loading)
           const Padding(
             padding: EdgeInsets.all(32),
-            child: Center(child: CircularProgressIndicator()),
+            child: Column(
+              children: [
+                CircularProgressIndicator(
+                  semanticsLabel: 'Loading your circle',
+                ),
+                SizedBox(height: 12),
+                Text('Gathering shared updates…'),
+              ],
+            ),
           )
         else if (_error != null) ...[
           const SizedBox(height: 20),
           FardaYouNotice(text: _error!),
           TextButton.icon(
-            onPressed: _load,
-            icon: const Icon(Icons.refresh),
-            label: const Text('Try again'),
+            onPressed: _sessionValid ? _load : widget.onBack,
+            icon: Icon(_sessionValid ? Icons.refresh : Icons.arrow_back),
+            label: Text(_sessionValid ? 'Try again' : 'Back to You'),
           ),
         ] else if (_routine != null)
           ..._routineContent(_routine!)
@@ -579,6 +609,11 @@ class _FardaCircleScreenState extends State<FardaCircleScreen>
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   _permissions(invite.permissions),
+                  const SizedBox(height: 8),
+                  Text(
+                    _invitationExpiry(invite),
+                    style: design.FardaConsumerType.caption,
+                  ),
                   TextButton(
                     onPressed: _busy ? null : () => _decline(invite),
                     child: const Text('Decline invitation'),
@@ -661,7 +696,17 @@ class _FardaCircleScreenState extends State<FardaCircleScreen>
                 onPressed: _busy ? null : () => _cancel(invite),
                 icon: const Icon(Icons.close_rounded),
               ),
-              footer: _permissions(invite.permissions),
+              footer: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _permissions(invite.permissions),
+                  const SizedBox(height: 8),
+                  Text(
+                    _invitationExpiry(invite),
+                    style: design.FardaConsumerType.caption,
+                  ),
+                ],
+              ),
             ),
             const SizedBox(height: 12),
           ],
@@ -688,26 +733,24 @@ class _FardaCircleScreenState extends State<FardaCircleScreen>
   Future<void> _cancel(CircleInvitation invite) async {
     final repo = widget.repository;
     if (repo == null || !_sessionValid) return;
-    final yes = await showDialog<bool>(
-      context: context,
-      builder:
-          (context) => AlertDialog(
-            scrollable: true,
-            title: const Text('Cancel this invitation?'),
-            content: Text(
-              '${invite.person.displayName} won’t be able to accept it.',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: const Text('Keep invitation'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.pop(context, true),
-                child: const Text('Cancel invitation'),
-              ),
-            ],
+    final yes = await _dialog<bool>(
+      (context) => AlertDialog(
+        scrollable: true,
+        title: const Text('Cancel this invitation?'),
+        content: Text(
+          '${invite.person.displayName} won’t be able to accept it.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Keep invitation'),
           ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Cancel invitation'),
+          ),
+        ],
+      ),
     );
     if (yes == true && mounted && identical(repo, widget.repository)) {
       await _mutate(repo, (repo) async {
@@ -719,26 +762,22 @@ class _FardaCircleScreenState extends State<FardaCircleScreen>
   Future<void> _decline(CircleInvitation invite) async {
     final repo = widget.repository;
     if (repo == null || !_sessionValid) return;
-    final yes = await showDialog<bool>(
-      context: context,
-      builder:
-          (context) => AlertDialog(
-            scrollable: true,
-            title: const Text('Decline this invitation?'),
-            content: Text(
-              'You won’t join ${invite.person.displayName}’s circle.',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: const Text('Keep invitation'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.pop(context, true),
-                child: const Text('Decline invitation'),
-              ),
-            ],
+    final yes = await _dialog<bool>(
+      (context) => AlertDialog(
+        scrollable: true,
+        title: const Text('Decline this invitation?'),
+        content: Text('You won’t join ${invite.person.displayName}’s circle.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Keep invitation'),
           ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Decline invitation'),
+          ),
+        ],
+      ),
     );
     if (yes == true && mounted && identical(repo, widget.repository)) {
       await _mutate(repo, (repo) => repo.declineCircleInvitation(invite.id));
@@ -749,26 +788,24 @@ class _FardaCircleScreenState extends State<FardaCircleScreen>
     final selected = _selected;
     final repo = widget.repository;
     if (selected == null || repo == null) return;
-    final yes = await showDialog<bool>(
-      context: context,
-      builder:
-          (context) => AlertDialog(
-            scrollable: true,
-            title: const Text('Leave this circle?'),
-            content: Text(
-              'You’ll no longer see ${selected.owner.displayName}’s shared routine.',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: const Text('Stay connected'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.pop(context, true),
-                child: const Text('Leave circle'),
-              ),
-            ],
+    final yes = await _dialog<bool>(
+      (context) => AlertDialog(
+        scrollable: true,
+        title: const Text('Leave this circle?'),
+        content: Text(
+          'You’ll no longer see ${selected.owner.displayName}’s shared routine.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Stay connected'),
           ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Leave circle'),
+          ),
+        ],
+      ),
     );
     if (yes == true &&
         mounted &&
@@ -800,22 +837,26 @@ class _FardaCircleScreenState extends State<FardaCircleScreen>
           label: const Text('Check-in preferences'),
         ),
       ),
+    const SizedBox(height: 16),
+    CircleRoutineSummary(routine: routine),
     _title('Today'),
     Text(
       'Updated ${DateFormat.jm().format(routine.fetchedAt.toLocal())} · Times shown in your timezone',
       style: design.FardaConsumerType.caption,
     ),
     const SizedBox(height: 16),
-    if (routine.items.isEmpty)
+    if (routine.items.isEmpty &&
+        (routine.permissions.doseStatus || routine.permissions.reminders))
       const _EmptyCircle(
         title: 'Nothing to show today',
         detail:
             'There are no shared entries in this day. You can refresh later.',
       ),
-    for (final item in routine.items) ...[
-      _RoutineTile(item: item, permissions: routine.permissions),
-      const SizedBox(height: 12),
-    ],
+    if (routine.permissions.doseStatus || routine.permissions.reminders)
+      for (final item in routine.items) ...[
+        _RoutineTile(item: item, permissions: routine.permissions),
+        const SizedBox(height: 12),
+      ],
     const SizedBox(height: 4),
     const FardaYouNotice(
       text:
@@ -829,6 +870,13 @@ class _FardaCircleScreenState extends State<FardaCircleScreen>
       ),
     ),
   ];
+}
+
+String _invitationExpiry(CircleInvitation invitation) {
+  final expires = invitation.expiresAt.toLocal();
+  return DateTime.now().isBefore(expires)
+      ? 'Code expires ${DateFormat.MMMd().add_jm().format(expires)}'
+      : 'Code expired · Ask for a new invitation';
 }
 
 class _Pill extends StatelessWidget {
@@ -923,20 +971,46 @@ class _AcceptInvitationDialogState extends State<_AcceptInvitationDialog> {
   Widget build(BuildContext context) => AlertDialog(
     scrollable: true,
     title: Text('Join ${widget.invite.person.displayName}’s circle'),
-    content: Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        const Text('Enter the invitation code they shared with you.'),
-        const SizedBox(height: 16),
-        TextField(
-          controller: _input,
-          autofocus: true,
-          decoration: const InputDecoration(
-            labelText: 'Invitation code',
-            border: OutlineInputBorder(),
+    content: DefaultTextStyle(
+      style: design.FardaConsumerType.body,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            widget.invite.permissions.doseStatus &&
+                    widget.invite.permissions.reminders
+                ? 'You’ll be able to view dose updates and reminder times.'
+                : widget.invite.permissions.doseStatus
+                ? 'You’ll be able to view dose updates. Reminder times stay private.'
+                : widget.invite.permissions.reminders
+                ? 'You’ll be able to view reminder times. Dose updates stay private.'
+                : 'Sharing is paused. No routine details are visible.',
           ),
-        ),
-      ],
+          const SizedBox(height: 12),
+          const Text(
+            'Joining does not share your own routine. You can leave anytime.',
+          ),
+          const SizedBox(height: 12),
+          Text(
+            _invitationExpiry(widget.invite),
+            style: design.FardaConsumerType.caption,
+          ),
+          const SizedBox(height: 12),
+          const Text('Enter the invitation code they shared with you.'),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _input,
+            autofocus: true,
+            autocorrect: false,
+            enableSuggestions: false,
+            onChanged: (_) => setState(() {}),
+            decoration: const InputDecoration(
+              labelText: 'Invitation code',
+              border: OutlineInputBorder(),
+            ),
+          ),
+        ],
+      ),
     ),
     actions: [
       TextButton(
@@ -944,7 +1018,11 @@ class _AcceptInvitationDialogState extends State<_AcceptInvitationDialog> {
         child: const Text('Not now'),
       ),
       FilledButton(
-        onPressed: () => Navigator.pop(context, _input.text.trim()),
+        onPressed:
+            _input.text.trim().isEmpty ||
+                    !DateTime.now().isBefore(widget.invite.expiresAt)
+                ? null
+                : () => Navigator.pop(context, _input.text.trim()),
         child: const Text('Accept invitation'),
       ),
     ],
@@ -990,7 +1068,7 @@ class _InviteSheetState extends State<_InviteSheet> {
       const SizedBox(height: 8),
       _PermissionToggle(
         title: 'Dose updates',
-        subtitle: 'Recorded, skipped, or not yet confirmed',
+        subtitle: 'Reported taken, skipped, snoozed, or not logged',
         value: doses,
         onChanged: (v) => setState(() => doses = v),
       ),
@@ -1038,8 +1116,9 @@ class _InviteSheetState extends State<_InviteSheet> {
 }
 
 class _PermissionsSheet extends StatefulWidget {
-  const _PermissionsSheet({required this.member});
+  const _PermissionsSheet({required this.member, required this.confirm});
   final CircleMember member;
+  final Future<bool?> Function(WidgetBuilder) confirm;
   @override
   State<_PermissionsSheet> createState() => _PermissionsSheetState();
 }
@@ -1057,7 +1136,7 @@ class _PermissionsSheetState extends State<_PermissionsSheet> {
       const SizedBox(height: 20),
       _PermissionToggle(
         title: 'Dose updates',
-        subtitle: 'Recorded, skipped, or not yet confirmed',
+        subtitle: 'Reported taken, skipped, snoozed, or not logged',
         value: doses,
         onChanged: (v) => setState(() => doses = v),
       ),
@@ -1066,6 +1145,13 @@ class _PermissionsSheetState extends State<_PermissionsSheet> {
         subtitle: 'Your planned medication schedule',
         value: reminders,
         onChanged: (v) => setState(() => reminders = v),
+      ),
+      const SizedBox(height: 12),
+      FardaYouNotice(
+        text:
+            !doses && !reminders
+                ? 'Both options are off. Save to pause sharing while staying connected.'
+                : 'Changes take effect after you save. You can remove access anytime.',
       ),
       const SizedBox(height: 20),
       FilledButton(
@@ -1084,26 +1170,24 @@ class _PermissionsSheetState extends State<_PermissionsSheet> {
       const SizedBox(height: 8),
       TextButton(
         onPressed: () async {
-          final yes = await showDialog<bool>(
-            context: context,
-            builder:
-                (context) => AlertDialog(
-                  scrollable: true,
-                  title: const Text('Remove access?'),
-                  content: Text(
-                    '${widget.member.person.displayName} will no longer see your routine.',
-                  ),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(context, false),
-                      child: const Text('Keep access'),
-                    ),
-                    FilledButton(
-                      onPressed: () => Navigator.pop(context, true),
-                      child: const Text('Remove access'),
-                    ),
-                  ],
+          final yes = await widget.confirm(
+            (context) => AlertDialog(
+              scrollable: true,
+              title: const Text('Remove access?'),
+              content: Text(
+                '${widget.member.person.displayName} will no longer see your routine.',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('Keep access'),
                 ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text('Remove access'),
+                ),
+              ],
+            ),
           );
           if (yes == true && context.mounted) {
             Navigator.pop(context, const _MemberEdit(remove: true));
@@ -1212,7 +1296,7 @@ class _RoutineTile extends StatelessWidget {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      item.scheduledFor == null
+                      !permissions.reminders || item.scheduledFor == null
                           ? 'Reminder time not shared'
                           : DateFormat.jm().format(
                             item.scheduledFor!.toLocal(),
