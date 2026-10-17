@@ -48,6 +48,20 @@ void main() {
     );
   }
 
+  testWidgets('week dates stay readable at 320px and double text size', (
+    tester,
+  ) async {
+    await pumpCalendar(tester, width: 320, textScale: 2, events: []);
+    await tester.pumpAndSettle();
+    final day = find.byKey(const Key('calendar-day-2026-10-14'));
+    expect(tester.getSize(day).height, greaterThanOrEqualTo(92));
+    await tester.ensureVisible(day);
+    await tester.tap(day);
+    await tester.pumpAndSettle();
+    expect(find.text('Wednesday, October 14'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('starts in week mode and toggling month preserves selection', (
     tester,
   ) async {

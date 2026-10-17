@@ -312,6 +312,9 @@ class _FardaTodayScreenState extends State<FardaTodayScreen> {
         return false;
       }
       return true;
+    } catch (_) {
+      if (mounted) _showMessage('Couldn’t save your entry. Please try again.');
+      return false;
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -345,6 +348,11 @@ class _FardaTodayScreenState extends State<FardaTodayScreen> {
           _showMessage(error);
           return;
         }
+      } catch (_) {
+        if (mounted) {
+          _showMessage('Couldn’t snooze this reminder. Please try again.');
+        }
+        return;
       } finally {
         if (mounted) setState(() => _saving = false);
       }
@@ -361,6 +369,7 @@ class _FardaTodayScreenState extends State<FardaTodayScreen> {
   }
 
   Future<void> _openMoreOptions() async {
+    if (_saving) return;
     final routineId = _activeRoutine?.id;
     widget.onMoreOptions?.call();
     final result = await showModalBottomSheet<_MoreOption>(
@@ -890,7 +899,11 @@ class _FardaTodayScreenState extends State<FardaTodayScreen> {
   Widget build(BuildContext context) {
     final week = List<DateTime>.generate(
       7,
-      (index) => _visibleWeekStart.add(Duration(days: index)),
+      (index) => DateTime(
+        _visibleWeekStart.year,
+        _visibleWeekStart.month,
+        _visibleWeekStart.day + index,
+      ),
     );
     final previewedMilestone = _milestoneFor(_previewedMilestone);
 
@@ -991,6 +1004,7 @@ class _FardaTodayScreenState extends State<FardaTodayScreen> {
                         status: _activeStatus,
                         isSnoozed: _activeSnoozed,
                         neutralCopy: widget.liveRecords,
+                        isSaving: _saving,
                         onOpenLog: _openDoseConfirmation,
                         onSnooze: _snooze,
                         onMoreOptions: _openMoreOptions,
@@ -1242,6 +1256,7 @@ class _Greeting extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final largeText = MediaQuery.textScalerOf(context).scale(14) > 18;
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
@@ -1256,49 +1271,54 @@ class _Greeting extends StatelessWidget {
               const SizedBox(height: 4),
               Text(
                 'Make room\nfor your day.',
-                style: _type(size: 34, lineHeight: 37, weight: FontWeight.w600),
+                style: _type(
+                  size: largeText ? 28 : 34,
+                  lineHeight: largeText ? 32 : 37,
+                  weight: FontWeight.w600,
+                ),
               ),
             ],
           ),
         ),
-        const SizedBox(width: 16),
-        AnimatedSwitcher(
-          duration:
-              MediaQuery.maybeOf(context)?.disableAnimations ?? false
-                  ? Duration.zero
-                  : const Duration(milliseconds: 180),
-          child: Container(
-            key: ValueKey(_dateKey(selectedDate)),
-            width: 60,
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF8ECD8),
-              borderRadius: BorderRadius.circular(24),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  _shortMonth(selectedDate).toUpperCase(),
-                  style: _type(
-                    size: 10,
-                    lineHeight: 14,
-                    weight: FontWeight.w600,
+        if (!largeText) const SizedBox(width: 16),
+        if (!largeText)
+          AnimatedSwitcher(
+            duration:
+                MediaQuery.maybeOf(context)?.disableAnimations ?? false
+                    ? Duration.zero
+                    : const Duration(milliseconds: 180),
+            child: Container(
+              key: ValueKey(_dateKey(selectedDate)),
+              width: 60,
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8ECD8),
+                borderRadius: BorderRadius.circular(24),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    _shortMonth(selectedDate).toUpperCase(),
+                    style: _type(
+                      size: 10,
+                      lineHeight: 14,
+                      weight: FontWeight.w600,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  '${selectedDate.day}',
-                  style: _type(
-                    size: 28,
-                    lineHeight: 36,
-                    weight: FontWeight.w600,
+                  const SizedBox(height: 2),
+                  Text(
+                    '${selectedDate.day}',
+                    style: _type(
+                      size: 28,
+                      lineHeight: 36,
+                      weight: FontWeight.w600,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
-        ),
       ],
     );
   }
@@ -1330,7 +1350,8 @@ class _WeekStrip extends StatelessWidget {
                 onTap: () => onSelected(dates[index]),
               ),
             ),
-            if (index != dates.length - 1) const SizedBox(width: 5),
+            if (index != dates.length - 1)
+              SizedBox(width: MediaQuery.sizeOf(context).width <= 340 ? 2 : 5),
           ],
         ],
       ),
@@ -1370,7 +1391,7 @@ class _WeekDay extends StatelessWidget {
                     : const Duration(milliseconds: 180),
             curve: Curves.easeOut,
             constraints: const BoxConstraints(minHeight: 60),
-            padding: const EdgeInsets.all(6),
+            padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 6),
             decoration: BoxDecoration(
               color: isSelected ? _navy : _card,
               borderRadius: BorderRadius.circular(16),
@@ -1398,7 +1419,10 @@ class _WeekDay extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 AnimatedContainer(
-                  duration: const Duration(milliseconds: 180),
+                  duration:
+                      MediaQuery.disableAnimationsOf(context)
+                          ? Duration.zero
+                          : const Duration(milliseconds: 180),
                   width: 4,
                   height: 4,
                   decoration: BoxDecoration(
