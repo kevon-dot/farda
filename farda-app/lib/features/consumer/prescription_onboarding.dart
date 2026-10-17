@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:math';
 
+import 'package:farda/application/authentication/storage/auth_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
@@ -43,6 +44,7 @@ class _PrescriptionOnboardingState extends State<PrescriptionOnboarding> {
   bool _scanning = false;
   bool _scanned = false;
   bool _sessionEnded = false;
+  late final int _sessionRevision;
   int _scanGeneration = 0;
   String? get _scanNotice {
     if (!_scanned) return null;
@@ -65,12 +67,21 @@ class _PrescriptionOnboardingState extends State<PrescriptionOnboarding> {
   void initState() {
     super.initState();
     _start = ConsumerController.day(widget.controller.clock());
+    _sessionRevision = AuthStorage.sessionRevision.value;
     _sessionEnded = widget.controller.sessionExpired;
+    AuthStorage.sessionRevision.addListener(_checkSession);
     widget.controller.addListener(_checkSession);
   }
 
   void _checkSession() {
-    if (!mounted || _sessionEnded || !widget.controller.sessionExpired) return;
+    // A successful reload for another account can leave sessionExpired false.
+    // This draft belongs permanently to the session that opened it.
+    if (!mounted ||
+        _sessionEnded ||
+        (!widget.controller.sessionExpired &&
+            AuthStorage.sessionRevision.value == _sessionRevision)) {
+      return;
+    }
     ++_scanGeneration;
     for (final field in [_name, _directions, _pharmacy, _rx, _days]) {
       field.clear();
@@ -87,6 +98,7 @@ class _PrescriptionOnboardingState extends State<PrescriptionOnboarding> {
   void dispose() {
     ++_scanGeneration;
     widget.controller.removeListener(_checkSession);
+    AuthStorage.sessionRevision.removeListener(_checkSession);
     for (final field in [_name, _directions, _pharmacy, _rx, _days]) {
       field.dispose();
     }

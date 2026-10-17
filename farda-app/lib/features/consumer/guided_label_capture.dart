@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
+import 'package:farda/application/authentication/storage/auth_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
@@ -37,11 +38,14 @@ class _GuidedLabelCaptureScreenState extends State<GuidedLabelCaptureScreen> {
   String? _error;
   int _generation = 0;
   bool _sessionEnded = false;
+  late final int _sessionRevision;
 
   @override
   void initState() {
     super.initState();
+    _sessionRevision = AuthStorage.sessionRevision.value;
     _sessionEnded = widget.controller.sessionExpired;
+    AuthStorage.sessionRevision.addListener(_checkSession);
     widget.controller.addListener(_checkSession);
   }
 
@@ -54,7 +58,14 @@ class _GuidedLabelCaptureScreenState extends State<GuidedLabelCaptureScreen> {
   }
 
   void _checkSession() {
-    if (!mounted || _sessionEnded || !widget.controller.sessionExpired) return;
+    // A successful reload for another account can leave sessionExpired false.
+    // This draft belongs permanently to the session that opened it.
+    if (!mounted ||
+        _sessionEnded ||
+        (!widget.controller.sessionExpired &&
+            AuthStorage.sessionRevision.value == _sessionRevision)) {
+      return;
+    }
     ++_generation;
     setState(() {
       _sessionEnded = true;
@@ -199,6 +210,7 @@ class _GuidedLabelCaptureScreenState extends State<GuidedLabelCaptureScreen> {
   void dispose() {
     ++_generation;
     widget.controller.removeListener(_checkSession);
+    AuthStorage.sessionRevision.removeListener(_checkSession);
     _clearPhotos();
     super.dispose();
   }

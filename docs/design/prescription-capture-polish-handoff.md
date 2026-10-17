@@ -47,3 +47,9 @@ The screenshot tests require `FLUTTER_ROOT` for the bundled Material Icons font.
 ## External gates
 
 Physical iOS/Android camera permission/lifecycle behavior, actual blur/glare/focus and long curved labels, real OCR accuracy, configured authenticated API connectivity, provider/image retention policy, and signed release validation still require device/service evidence. This change does not implement automatic blur/glare scoring, persist an offline draft, or claim a production deployment.
+
+## Account-switch follow-up
+
+Both onboarding and capture now bind their lifetime to the opening `AuthStorage.sessionRevision`, in addition to observing expiry. An A→B account change irreversibly clears A's draft/photos and increments the operation generation even if the same `ConsumerController` subsequently loads B successfully and reports `sessionExpired == false`.
+
+Two integration regressions type A's name/directions, start real capture extraction, advance the auth revision, successfully reload the same controller, and resolve OCR with either a late success or `sessionChanged` error. They verify blanked text controllers, cleared photos, no restored draft, no save control, and no writes after closing capture. The follow-up's 16 focused tests pass and focused analysis is clean; the 308-test full-suite result above predates these two added regressions.

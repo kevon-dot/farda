@@ -1,4 +1,7 @@
 import 'dart:async';
+import 'dart:io';
+import 'package:farda/application/authentication/storage/auth_storage.dart';
+import 'package:farda/features/consumer/guided_label_capture.dart';
 import 'package:farda/features/consumer/consumer_controller.dart';
 import 'package:farda/features/consumer/data/consumer_demo_repository.dart';
 import 'package:farda/features/consumer/data/consumer_models.dart';
@@ -7,7 +10,12 @@ import 'package:farda/features/consumer/prescription_onboarding.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-class RecordingRepository extends ConsumerDemoRepository {
+class RecordingRepository extends ConsumerDemoRepository
+    implements LabelScanRepository {
+  final extraction = Completer<LabelScanDraft>();
+  @override
+  Future<LabelScanDraft> extractLabel(List<LabelPhoto> photos) =>
+      extraction.future;
   final saves = <ConsumerPrescriptionDraft>[];
   bool fail = false;
   @override
@@ -215,6 +223,96 @@ void main() {
     expect(scans, 1);
     expect(repository.saves, isEmpty);
   });
+
+  for (final lateSuccess in [false, true]) {
+    testWidgets(
+      'account swap clears parent draft after reload and late OCR ${lateSuccess ? 'success' : 'sessionChanged'}',
+      (tester) async {
+        final repository = RecordingRepository();
+        late ConsumerController controller;
+        final photo = LabelPhoto(
+          bytes: File('test/fixtures/label-photo.png').readAsBytesSync(),
+          mimeType: 'image/png',
+        );
+        await mount(
+          tester,
+          repository,
+          onController: (value) => controller = value,
+          scan:
+              (context) => Navigator.of(context).push<LabelScanDraft>(
+                MaterialPageRoute(
+                  builder:
+                      (_) => GuidedLabelCaptureScreen(
+                        controller: controller,
+                        takePhoto: (_) async => photo,
+                      ),
+                ),
+              ),
+        );
+        await tap(tester, 'Enter manually');
+        final name =
+            tester.widget<TextField>(find.byType(TextField).first).controller!;
+        await tester.enterText(
+          find.byType(TextField).first,
+          'Account A private medicine',
+        );
+        await tap(tester, 'Continue');
+        final directions =
+            tester.widget<TextField>(find.byType(TextField).first).controller!;
+        await tester.enterText(
+          find.byType(TextField).first,
+          'Account A printed directions',
+        );
+        await tap(tester, 'Scan another section');
+        await tester.scrollUntilVisible(find.text('Take first photo'), 180);
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Take first photo'));
+        await tester.pumpAndSettle();
+        await tester.scrollUntilVisible(find.byType(CheckboxListTile), 180);
+        await tester.pumpAndSettle();
+        await tester.tap(find.byType(CheckboxListTile));
+        await tester.pumpAndSettle();
+        await tester.scrollUntilVisible(find.text('Review label details'), 180);
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Review label details'));
+        await tester.pump();
+
+        // AuthStorage publishes an A→B swap while OCR still belongs to A.
+        // The same controller then loads B successfully: expiry alone cannot guard A.
+        AuthStorage.sessionRevision.value++;
+        await controller.load();
+        expect(controller.sessionExpired, false);
+        await tester.pumpAndSettle();
+        expect(name.text, isEmpty);
+        expect(directions.text, isEmpty);
+        expect(find.byType(Image), findsNothing);
+        if (lateSuccess) {
+          repository.extraction.complete(
+            const LabelScanDraft(
+              medicationName: 'Account A late OCR',
+              directions: 'Account A late instructions',
+            ),
+          );
+        } else {
+          repository.extraction.completeError(
+            const ConsumerRepositoryException(
+              'Your account changed. Reopen the scanner.',
+              sessionExpired: true,
+              sessionChanged: true,
+            ),
+          );
+        }
+        await tester.pumpAndSettle();
+        await tap(tester, 'Close capture');
+        expect(find.text('Sign in again to continue'), findsOneWidget);
+        expect(find.byType(TextField), findsNothing);
+        expect(find.text('Save my routine'), findsNothing);
+        expect(find.textContaining('Account A'), findsNothing);
+        expect(repository.saves, isEmpty);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
 
   testWidgets('over-limit OCR text remains intact and blocks continuation', (
     tester,
