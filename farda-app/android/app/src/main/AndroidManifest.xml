@@ -8,6 +8,12 @@
         android:name="${applicationName}"
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher">
+        <meta-data
+            android:name="com.farda.release.COMMIT"
+            android:value="${fardaReleaseCommit}" />
+        <meta-data
+            android:name="com.farda.release.PROVENANCE"
+            android:value="${fardaReleaseProvenance}" />
         <activity
             android:name=".MainActivity"
             android:exported="true"
