@@ -7,8 +7,16 @@ const configured = {
   STRIPE_PRICE_PLUS_MONTHLY: 'price_pm', STRIPE_PRICE_PLUS_ANNUAL: 'price_pa',
   STRIPE_PRICE_FAMILY_MONTHLY: 'price_fm', STRIPE_PRICE_FAMILY_ANNUAL: 'price_fa',
   FARDA_BILLING_RETURN_ORIGINS: 'https://app.farda.test', FARDA_PUBLIC_BASE_URL: 'https://api.farda.test',
-  STRIPE_BILLING_ENABLED: 'false', FARDA_REFILL_PROVIDER_ENVIRONMENT: 'sandbox',
-  PHOTON_CLIENT_ID: 'present', PHOTON_CLIENT_SECRET: 'present', FARDA_REFILL_PROVIDER_ENABLED: 'false',
+  STRIPE_BILLING_ENABLED: 'false', REVENUECAT_NATIVE_BILLING_ENABLED: 'false',
+  REVENUECAT_MODE: 'sandbox', REVENUECAT_SECRET_API_KEY: 'sk_redacted',
+  REVENUECAT_WEBHOOK_AUTH_TOKEN: 'Bearer webhook-redacted-value',
+  REVENUECAT_IOS_PUBLIC_API_KEY: 'appl_redacted', REVENUECAT_ANDROID_PUBLIC_API_KEY: 'goog_redacted',
+  REVENUECAT_PLUS_ENTITLEMENT_ID: 'plus', REVENUECAT_FAMILY_ENTITLEMENT_ID: 'family',
+  REVENUECAT_IOS_PLUS_PRODUCT_IDS: 'ios.plus', REVENUECAT_IOS_FAMILY_PRODUCT_IDS: 'ios.family',
+  REVENUECAT_ANDROID_PLUS_PRODUCT_IDS: 'android.plus:monthly', REVENUECAT_ANDROID_FAMILY_PRODUCT_IDS: 'android.family:monthly',
+  FARDA_TERMS_URL: 'https://legal.farda.test/terms', FARDA_PRIVACY_URL: 'https://legal.farda.test/privacy',
+  FARDA_SUPPORT_URL: 'https://support.farda.test/help', FARDA_REFILL_PROVIDER_ENVIRONMENT: 'sandbox',
+  PHOTON_CLIENT_ID: 'client-present', PHOTON_CLIENT_SECRET: 'secret-present', FARDA_REFILL_PROVIDER_ENABLED: 'false',
 };
 
 describe('runtime readiness', () => {
@@ -17,13 +25,47 @@ describe('runtime readiness', () => {
     expect(results.every(result => result.status === 'pass')).toBe(true);
     expect(JSON.stringify(results)).not.toContain('rk_test_redacted');
     expect(JSON.stringify(results)).not.toContain('whsec_redacted');
-    expect(JSON.stringify(results)).not.toContain('"present"');
+    expect(JSON.stringify(results)).not.toContain('webhook-redacted-value');
   });
 
   it('blocks placeholder hosts and reports missing provider configuration', () => {
     const results = inspectRuntime({ STRIPE_MODE: 'test', FARDA_PUBLIC_BASE_URL: 'https://your-host.example.com' });
     expect(results.find(result => result.name === 'webhook.public_url')?.status).toBe('blocked');
     expect(results.find(result => result.name === 'photon.client_secret')?.status).toBe('fail');
+  });
+
+  it('fails closed for duplicated prices, RevenueCat mappings, private policy URLs, and enabled partial providers', () => {
+    const results = inspectRuntime({
+      ...configured,
+      STRIPE_BILLING_ENABLED: 'true',
+      STRIPE_PRICE_FAMILY_ANNUAL: configured.STRIPE_PRICE_PLUS_ANNUAL,
+      REVENUECAT_NATIVE_BILLING_ENABLED: 'true',
+      REVENUECAT_ANDROID_FAMILY_PRODUCT_IDS: configured.REVENUECAT_IOS_FAMILY_PRODUCT_IDS,
+      FARDA_PRIVACY_URL: 'https://127.0.0.1/privacy',
+      FARDA_REFILL_PROVIDER_ENABLED: 'true',
+      PHOTON_CLIENT_SECRET: configured.PHOTON_CLIENT_ID,
+    });
+    expect(results.find(result => result.name === 'stripe.prices_unique')?.status).toBe('fail');
+    expect(results.find(result => result.name === 'stripe.enablement')?.status).toBe('fail');
+    expect(results.find(result => result.name === 'revenuecat.products.android_family')?.status).toBe('fail');
+    expect(results.find(result => result.name === 'legal.privacy_url')?.status).toBe('fail');
+    expect(results.find(result => result.name === 'revenuecat.enablement')?.status).toBe('fail');
+    expect(results.find(result => result.name === 'photon.credentials_distinct')?.status).toBe('fail');
+    expect(results.find(result => result.name === 'photon.enablement')?.status).toBe('fail');
+  });
+
+  it('validates platform key prefixes, entitlement separation, support URL, and exact flags', () => {
+    const results = inspectRuntime({
+      ...configured,
+      REVENUECAT_IOS_PUBLIC_API_KEY: 'goog_wrong_platform',
+      REVENUECAT_FAMILY_ENTITLEMENT_ID: 'plus',
+      FARDA_SUPPORT_URL: 'http://support.farda.test',
+      REVENUECAT_NATIVE_BILLING_ENABLED: 'yes',
+    });
+    expect(results.find(result => result.name === 'revenuecat.ios_public_key')?.status).toBe('fail');
+    expect(results.find(result => result.name === 'revenuecat.entitlements')?.status).toBe('fail');
+    expect(results.find(result => result.name === 'support.url')?.status).toBe('fail');
+    expect(results.find(result => result.name === 'revenuecat.enablement_flag')?.status).toBe('fail');
   });
 
   it('read-backs prices, portal, and the exact webhook event set', async () => {
@@ -43,7 +85,7 @@ describe('runtime readiness', () => {
     expect(fetcher.mock.calls[0][0]).toBe('https://auth.neutron.health/oauth/token');
   });
 
-  it.each(['https://127.0.0.1', 'https://10.1.2.3', 'https://172.16.2.3', 'https://192.168.2.3', 'https://[::1]', 'https://[fd00::1]', 'https://[::ffff:10.1.2.3]', 'https://api.farda.test/path', 'https://api.farda.test/?query=1', 'https://api.farda.test/#fragment'])('rejects non-public or non-origin webhook base %s', base => {
+  it.each(['https://127.0.0.1', 'https://10.1.2.3', 'https://172.16.2.3', 'https://192.168.2.3', 'https://203.0.113.8', 'https://[::1]', 'https://[fd00::1]', 'https://[2001:db8::1]', 'https://[::ffff:10.1.2.3]', 'https://api.farda.test/path', 'https://api.farda.test/?query=1', 'https://api.farda.test/#fragment'])('rejects non-public or non-origin webhook base %s', base => {
     const results = inspectRuntime({ ...configured, FARDA_PUBLIC_BASE_URL: base });
     expect(results.find(result => result.name === 'webhook.public_url')?.status).toBe('blocked');
   });

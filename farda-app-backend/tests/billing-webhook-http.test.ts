@@ -11,9 +11,12 @@ vi.mock('../src/lib/prisma', () => ({ prisma: { billingWebhookEvent: {
 describe('production server Stripe raw-body boundary', () => {
   let server: Server; let base: string;
   const secret = 'whsec_synthetic_http_test_only';
-  const stripe = new Stripe('sk_test_synthetic_http_only');
+  const stripe = new Stripe('sk_test_synthetichttponly');
   beforeAll(async () => {
-    vi.stubEnv('STRIPE_BILLING_ENABLED', 'true'); vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_synthetic_http_only'); vi.stubEnv('STRIPE_WEBHOOK_SECRET', secret); vi.stubEnv('STRIPE_MODE', 'test');
+    vi.stubEnv('STRIPE_BILLING_ENABLED', 'true'); vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_synthetichttponly'); vi.stubEnv('STRIPE_WEBHOOK_SECRET', secret); vi.stubEnv('STRIPE_MODE', 'test');
+    vi.stubEnv('STRIPE_PRICE_PLUS_MONTHLY', 'price_plushttp'); vi.stubEnv('STRIPE_PRICE_PLUS_ANNUAL', 'price_plusannualhttp');
+    vi.stubEnv('STRIPE_PRICE_FAMILY_MONTHLY', 'price_familyhttp'); vi.stubEnv('STRIPE_PRICE_FAMILY_ANNUAL', 'price_familyannualhttp');
+    vi.stubEnv('FARDA_BILLING_RETURN_ORIGINS', 'https://app.test'); vi.stubEnv('FARDA_PUBLIC_BASE_URL', 'https://api.test');
     const app = (await import('../src/server')).default;
     server = await new Promise(resolve => { const s = app.listen(0, '127.0.0.1', () => resolve(s)); });
     base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;

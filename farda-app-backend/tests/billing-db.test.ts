@@ -56,9 +56,15 @@ describe.skipIf(!databaseUrl)("Billing PostgreSQL webhook serialization", () => 
 
   beforeAll(async () => {
     process.env.STRIPE_BILLING_ENABLED = "true";
+    process.env.STRIPE_SECRET_KEY = "sk_test_billing_db";
     process.env.STRIPE_WEBHOOK_SECRET = "whsec_billing_db_test";
     process.env.STRIPE_MODE = "test";
+    process.env.STRIPE_PRICE_PLUS_MONTHLY = "price_plus_db";
+    process.env.STRIPE_PRICE_PLUS_ANNUAL = "price_plusannualdb";
     process.env.STRIPE_PRICE_FAMILY_MONTHLY = "price_family_db";
+    process.env.STRIPE_PRICE_FAMILY_ANNUAL = "price_familyannualdb";
+    process.env.FARDA_BILLING_RETURN_ORIGINS = "https://app.test";
+    process.env.FARDA_PUBLIC_BASE_URL = "https://api.test";
     db = new PrismaClient({
       adapter: new PrismaPg({
         connectionString: databaseUrl!,

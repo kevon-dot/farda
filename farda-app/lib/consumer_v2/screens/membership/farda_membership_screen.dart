@@ -674,6 +674,15 @@ class _FardaMembershipScreenState extends State<FardaMembershipScreen>
                         child: const Text('Privacy policy'),
                       ),
                     ],
+                    if (_nativeConfig?.supportAvailable == true)
+                      TextButton(
+                        onPressed:
+                            () => launchUrl(
+                              _nativeConfig!.supportUrl!,
+                              mode: LaunchMode.externalApplication,
+                            ),
+                        child: const Text('Support'),
+                      ),
                     if (!kIsWeb)
                       TextButton(
                         onPressed:

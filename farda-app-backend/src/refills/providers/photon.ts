@@ -61,7 +61,7 @@ export class PhotonRefillsProvider implements RefillsProvider {
     this.environment = config.environment === 'production' ? 'production' : 'sandbox';
     this.configured = config.enabled === true &&
       (config.environment === undefined || config.environment === 'sandbox' || config.environment === 'production') &&
-      !!config.clientId?.trim() && !!config.clientSecret?.trim();
+      !!config.clientId?.trim() && !!config.clientSecret?.trim() && config.clientId.trim() !== config.clientSecret.trim();
     this.timeoutMs = Number.isFinite(config.timeoutMs)
       ? Math.max(100, Math.min(config.timeoutMs!, 30000)) : 10000;
   }

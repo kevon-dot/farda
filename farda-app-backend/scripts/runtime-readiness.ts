@@ -1,8 +1,11 @@
 import Stripe from 'stripe';
-import { isIP } from 'node:net';
-import { priceCatalog } from '../src/billing/catalog';
+import {
+  configured, exactPublicOrigins, photonActivationReady, publicHttpsUrl, revenueCatActivationReady,
+  revenueCatProductConfiguration, revenueCatProductVariables, stripeMode, stripePriceId, stripeSecretKeyMatchesMode,
+  type RuntimeEnvironment,
+} from '../src/common/activation';
+import { priceCatalog, stripeActivationReady } from '../src/billing/catalog';
 
-export type RuntimeEnvironment = Record<string, string | undefined>;
 export type Check = { name: string; status: 'pass' | 'fail' | 'blocked'; detail: string };
 
 export const stripeWebhookEvents = [
@@ -15,81 +18,88 @@ const stripeLookupKeys: Record<keyof typeof priceCatalog, string> = {
   family_monthly: 'farda_family_monthly_usd', family_annual: 'farda_family_annual_usd',
 };
 
-const configured = (value?: string) => Boolean(value?.trim());
-const isPlaceholder = (value: string) => /example\.(com|org|net)|your-host|localhost|127\.0\.0\.1/i.test(value);
-
-function publicHttpsUrl(value?: string): URL | undefined {
-  if (!value) return undefined;
-  try {
-    const url = new URL(value);
-    const hostname = url.hostname.replace(/^\[|\]$/g, '').toLowerCase();
-    const ipv4Private = (address: string) => {
-      const octets = address.split('.').map(Number);
-      return octets[0] === 0 || octets[0] === 10 || octets[0] === 127 ||
-        (octets[0] === 100 && octets[1] >= 64 && octets[1] <= 127) ||
-        (octets[0] === 169 && octets[1] === 254) ||
-        (octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31) ||
-        (octets[0] === 192 && octets[1] === 168) ||
-        (octets[0] === 198 && (octets[1] === 18 || octets[1] === 19));
-    };
-    const mappedIpv4 = (address: string) => {
-      if (!address.startsWith('::ffff:')) return undefined;
-      const suffix = address.slice(7);
-      if (isIP(suffix) === 4) return suffix;
-      const groups = suffix.split(':');
-      if (groups.length !== 2 || groups.some(group => !/^[0-9a-f]{1,4}$/.test(group))) return undefined;
-      const values = groups.map(group => Number.parseInt(group, 16));
-      return `${values[0] >> 8}.${values[0] & 255}.${values[1] >> 8}.${values[1] & 255}`;
-    };
-    const mapped = mappedIpv4(hostname);
-    const ipv6Private = hostname === '::' || hostname === '::1' || /^(fc|fd)/.test(hostname) || /^fe[89ab]/.test(hostname) ||
-      (mapped !== undefined && ipv4Private(mapped));
-    const privateAddress = isIP(hostname) === 4 ? ipv4Private(hostname) : isIP(hostname) === 6 && ipv6Private;
-    const exactOrigin = url.href === `${url.origin}/`;
-    return url.protocol === 'https:' && !url.username && !url.password && !isPlaceholder(hostname) && !privateAddress && exactOrigin ? url : undefined;
-  } catch { return undefined; }
-}
+const flagCheck = (name: string, value: string | undefined): Check => ({
+  name, status: value === 'true' || value === 'false' ? 'pass' : 'fail',
+  detail: value === 'true' || value === 'false' ? `${value} selected` : 'must be exactly true or false',
+});
 
 export function inspectRuntime(env: RuntimeEnvironment): Check[] {
   const checks: Check[] = [];
-  const mode = env.STRIPE_MODE;
-  checks.push({ name: 'stripe.mode', status: mode === 'test' || mode === 'live' ? 'pass' : 'fail', detail: mode === 'test' || mode === 'live' ? `${mode} mode selected` : 'STRIPE_MODE must be test or live' });
-  const expectedKeyPrefix = mode === 'live' ? /^(sk|rk)_live_/ : /^(sk|rk)_test_/;
-  checks.push({ name: 'stripe.secret_key', status: configured(env.STRIPE_SECRET_KEY) && expectedKeyPrefix.test(env.STRIPE_SECRET_KEY!) ? 'pass' : 'fail', detail: configured(env.STRIPE_SECRET_KEY) ? 'present; mode prefix checked' : 'STRIPE_SECRET_KEY is missing' });
-  checks.push({ name: 'stripe.webhook_secret', status: /^whsec_.+/.test(env.STRIPE_WEBHOOK_SECRET ?? '') ? 'pass' : 'fail', detail: configured(env.STRIPE_WEBHOOK_SECRET) ? 'present; format checked' : 'STRIPE_WEBHOOK_SECRET is missing' });
+  const mode = stripeMode(env);
+  checks.push({ name: 'stripe.mode', status: mode ? 'pass' : 'fail', detail: mode ? `${mode} mode selected` : 'STRIPE_MODE must be test or live' });
+  checks.push({ name: 'stripe.secret_key', status: stripeSecretKeyMatchesMode(env) ? 'pass' : 'fail', detail: stripeSecretKeyMatchesMode(env) ? 'present; mode prefix checked' : 'STRIPE_SECRET_KEY is missing, malformed, or incompatible with STRIPE_MODE' });
+  const stripeWebhookSecret = /^whsec_[A-Za-z0-9_]+$/.test(env.STRIPE_WEBHOOK_SECRET ?? '');
+  checks.push({ name: 'stripe.webhook_secret', status: stripeWebhookSecret ? 'pass' : 'fail', detail: stripeWebhookSecret ? 'present; format checked' : 'STRIPE_WEBHOOK_SECRET is missing or malformed' });
 
+  const priceIds: string[] = [];
   for (const [key, definition] of Object.entries(priceCatalog)) {
     const value = env[definition.env];
-    checks.push({ name: `stripe.price.${key}`, status: /^price_[A-Za-z0-9]+$/.test(value ?? '') ? 'pass' : 'fail', detail: configured(value) ? `${definition.env} has a Price ID` : `${definition.env} is missing` });
+    if (value) priceIds.push(value);
+    checks.push({ name: `stripe.price.${key}`, status: stripePriceId(value) ? 'pass' : 'fail', detail: stripePriceId(value) ? `${definition.env} has a Price ID` : `${definition.env} is missing or malformed` });
   }
+  const uniquePrices = priceIds.length === Object.keys(priceCatalog).length && new Set(priceIds).size === priceIds.length;
+  checks.push({ name: 'stripe.prices_unique', status: uniquePrices ? 'pass' : 'fail', detail: uniquePrices ? 'every catalog slot has a distinct Price ID' : 'Stripe Price IDs must be complete and distinct' });
 
-  const origins = (env.FARDA_BILLING_RETURN_ORIGINS ?? '').split(',').map(value => value.trim()).filter(Boolean);
-  const validOrigins = origins.length > 0 && origins.every(value => {
-    const url = publicHttpsUrl(value);
-    return url?.origin === value && url.pathname === '/';
-  });
-  checks.push({ name: 'stripe.return_origins', status: validOrigins ? 'pass' : 'fail', detail: validOrigins ? `${origins.length} exact HTTPS origin(s) configured` : 'FARDA_BILLING_RETURN_ORIGINS needs exact, non-placeholder HTTPS origins' });
+  const origins = exactPublicOrigins(env.FARDA_BILLING_RETURN_ORIGINS);
+  checks.push({ name: 'stripe.return_origins', status: origins ? 'pass' : 'fail', detail: origins ? `${origins.length} distinct HTTPS origin(s) configured` : 'FARDA_BILLING_RETURN_ORIGINS needs distinct, exact, non-placeholder HTTPS origins' });
 
-  const base = publicHttpsUrl(env.FARDA_PUBLIC_BASE_URL);
-  checks.push({ name: 'webhook.public_url', status: base ? 'pass' : 'blocked', detail: base ? `expected endpoint ${new URL('/api/billing/webhook', base).href}` : 'FARDA_PUBLIC_BASE_URL is not a confirmed public HTTPS URL' });
+  const base = publicHttpsUrl(env.FARDA_PUBLIC_BASE_URL, true);
+  checks.push({ name: 'webhook.public_url', status: base ? 'pass' : 'blocked', detail: base ? `public API origin is configured` : 'FARDA_PUBLIC_BASE_URL is not an exact public HTTPS origin' });
+  checks.push({ name: 'stripe.webhook_url', status: base ? 'pass' : 'blocked', detail: base ? `expected endpoint ${new URL('/api/billing/webhook', base).href}` : 'public API origin is required for the Stripe webhook' });
+
+  const revenueCatMode = env.REVENUECAT_MODE === 'sandbox' || env.REVENUECAT_MODE === 'live';
+  checks.push({ name: 'revenuecat.mode', status: revenueCatMode ? 'pass' : 'fail', detail: revenueCatMode ? `${env.REVENUECAT_MODE} mode selected` : 'REVENUECAT_MODE must be sandbox or live' });
+  const rcSecret = /^sk_[A-Za-z0-9]+$/.test(env.REVENUECAT_SECRET_API_KEY ?? '');
+  checks.push({ name: 'revenuecat.secret_key', status: rcSecret ? 'pass' : 'fail', detail: rcSecret ? 'private API key format checked' : 'REVENUECAT_SECRET_API_KEY is missing or malformed' });
+  for (const [platform, pattern, variable] of [
+    ['ios', /^appl_[A-Za-z0-9]+$/, 'REVENUECAT_IOS_PUBLIC_API_KEY'],
+    ['android', /^goog_[A-Za-z0-9]+$/, 'REVENUECAT_ANDROID_PUBLIC_API_KEY'],
+  ] as const) {
+    const valid = pattern.test(env[variable] ?? '');
+    checks.push({ name: `revenuecat.${platform}_public_key`, status: valid ? 'pass' : 'fail', detail: valid ? `${variable} format checked` : `${variable} is missing or malformed` });
+  }
+  const webhookAuth = configured(env.REVENUECAT_WEBHOOK_AUTH_TOKEN) &&
+    (env.REVENUECAT_WEBHOOK_AUTH_TOKEN?.trim().length ?? 0) >= 24;
+  checks.push({ name: 'revenuecat.webhook_auth', status: webhookAuth ? 'pass' : 'fail', detail: webhookAuth ? 'authorization token is present and nontrivial' : 'REVENUECAT_WEBHOOK_AUTH_TOKEN must contain at least 24 characters' });
+  const entitlementPattern = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+  const entitlements = [env.REVENUECAT_PLUS_ENTITLEMENT_ID, env.REVENUECAT_FAMILY_ENTITLEMENT_ID];
+  const validEntitlements = entitlements.every(value => entitlementPattern.test(value ?? '')) && new Set(entitlements).size === 2;
+  checks.push({ name: 'revenuecat.entitlements', status: validEntitlements ? 'pass' : 'fail', detail: validEntitlements ? 'Plus and Family entitlement IDs are valid and distinct' : 'Plus and Family entitlement IDs must be valid and distinct' });
+  const productConfiguration = revenueCatProductConfiguration(env);
+  for (const [platform, tier, variable] of revenueCatProductVariables) {
+    const entries = productConfiguration.entries.filter(entry => entry.name === variable);
+    const valid = entries.length > 0 && entries.every(entry => productConfiguration.entries.filter(item => item.id === entry.id).length === 1) &&
+      (platform === 'ios' ? entries.every(entry => /^[A-Za-z0-9][A-Za-z0-9._-]{0,254}$/.test(entry.id)) : entries.every(entry => /^[A-Za-z0-9][A-Za-z0-9._-]{0,254}(?::[A-Za-z0-9][A-Za-z0-9._-]{0,254})?$/.test(entry.id)));
+    checks.push({ name: `revenuecat.products.${platform}_${tier}`, status: valid ? 'pass' : 'fail', detail: valid ? `${entries.length} distinct product ID(s) configured` : `${variable} is missing, malformed, or duplicates another tier/platform` });
+  }
+  for (const [name, variable] of [['legal.terms_url', 'FARDA_TERMS_URL'], ['legal.privacy_url', 'FARDA_PRIVACY_URL'], ['support.url', 'FARDA_SUPPORT_URL']] as const) {
+    const valid = publicHttpsUrl(env[variable]);
+    checks.push({ name, status: valid ? 'pass' : 'fail', detail: valid ? `${variable} is a public HTTPS URL` : `${variable} must be a non-placeholder public HTTPS URL` });
+  }
+  checks.push({ name: 'revenuecat.webhook_url', status: base ? 'pass' : 'blocked', detail: base ? `expected endpoint ${new URL('/api/billing/native/webhook', base).href}` : 'public API origin is required for the RevenueCat webhook' });
 
   const photonEnvironment = env.FARDA_REFILL_PROVIDER_ENVIRONMENT;
   checks.push({ name: 'photon.environment', status: photonEnvironment === 'sandbox' || photonEnvironment === 'production' ? 'pass' : 'fail', detail: photonEnvironment === 'sandbox' || photonEnvironment === 'production' ? `${photonEnvironment} selected` : 'FARDA_REFILL_PROVIDER_ENVIRONMENT must be sandbox or production' });
   for (const key of ['PHOTON_CLIENT_ID', 'PHOTON_CLIENT_SECRET'] as const) {
     checks.push({ name: `photon.${key === 'PHOTON_CLIENT_ID' ? 'client_id' : 'client_secret'}`, status: configured(env[key]) ? 'pass' : 'fail', detail: configured(env[key]) ? `${key} is present` : `${key} is missing` });
   }
+  const distinctPhotonCredentials = configured(env.PHOTON_CLIENT_ID) && configured(env.PHOTON_CLIENT_SECRET) && env.PHOTON_CLIENT_ID?.trim() !== env.PHOTON_CLIENT_SECRET?.trim();
+  checks.push({ name: 'photon.credentials_distinct', status: distinctPhotonCredentials ? 'pass' : 'fail', detail: distinctPhotonCredentials ? 'client ID and secret are distinct' : 'Photon client ID and secret must be present and distinct' });
 
   const stripeEnabled = env.STRIPE_BILLING_ENABLED === 'true';
+  const revenueCatEnabled = env.REVENUECAT_NATIVE_BILLING_ENABLED === 'true';
   const photonEnabled = env.FARDA_REFILL_PROVIDER_ENABLED === 'true';
-  checks.push({ name: 'stripe.enablement', status: 'pass', detail: stripeEnabled ? 'enabled; configuration and end-to-end evidence remain authoritative' : 'disabled (safe default)' });
-  checks.push({ name: 'photon.enablement', status: 'pass', detail: photonEnabled ? 'enabled; verified links and sandbox evidence remain authoritative' : 'disabled (safe default)' });
+  checks.push(flagCheck('stripe.enablement_flag', env.STRIPE_BILLING_ENABLED));
+  checks.push({ name: 'stripe.enablement', status: stripeEnabled && !stripeActivationReady(env) ? 'fail' : 'pass', detail: stripeEnabled ? 'enabled with complete local activation configuration' : 'disabled (safe default)' });
+  checks.push(flagCheck('revenuecat.enablement_flag', env.REVENUECAT_NATIVE_BILLING_ENABLED));
+  checks.push({ name: 'revenuecat.enablement', status: revenueCatEnabled && !revenueCatActivationReady(env) ? 'fail' : 'pass', detail: revenueCatEnabled ? 'enabled with complete local activation configuration' : 'disabled (safe default)' });
+  checks.push(flagCheck('photon.enablement_flag', env.FARDA_REFILL_PROVIDER_ENABLED));
+  checks.push({ name: 'photon.enablement', status: photonEnabled && !photonActivationReady(env) ? 'fail' : 'pass', detail: photonEnabled ? 'enabled with complete local activation configuration' : 'disabled (safe default)' });
   return checks;
 }
 
 export async function inspectStripeRemote(env: RuntimeEnvironment, stripe?: Stripe): Promise<Check[]> {
-  if (env.STRIPE_MODE !== 'test' && env.STRIPE_MODE !== 'live') return [{ name: 'stripe.remote', status: 'blocked', detail: 'STRIPE_MODE must be test or live before remote verification' }];
-  const expectedPrefix = env.STRIPE_MODE === 'live' ? /^(sk|rk)_live_/ : /^(sk|rk)_test_/;
-  if (!configured(env.STRIPE_SECRET_KEY) || !expectedPrefix.test(env.STRIPE_SECRET_KEY!)) return [{ name: 'stripe.remote', status: 'blocked', detail: 'STRIPE_SECRET_KEY is missing or does not match STRIPE_MODE' }];
+  if (!stripeActivationReady(env)) return [{ name: 'stripe.remote', status: 'blocked', detail: 'complete compatible local Stripe configuration is required before remote verification' }];
   const api = stripe ?? new Stripe(env.STRIPE_SECRET_KEY!, { timeout: 8_000, maxNetworkRetries: 1 });
   const checks: Check[] = [];
   const expectedLive = env.STRIPE_MODE === 'live';
@@ -110,7 +120,7 @@ export async function inspectStripeRemote(env: RuntimeEnvironment, stripe?: Stri
     checks.push({ name: 'stripe.customer_portal', status: valid ? 'pass' : 'fail', detail: valid ? 'default portal supports invoices, payment methods, and cancellation with plan switching disabled' : 'default portal configuration does not match the required feature policy' });
   } catch { checks.push({ name: 'stripe.customer_portal', status: 'fail', detail: 'could not read portal configurations' }); }
 
-  const base = publicHttpsUrl(env.FARDA_PUBLIC_BASE_URL);
+  const base = publicHttpsUrl(env.FARDA_PUBLIC_BASE_URL, true);
   if (!base) checks.push({ name: 'stripe.webhook_endpoint', status: 'blocked', detail: 'confirmed FARDA_PUBLIC_BASE_URL is required' });
   else try {
     const expectedUrl = new URL('/api/billing/webhook', base).href;
@@ -124,8 +134,7 @@ export async function inspectStripeRemote(env: RuntimeEnvironment, stripe?: Stri
 }
 
 export async function inspectPhotonRemote(env: RuntimeEnvironment, fetcher: typeof fetch = fetch): Promise<Check[]> {
-  if (env.FARDA_REFILL_PROVIDER_ENVIRONMENT !== 'sandbox' && env.FARDA_REFILL_PROVIDER_ENVIRONMENT !== 'production') return [{ name: 'photon.remote_auth', status: 'blocked', detail: 'FARDA_REFILL_PROVIDER_ENVIRONMENT must be sandbox or production' }];
-  if (!configured(env.PHOTON_CLIENT_ID) || !configured(env.PHOTON_CLIENT_SECRET)) return [{ name: 'photon.remote_auth', status: 'blocked', detail: 'Photon credentials are missing' }];
+  if (!photonActivationReady(env)) return [{ name: 'photon.remote_auth', status: 'blocked', detail: 'complete compatible Photon configuration is required before remote verification' }];
   const production = env.FARDA_REFILL_PROVIDER_ENVIRONMENT === 'production';
   const origin = production ? 'https://auth.photon.health' : 'https://auth.neutron.health';
   const audience = production ? 'https://api.photon.health' : 'https://api.neutron.health';
