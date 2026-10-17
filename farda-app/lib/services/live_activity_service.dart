@@ -44,11 +44,12 @@ class LiveRoutineActivity {
     windowEndsAt: windowEndsAt,
     updatedAt: updatedAt,
     revision: revision,
-    phase: snoozedUntil?.isAfter(now) == true
-        ? LiveRoutinePhase.snoozed
-        : now.isBefore(dueAt)
-        ? LiveRoutinePhase.headsUp
-        : LiveRoutinePhase.due,
+    phase:
+        snoozedUntil?.isAfter(now) == true
+            ? LiveRoutinePhase.snoozed
+            : now.isBefore(dueAt)
+            ? LiveRoutinePhase.headsUp
+            : LiveRoutinePhase.due,
     callAt: snoozedUntil == null ? callAt : null,
     snoozedUntil: snoozedUntil,
     requestPushToken: requestPushToken,
@@ -172,11 +173,13 @@ class LiveActivityService {
   final bool _isIOS;
   Stream<LiveActivityEvent>? _events;
 
-  Stream<LiveActivityEvent> get events => _events ??= !_isIOS
-      ? const Stream<LiveActivityEvent>.empty()
-      : _eventChannel.receiveBroadcastStream().map(
-          (event) => LiveActivityEvent(event as Map),
-        );
+  Stream<LiveActivityEvent> get events =>
+      _events ??=
+          !_isIOS
+              ? const Stream<LiveActivityEvent>.empty()
+              : _eventChannel.receiveBroadcastStream().map(
+                (event) => LiveActivityEvent(event as Map),
+              );
 
   Future<LiveActivityAvailability> availability() async {
     if (!_isIOS) return const LiveActivityAvailability.unavailable();
@@ -190,6 +193,12 @@ class LiveActivityService {
     } on MissingPluginException {
       return const LiveActivityAvailability.unavailable();
     }
+  }
+
+  /// Re-emits currently held tokens through the protected event stream after
+  /// opt-in or account recovery. Token values never enter the method result.
+  Future<void> refreshTokens() async {
+    if (_isIOS) await _channel.invokeMethod<void>('refreshTokens');
   }
 
   Future<Map<Object?, Object?>> upsert(LiveRoutineActivity activity) async {

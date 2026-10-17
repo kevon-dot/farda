@@ -5,6 +5,7 @@ import { prisma } from './lib/prisma';
 import { reminderService } from './reminders/routes';
 import { startReminderWorker } from './reminders/service';
 import { circleAlertService } from './circle/routes';
+import { liveActivityDeliveryService } from './live-activities/runtime';
 import { refillReconciliationService } from './refills/runtime';
 import { startRefillReconciliationWorker } from './refills/reconciliation';
 
@@ -18,6 +19,7 @@ if (env.NODE_ENV === 'production') {
 const stopWorkers: Array<() => void | Promise<void>> = [];
 const backgroundTasks: Array<() => Promise<void>> = [
   () => reminderService.tick().then(() => undefined),
+  () => liveActivityDeliveryService.tick(),
   () => circleAlertService.materialize(100).then(() => undefined),
 ];
 export const httpServer = app.listen(env.PORT, env.HOST, error => {

@@ -170,12 +170,13 @@ export async function cancelOccurrenceReminders(
 	const doseIds = Array.isArray(doseId) ? doseId : [doseId];
 	if (doseIds.length === 0) return;
 	const intents = await tx.reminderIntent.findMany({
-		where: { doseId: { in: doseIds } },
+		where: { doseId: { in: doseIds }, stage: { not: "end" } },
 		select: { id: true },
 	});
 	await tx.reminderIntent.updateMany({
 		where: {
 			doseId: { in: doseIds },
+			stage: { not: "end" },
 			state: { in: ["pending", "reserved", "dispatched"] },
 		},
 		data: { state: "cancelled", reason },
@@ -185,6 +186,10 @@ export async function cancelOccurrenceReminders(
 			intentId: { in: intents.map((i) => i.id) },
 			state: { in: ["reserved", "retryable"] },
 		},
+		data: { state: "cancelled", reason },
+	});
+	await tx.liveActivityAttempt.updateMany({
+		where: { intentId: { in: intents.map((i) => i.id) }, state: "reserved" },
 		data: { state: "cancelled", reason },
 	});
 }
@@ -364,10 +369,20 @@ export class ReminderService {
 				update: data,
 			});
 			if (!input.liveActivitiesEnabled)
-				await tx.reminderIntent.updateMany({
-					where: { userId, channel: "live_activity", state: "pending" },
-					data: { state: "cancelled", reason: "preference_disabled" },
-				});
+				await Promise.all([
+					tx.reminderIntent.updateMany({
+						where: { userId, channel: "live_activity", state: "pending" },
+						data: { state: "cancelled", reason: "preference_disabled" },
+					}),
+					tx.liveActivityInstallation.updateMany({
+						where: { userId, revokedAt: null },
+						data: { revokedAt: now },
+					}),
+					tx.liveActivityToken.updateMany({
+						where: { userId, revokedAt: null },
+						data: { revokedAt: now },
+					}),
+				]);
 		});
 		return this.preferences(userId);
 	}

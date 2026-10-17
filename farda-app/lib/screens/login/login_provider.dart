@@ -3,7 +3,12 @@ import 'package:farda/application/authentication/storage/auth_storage.dart';
 import 'package:flutter/material.dart';
 
 class LoginProvider extends ChangeNotifier {
-  final AuthenticationRepo _authRepo = AuthenticationRepo();
+  LoginProvider({AuthenticationRepo? authRepo, SessionStore? sessions})
+    : _authRepo = authRepo ?? AuthenticationRepo(),
+      _sessions = sessions ?? AuthStorage.sessionStore;
+
+  final AuthenticationRepo _authRepo;
+  final SessionStore _sessions;
 
   String access = "";
   String refresh = "";
@@ -73,9 +78,17 @@ class LoginProvider extends ChangeNotifier {
           user is Map &&
           user['id'] is String &&
           (user['id'] as String).isNotEmpty) {
-        await AuthStorage.saveSession(access: token, id: user['id']);
+        final nextUserId = user['id'] as String;
+        final previous = await _sessions.read();
+        if (previous != null && previous.userId != nextUserId) {
+          final revoked = await _authRepo.signOutCurrentSession();
+          // A 401 clears the expired local session. Other failures retain it,
+          // preventing an account switch that strands its server registration.
+          if (!revoked && await _sessions.read() != null) return false;
+        }
+        await _sessions.save(StoredSession(token: token, userId: nextUserId));
         access = token;
-        id = user['id'];
+        id = nextUserId;
         refresh = '';
         return true;
       }
@@ -89,16 +102,16 @@ class LoginProvider extends ChangeNotifier {
 
   // Load data from Storage (e.g., on app startup)
   Future<void> loadFromPrefs() async {
-    final session = await AuthStorage.getSession();
-    access = session['access'] ?? '';
-    refresh = session['refresh'] ?? '';
-    id = session['id'] ?? '';
+    final session = await _sessions.read();
+    access = session?.token ?? '';
+    refresh = '';
+    id = session?.userId ?? '';
     notifyListeners();
   }
 
   // Optional: Clear data
   Future<void> clearPrefs() async {
-    await AuthStorage.clear();
+    await _sessions.clear();
     access = "";
     refresh = "";
     id = "";

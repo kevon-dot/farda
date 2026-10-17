@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 const db = vi.hoisted(() => ({
-  $transaction: vi.fn(), session: { findUnique:vi.fn() },
+  $transaction: vi.fn(), session: { findUnique:vi.fn(),deleteMany:vi.fn() },
   prescription:{findUnique:vi.fn(),findMany:vi.fn(),findFirst:vi.fn(),create:vi.fn(),update:vi.fn(),findUniqueOrThrow:vi.fn()},
   dose:{findFirst:vi.fn(),findFirstOrThrow:vi.fn(),findMany:vi.fn(),updateMany:vi.fn()},
   doseCorrection:{create:vi.fn(),findMany:vi.fn()},
+  reminderIntent:{findMany:vi.fn(),updateMany:vi.fn(),upsert:vi.fn()},deliveryAttempt:{updateMany:vi.fn()},liveActivityAttempt:{updateMany:vi.fn()},
 }));
 vi.mock('@src/lib/prisma',()=>({prisma:db}));
 import { createPrescription, listDoses, listPrescriptions, recordDose, changeSchedule } from '@src/routes/PrescriptionRoutes';
@@ -24,8 +25,9 @@ describe('review gaps converted to safety assertions', () => {
     expect(res.statusCode).toBe(200);expect(db.dose.updateMany.mock.calls[0][0].data).toEqual({note:'Actual note',revision:{increment:1}});expect(db.doseCorrection.create).toHaveBeenCalledOnce();
   });
   it('rejects stale revisions rather than overwriting a concurrent correction',async()=>{db.dose.findFirst.mockResolvedValue({id:'d1',revision:4});const res=response();await recordDose(req({params:{id:'d1'},body:{status:'taken',expectedRevision:3}}),res);expect(res.statusCode).toBe(409);expect(db.dose.updateMany).not.toHaveBeenCalled();});
+  it('durably queues a Live Activity end with the terminal dose write',async()=>{const before={id:'d1',userId:'owner-a',status:'unconfirmed',takenAt:null,revision:0},after={...before,status:'taken',takenAt:new Date(),revision:1};db.dose.findFirst.mockResolvedValue(before);db.dose.updateMany.mockResolvedValue({count:1});db.dose.findFirstOrThrow.mockResolvedValue(after);db.reminderIntent.findMany.mockResolvedValue([]);const res=response();await recordDose(req({params:{id:'d1'},body:{status:'taken',expectedRevision:0}}),res);expect(res.statusCode).toBe(200);expect(db.reminderIntent.upsert).toHaveBeenCalledWith(expect.objectContaining({create:expect.objectContaining({userId:'owner-a',doseId:'d1',channel:'live_activity',stage:'end'})}));});
   it('does not claim or bind arbitrary device IDs on prescription save',async()=>{const res=response();await createPrescription(req({body:{clientRequestId:'stable-draft-1',medicationName:'Example',labelReviewed:true,deviceId:'foreign'}}),res);expect(res.statusCode).toBe(409);expect(db.$transaction).not.toHaveBeenCalled();});
   it('requires a strict bearer token',async()=>{const res=response(),next=vi.fn();await isAuthenticated(req({headers:{authorization:'Bearer token extra'}}),res,next);expect(res.statusCode).toBe(401);expect(db.session.findUnique).not.toHaveBeenCalled();expect(next).not.toHaveBeenCalled();});
-  it('expired session is rejected at the exact expiry boundary',async()=>{db.session.findUnique.mockResolvedValue({userId:'a',expiresAt:new Date(0)});const res=response(),next=vi.fn();await isAuthenticated(req({headers:{authorization:'Bearer token'}}),res,next);expect(res.statusCode).toBe(401);expect(next).not.toHaveBeenCalled();});
+  it('expired session is rejected at the exact expiry boundary',async()=>{db.session.findUnique.mockResolvedValue({id:'session-a',userId:'a',expiresAt:new Date(0)});const res=response(),next=vi.fn();await isAuthenticated(req({headers:{authorization:'Bearer token'}}),res,next);expect(res.statusCode).toBe(401);expect(db.session.deleteMany).toHaveBeenCalledWith({where:{id:'session-a',expiresAt:{lte:expect.any(Date)}}});expect(next).not.toHaveBeenCalled();});
   it('session database failures do not leak internals or masquerade as logout',async()=>{db.session.findUnique.mockRejectedValue(new Error('password=secret internal SQL'));const res=response();await isAuthenticated(req({headers:{authorization:'Bearer token'}}),res,vi.fn());expect(res.statusCode).toBe(503);expect(JSON.stringify(res.body)).not.toContain('secret');});
 });

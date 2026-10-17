@@ -2,6 +2,10 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:farda/application/authentication/storage/auth_storage.dart';
+import 'package:farda/services/consumer_live_activity_coordinator.dart';
+import 'package:farda/services/live_activity_registration.dart';
+import 'package:farda/services/live_activity_service.dart';
 
 import 'consumer_controller.dart';
 import 'consumer_forms.dart';
@@ -42,6 +46,9 @@ class ConsumerAppState extends State<ConsumerApp> with WidgetsBindingObserver {
   String _preview = 'before';
   bool _agenda = false;
   StreamSubscription<String>? _links;
+  ConsumerLiveActivityCoordinator? _liveActivities;
+  LiveActivityTokenRegistrar? _liveActivityRegistrar;
+  DateTime? _liveSnapshot;
   @override
   void initState() {
     super.initState();
@@ -50,20 +57,90 @@ class ConsumerAppState extends State<ConsumerApp> with WidgetsBindingObserver {
     controller.tab = widget.initialTab.clamp(0, 3).toInt();
     widget.onControllerReady?.call(controller);
     _links = widget.routineLinks?.listen(openRoutine);
+    final registration = widget.repository;
+    if (!widget.repository.isDemo &&
+        registration is LiveActivityRegistrationRepository) {
+      _liveActivityRegistrar = LiveActivityTokenRegistrar(
+        repository: registration as LiveActivityRegistrationRepository,
+        sessions: AuthStorage.sessionStore,
+        onRegistered: () {
+          if (mounted && !controller.loading) return controller.load();
+        },
+      );
+      _liveActivities = ConsumerLiveActivityCoordinator(
+        service: LiveActivityService(),
+        onOpenRoutine: (id, _) => openRoutine(id),
+        onEvent: (event) {
+          if (event.type == 'pushToken' || event.type == 'pushToStartToken') {
+            unawaited(_liveActivityRegistrar!.handle(event).catchError((_) {}));
+          }
+        },
+      )..attach();
+      AuthStorage.sessionRevision.addListener(_sessionChanged);
+    }
     controller.load();
   }
 
   void _changed() {
+    final snapshot = controller.snapshot;
+    if (snapshot != null && snapshot.fetchedAt != _liveSnapshot) {
+      _liveSnapshot = snapshot.fetchedAt;
+      final enabled = snapshot.preferences.liveActivitiesEnabled;
+      final remote = snapshot.capabilities.liveActivityDeliveryEnabled;
+      unawaited(
+        _liveActivities?.reconcile(
+              occurrences: snapshot.occurrences
+                  .where(
+                    (entry) => entry.status == OccurrenceStatus.unconfirmed,
+                  )
+                  .map(
+                    (entry) => LiveRoutineActivity(
+                      occurrenceId: entry.id,
+                      dueAt: entry.scheduledFor,
+                      windowEndsAt: entry.scheduledFor.add(
+                        const Duration(hours: 1),
+                      ),
+                      updatedAt: entry.updatedAt ?? entry.scheduledFor,
+                      revision: entry.revision,
+                      phase: LiveRoutinePhase.headsUp,
+                      snoozedUntil: entry.snoozedUntil,
+                      requestPushToken: remote,
+                    ),
+                  ),
+              enabled: enabled,
+            ) ??
+            Future.value(),
+      );
+    }
     if (mounted) setState(() {});
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    AuthStorage.sessionRevision.removeListener(_sessionChanged);
     _links?.cancel();
+    unawaited(_liveActivities?.dispose() ?? Future.value());
     controller.removeListener(_changed);
     controller.dispose();
     super.dispose();
+  }
+
+  void _sessionChanged() {
+    // Session expiry and account replacement both invalidate the owner of any
+    // visible ActivityKit surface immediately. The newly authenticated account
+    // will reconcile and register its own tokens from a fresh snapshot.
+    unawaited(_liveActivities?.signOut() ?? Future.value());
+  }
+
+  Future<void> _signOut() async {
+    await _liveActivities?.signOut();
+    try {
+      await _liveActivityRegistrar?.revoke();
+    } catch (_) {
+      // The authenticated server sign-out also revokes every account token.
+    }
+    await widget.onSignOut?.call();
   }
 
   @override
@@ -1658,7 +1735,7 @@ class ConsumerAppState extends State<ConsumerApp> with WidgetsBindingObserver {
     else if (widget.onSignOut != null)
       TextButton(
         onPressed: () async {
-          await widget.onSignOut?.call();
+          await _signOut();
         },
         child: const Text('Sign out'),
       ),

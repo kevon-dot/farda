@@ -61,9 +61,15 @@ describe.skipIf(!databaseUrl)('consumer HTTP and reminder integration', () => {
     const note=await call(`/doses/${dose.id}`,'PATCH',{note:'A saved note',mood:'okay',expectedRevision:0});expect(note.status).toBe(200);
     expect((await db.reminderIntent.findMany({where:{doseId:dose.id}})).every((i:any)=>i.state==='pending')).toBe(true);
     const taken=await call(`/doses/${dose.id}`,'PATCH',{status:'taken',expectedRevision:1});expect(taken.status).toBe(200);
-    expect((await db.reminderIntent.findMany({where:{doseId:dose.id}})).every((i:any)=>i.state==='cancelled'&&i.reason==='user_resolved')).toBe(true);
+    const resolved=await db.reminderIntent.findMany({where:{doseId:dose.id}});
+    expect(resolved.filter((i:any)=>i.stage!=='end').every((i:any)=>i.state==='cancelled'&&i.reason==='user_resolved')).toBe(true);
+    expect(resolved.find((i:any)=>i.stage==='end')).toMatchObject({channel:'live_activity',state:'pending',reason:null});
     expect((await db.deliveryAttempt.findUnique({where:{intentId:voice.id}})).state).toBe('cancelled');
     expect((await db.doseCorrection.findMany({where:{doseId:dose.id}}))).toHaveLength(2);
+    expect((await call(`/doses/${dose.id}`,'PATCH',{status:'taken',expectedRevision:2})).status).toBe(200);
+    const repeated=await db.reminderIntent.findMany({where:{doseId:dose.id,stage:'end'}});
+    expect(repeated).toHaveLength(1);
+    expect(repeated[0]).toMatchObject({channel:'live_activity',state:'pending',reason:null});
   });
   it('does not resurrect a prior call after correcting taken back to unconfirmed',async()=>{
     const {dose,voice}=await seed();
@@ -79,7 +85,9 @@ describe.skipIf(!databaseUrl)('consumer HTTP and reminder integration', () => {
     expect((await call(`/doses/${dose.id}`,'PATCH',{status:'skipped'},otherToken)).status).toBe(404);
     expect((await db.reminderIntent.findMany({where:{doseId:dose.id}})).every((i:any)=>i.state==='pending')).toBe(true);
     expect((await call(`/doses/${dose.id}`,'PATCH',{status:'skipped',expectedRevision:0})).status).toBe(200);
-    expect((await db.reminderIntent.findMany({where:{doseId:dose.id}})).every((i:any)=>i.state==='cancelled')).toBe(true);
+    const resolved=await db.reminderIntent.findMany({where:{doseId:dose.id}});
+    expect(resolved.filter((i:any)=>i.stage!=='end').every((i:any)=>i.state==='cancelled'&&i.reason==='user_resolved')).toBe(true);
+    expect(resolved.find((i:any)=>i.stage==='end')).toMatchObject({channel:'live_activity',state:'pending',reason:null});
   });
   it('cancels only the replaced future schedule intents and preserves past history',async()=>{
     const {prescription,dose}=await seed(60*24);

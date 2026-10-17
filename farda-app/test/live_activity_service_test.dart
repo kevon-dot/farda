@@ -140,22 +140,26 @@ void main() {
     },
   );
 
-  test('native permission denial is observable, not represented as successful display', () async {
-    messenger.setMockMethodCallHandler(
-      channel,
-      (call) async => {'supported': true, 'enabled': false},
-    );
-    final value = await LiveActivityService(isIOS: true).availability();
-    expect(value.supported, true);
-    expect(value.enabled, false);
-    expect(value.backgroundDeliveryConfigured, false);
-  });
+  test(
+    'native permission denial is observable, not represented as successful display',
+    () async {
+      messenger.setMockMethodCallHandler(
+        channel,
+        (call) async => {'supported': true, 'enabled': false},
+      );
+      final value = await LiveActivityService(isIOS: true).availability();
+      expect(value.supported, true);
+      expect(value.enabled, false);
+      expect(value.backgroundDeliveryConfigured, false);
+    },
+  );
 
   test(
     'explicit terminal update only calls display end, never a record API',
     () async {
-      await LiveActivityService(isIOS: true)
-          .end('dose-123', outcome: LiveRoutineOutcome.confirmed, revision: 2);
+      await LiveActivityService(
+        isIOS: true,
+      ).end('dose-123', outcome: LiveRoutineOutcome.confirmed, revision: 2);
       expect(calls.single.method, 'end');
       expect(calls.single.arguments, {
         'occurrenceId': 'dose-123',
@@ -172,6 +176,20 @@ void main() {
     });
     expect(event.token, 'secret-token');
     expect(event.toString(), isNot(contains('secret-token')));
+  });
+
+  testWidgets('enabling requests token re-emission without returning a token', (
+    tester,
+  ) async {
+    final coordinator = ConsumerLiveActivityCoordinator(
+      service: LiveActivityService(isIOS: true),
+      onOpenRoutine: (_, __) {},
+      clock: () => due,
+    );
+    await coordinator.reconcile(occurrences: [activity()], enabled: true);
+    expect(calls.first.method, 'refreshTokens');
+    expect(calls.first.arguments, isNull);
+    await coordinator.dispose();
   });
 
   testWidgets(

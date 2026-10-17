@@ -27,4 +27,19 @@ class AuthenticationRepo {
       return null;
     }
   }
+
+  /// Revokes the still-current authenticated session before a different
+  /// account replaces it in protected storage.
+  Future<bool> signOutCurrentSession() async {
+    try {
+      final response = await ApiService.postResponse(
+        endpoint: 'auth/sign-out',
+        body: const <String, dynamic>{},
+        auth: true,
+      );
+      return response?.statusCode == 204;
+    } catch (_) {
+      return false;
+    }
+  }
 }

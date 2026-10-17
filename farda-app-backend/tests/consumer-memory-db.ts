@@ -65,6 +65,7 @@ export function memoryDb(seed: Record<string, Row[]> = {}) {
 	const db: any = { beforeTransaction: undefined };
 	const names = [
 		"user",
+		"session",
 		"prescription",
 		"dose",
 		"doseCorrection",
@@ -72,6 +73,9 @@ export function memoryDb(seed: Record<string, Row[]> = {}) {
 		"channelConsent",
 		"reminderIntent",
 		"deliveryAttempt",
+		"liveActivityInstallation",
+		"liveActivityToken",
+		"liveActivityAttempt",
 		"refillIntent",
 		"refillEvent",
 		"inventoryBalance",
@@ -83,6 +87,40 @@ export function memoryDb(seed: Record<string, Row[]> = {}) {
 	for (const name of names) {
 		tables[name] ||= [];
 		const rows = () => tables[name];
+		const decorate = (row: Row) => {
+			if (name === "dose")
+				return {
+					...row,
+					prescription: tables.prescription.find(
+						(prescription) => prescription.id === row.prescriptionId,
+					),
+					reminderIntents: tables.reminderIntent.filter(
+						(intent) => intent.doseId === row.id,
+					),
+				};
+			if (name === "liveActivityInstallation")
+				return {
+					...row,
+					session: tables.session.find(
+						(session) => session.id === row.sessionId,
+					),
+				};
+			if (name === "liveActivityToken") {
+				const installation = tables.liveActivityInstallation.find(
+					(candidate) => candidate.installationId === row.installationId,
+				);
+				return {
+					...row,
+					installation: installation && {
+						...installation,
+						session: tables.session.find(
+							(session) => session.id === installation.sessionId,
+						),
+					},
+				};
+			}
+			return row;
+		};
 		const update = (row: Row, data: Row) => {
 			for (const [k, v] of Object.entries(data))
 				row[k] =
@@ -94,18 +132,7 @@ export function memoryDb(seed: Record<string, Row[]> = {}) {
 		};
 		db[name] = {
 			async findMany(args: Row = {}) {
-				const candidates =
-					name === "dose"
-						? rows().map((row) => ({
-								...row,
-								prescription: tables.prescription.find(
-									(prescription) => prescription.id === row.prescriptionId,
-								),
-								reminderIntents: tables.reminderIntent.filter(
-									(intent) => intent.doseId === row.id,
-								),
-							}))
-						: rows();
+				const candidates = rows().map(decorate);
 				let found = candidates.filter((row) => match(row, args.where));
 				if (args.orderBy) {
 					const clauses = Array.isArray(args.orderBy)
@@ -166,6 +193,24 @@ export function memoryDb(seed: Record<string, Row[]> = {}) {
 						providerSequence: -1,
 						...data,
 					});
+				if (name === "liveActivityAttempt")
+					Object.assign(base, {
+						state: "reserved",
+						startedAt: null,
+						providerStatus: null,
+						reason: null,
+						...data,
+					});
+				if (name === "liveActivityInstallation")
+					Object.assign(base, {
+						tokenCiphertext: null,
+						tokenFingerprint: null,
+						expiresAt: null,
+						revokedAt: null,
+						...data,
+					});
+				if (name === "liveActivityToken")
+					Object.assign(base, { revokedAt: null, ...data });
 				if (name === "channelConsent")
 					Object.assign(base, {
 						channel: "voice",
@@ -216,7 +261,7 @@ export function memoryDb(seed: Record<string, Row[]> = {}) {
 				return update(row, data);
 			},
 			async updateMany({ where, data }: Row) {
-				const found = rows().filter((row) => match(row, where));
+				const found = rows().filter((row) => match(decorate(row), where));
 				for (const row of found) update(row, data);
 				return { count: found.length };
 			},

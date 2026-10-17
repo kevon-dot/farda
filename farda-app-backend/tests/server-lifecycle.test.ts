@@ -7,6 +7,7 @@ const lifecycle = vi.hoisted(() => ({
 	reconcileStart: vi.fn(),
 	disconnect: vi.fn(),
 	tick: vi.fn(async () => {}),
+	liveTick: vi.fn(async () => {}),
 	reconcileTick: vi.fn(async () => {}),
 	circle: vi.fn(async () => ({ created: 0 })),
 	close: vi.fn(),
@@ -33,6 +34,9 @@ vi.mock("../src/lib/prisma", () => ({
 }));
 vi.mock("../src/reminders/routes", () => ({
 	reminderService: { tick: lifecycle.tick },
+}));
+vi.mock("../src/live-activities/runtime", () => ({
+	liveActivityDeliveryService: { tick: lifecycle.liveTick },
 }));
 vi.mock("../src/circle/routes", () => ({
 	circleAlertService: { materialize: lifecycle.circle },
@@ -79,6 +83,7 @@ describe("server and worker lifecycle", () => {
 		expect(lifecycle.reconcileStart).toHaveBeenCalledOnce();
 		await lifecycle.start.mock.calls[0][0].tick();
 		expect(lifecycle.tick).toHaveBeenCalledOnce();
+		expect(lifecycle.liveTick).toHaveBeenCalledOnce();
 		expect(lifecycle.circle).toHaveBeenCalledWith(100);
 		const stopping = main.shutdown();
 		expect(main.shutdown()).toBe(stopping);

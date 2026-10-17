@@ -139,7 +139,8 @@ export function reminderPlan(
 			dueAt: new Date(
 				dose.scheduledFor.getTime() - CADENCE.beforeMinutes * 60_000,
 			),
-			expiresAt: end,
+			// Never turn a delayed heads-up into a surprise start after the due time.
+			expiresAt: dose.scheduledFor,
 		},
 		{
 			channel: "live_activity",

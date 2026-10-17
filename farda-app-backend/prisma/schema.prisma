@@ -44,6 +44,9 @@ model User {
   billingSubscriptions BillingSubscription[]
   billingCheckout BillingCheckout?
   nativeBillingSubscription NativeBillingSubscription?
+  liveActivityInstallations LiveActivityInstallation[]
+  liveActivityTokens LiveActivityToken[]
+  liveActivityAttempts LiveActivityAttempt[]
 }
 
 model BillingCustomer {
@@ -247,6 +250,7 @@ model Dose {
   scheduleVersion ScheduleVersion? @relation(fields: [scheduleVersionId], references: [id], onDelete: SetNull)
   corrections DoseCorrection[]
   circleAlerts CircleAlert[]
+  liveActivityTokens LiveActivityToken[]
 
   @@index([userId])
   @@index([prescriptionId])
@@ -325,9 +329,66 @@ model ReminderIntent {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   dose Dose @relation(fields: [doseId], references: [id], onDelete: Cascade)
   attempt DeliveryAttempt?
+  liveActivityAttempts LiveActivityAttempt[]
   @@unique([doseId, channel, stage])
   @@index([state, dueAt])
   @@index([userId, doseId])
+}
+
+// APNs tokens are opaque bearer credentials. Only authenticated registration
+// writes these rows, and tokenCiphertext is application-encrypted before Prisma
+// receives it. tokenFingerprint supports idempotency without storing plaintext.
+model LiveActivityInstallation {
+  installationId String @id
+  userId String
+  sessionId String
+  tokenCiphertext String?
+  tokenFingerprint String? @unique
+  expiresAt DateTime?
+  revokedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  activityTokens LiveActivityToken[]
+  @@index([userId, revokedAt, expiresAt])
+  @@index([sessionId])
+}
+
+model LiveActivityToken {
+  activityId String @id
+  userId String
+  installationId String
+  doseId String
+  tokenCiphertext String
+  tokenFingerprint String @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  installation LiveActivityInstallation @relation(fields: [installationId], references: [installationId], onDelete: Cascade)
+  dose Dose @relation(fields: [doseId], references: [id], onDelete: Cascade)
+  @@index([userId, doseId, revokedAt, expiresAt])
+  @@index([installationId])
+}
+
+model LiveActivityAttempt {
+  id String @id @default(cuid())
+  intentId String
+  userId String
+  targetFingerprint String
+  targetKind String
+  state String @default("reserved")
+  providerStatus String?
+  reason String?
+  startedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  intent ReminderIntent @relation(fields: [intentId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([intentId, targetFingerprint])
+  @@index([userId, state, updatedAt])
 }
 
 model DeliveryAttempt {
@@ -441,6 +502,7 @@ model Session {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  liveActivityInstallations LiveActivityInstallation[]
 
   @@index([userId])
 }
