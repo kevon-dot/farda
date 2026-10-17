@@ -98,19 +98,53 @@ for config_id in objects[widget["buildConfigurationList"]]["buildConfigurations"
     assert settings["IPHONEOS_DEPLOYMENT_TARGET"] == "16.2"
     assert settings["APPLICATION_EXTENSION_API_ONLY"] == "YES"
     assert settings["SKIP_INSTALL"] == "YES"
-    assert settings["PRODUCT_BUNDLE_IDENTIFIER"].startswith("com.example.farda.")
+    if config["name"] != "Release":
+        assert settings["PRODUCT_BUNDLE_IDENTIFIER"].startswith("com.example.farda.")
+    else:
+        assert settings["PRODUCT_BUNDLE_IDENTIFIER"] == "$(FARDA_IOS_EXTENSION_BUNDLE_ID)"
+        assert settings["DEVELOPMENT_TEAM"] == "$(FARDA_IOS_TEAM_ID)"
+        assert settings["PROVISIONING_PROFILE_SPECIFIER"] == "$(FARDA_IOS_EXTENSION_PROFILE)"
+        assert settings["CODE_SIGN_STYLE"] == "Manual"
+        assert settings["CODE_SIGN_IDENTITY[sdk=iphoneos*]"] == "Apple Distribution"
     assert (ROOT / settings["INFOPLIST_FILE"]).is_file()
+
+for config_id in objects[runner["buildConfigurationList"]]["buildConfigurations"]:
+    config = objects[config_id]
+    settings = config["buildSettings"]
+    if config["name"] != "Release":
+        assert settings["PRODUCT_BUNDLE_IDENTIFIER"] == "com.example.farda"
+    else:
+        assert settings["PRODUCT_BUNDLE_IDENTIFIER"] == "$(FARDA_IOS_APP_BUNDLE_ID)"
+        assert settings["DEVELOPMENT_TEAM"] == "$(FARDA_IOS_TEAM_ID)"
+        assert settings["PROVISIONING_PROFILE_SPECIFIER"] == "$(FARDA_IOS_APP_PROFILE)"
+        assert settings["CODE_SIGN_ENTITLEMENTS"] == "Runner/Release.entitlements"
+        assert settings["CODE_SIGN_STYLE"] == "Manual"
+        assert settings["CODE_SIGN_IDENTITY[sdk=iphoneos*]"] == "Apple Distribution"
+
+release_gate = [
+    objects[key]
+    for key in runner["buildPhases"]
+    if objects[key].get("name") == "Validate Release Configuration"
+]
+assert len(release_gate) == 1
+assert "configure_release.py" in release_gate[0]["shellScript"]
 runner_info = plistlib.loads((ROOT / "Runner/Info.plist").read_bytes())
 widget_info = plistlib.loads((ROOT / "FardaLiveActivity/Info.plist").read_bytes())
+release_entitlements = plistlib.loads((ROOT / "Runner/Release.entitlements").read_bytes())
 assert runner_info["NSSupportsLiveActivities"] is True
 assert "farda" in runner_info["CFBundleURLTypes"][0]["CFBundleURLSchemes"]
+assert runner_info["FardaReleaseCommit"] == "$(FARDA_RELEASE_COMMIT)"
 assert widget_info["NSExtension"]["NSExtensionPointIdentifier"] == "com.apple.widgetkit-extension"
+assert widget_info["FardaReleaseCommit"] == "$(FARDA_RELEASE_COMMIT)"
 assert set(widget_info["UIAppFonts"]) == {"Outfit-Regular.ttf", "Outfit-SemiBold.ttf"}
+assert release_entitlements == {"aps-environment": "production"}
+assert '#include? "ReleaseSigning.xcconfig"' in (ROOT / "Flutter/Release.xcconfig").read_text()
+assert '#include? "../Flutter/ReleaseSigning.xcconfig"' in (ROOT / "FardaLiveActivity/Extension.xcconfig").read_text()
 for catalog in (ROOT / "FardaLiveActivity/Assets.xcassets").rglob("Contents.json"):
     content = json.loads(catalog.read_text())
     for image in content.get("images", []):
         asset = catalog.parent / image["filename"]
         assert asset.is_file() and asset.stat().st_size > 0
         assert asset.read_text().startswith("<svg"), f"Invalid vector asset: {asset}"
-print("PASS: Xcode project syntax/references, target embedding, source memberships, build configs, plists, fonts and vectors")
+print("PASS: Xcode project syntax/references, target embedding, release gates, build configs, plists, fonts and vectors")
 print("Not verified: Swift compilation, code signing, ActivityKit runtime or device rendering")

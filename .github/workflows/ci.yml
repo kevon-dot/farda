@@ -173,6 +173,10 @@ jobs:
           cp .env.example .env.production
       - name: Install dependencies
         run: flutter pub get --enforce-lockfile
+      - name: Validate native release configuration
+        run: |
+          python3 ios/scripts/validate_live_activity_project.py
+          python3 ios/scripts/test_configure_release.py
       - name: Build app and embedded Live Activity extension
         run: flutter build ios --simulator --debug --no-codesign
       - name: Package simulator app for review
