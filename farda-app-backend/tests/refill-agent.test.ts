@@ -383,6 +383,45 @@ describe("durable provider refill agent", () => {
 		});
 		expect(f.provider.getOrder).not.toHaveBeenCalled();
 	});
+	it("cannot reclaim and regress a request completed by the background worker", async () => {
+		const f = fixture(),
+			input = await f.input();
+		const sent = await f.service.submit("u", "rx", input);
+		if (!sent.latestRequest) throw new Error("expected a persisted request");
+		f.provider.getOrder.mockClear();
+		f.provider.findOrder.mockClear();
+		const updateMany = f.raw.refillAgentRequest.updateMany.bind(
+			f.raw.refillAgentRequest,
+		);
+		let raced = false;
+		f.raw.refillAgentRequest.updateMany = vi.fn(async (args) => {
+			if (!raced && args.data?.refreshClaimedAt instanceof Date) {
+				raced = true;
+				const row = f.rows("refillAgentRequest")[0];
+				Object.assign(row, {
+					status: "delivered",
+					nextReconcileAt: null,
+					refreshClaimedAt: null,
+					reconcileAttempts: 0,
+					updatedAt: new Date(row.updatedAt.getTime() + 1),
+				});
+			}
+			return updateMany(args);
+		});
+
+		const result = await f.service.refresh("u", "rx");
+		expect(result).toMatchObject({
+			reasonCode: "request_fulfilled",
+			latestRequest: { id: sent.latestRequest.id, status: "delivered" },
+		});
+		expect(f.rows("refillAgentRequest")[0]).toMatchObject({
+			status: "delivered",
+			nextReconcileAt: null,
+			refreshClaimedAt: null,
+		});
+		expect(f.provider.getOrder).not.toHaveBeenCalled();
+		expect(f.provider.findOrder).not.toHaveBeenCalled();
+	});
 	it("emits only bounded operational fields, without account or prescription data", async () => {
 		const events: RefillAgentEvent[] = [];
 		const f = fixture((event) => events.push(event));

@@ -115,7 +115,13 @@ export function memoryDb(seed: Record<string, Row[]> = {}) {
 						for (const clause of clauses) {
 							const [key, dir] = Object.entries(clause)[0];
 							if (a[key] === b[key]) continue;
-							return (a[key] < b[key] ? -1 : 1) * (dir === "asc" ? 1 : -1);
+							const direction = typeof dir === "object" ? dir.sort : dir;
+							const nulls = typeof dir === "object" ? dir.nulls : "last";
+							if (a[key] === null) return nulls === "first" ? -1 : 1;
+							if (b[key] === null) return nulls === "first" ? 1 : -1;
+							return (
+								(a[key] < b[key] ? -1 : 1) * (direction === "asc" ? 1 : -1)
+							);
 						}
 						return 0;
 					});
@@ -171,6 +177,18 @@ export function memoryDb(seed: Record<string, Row[]> = {}) {
 					Object.assign(base, { status: "planned", ...data });
 				if (name === "inventoryBalance")
 					Object.assign(base, { source: "user_count", revision: 1, ...data });
+				if (name === "refillAgentRequest")
+					Object.assign(base, {
+						providerOrderId: null,
+						providerConfirmed: false,
+						failureCode: null,
+						lastCheckedAt: null,
+						refreshClaimedAt: null,
+						reconcileAttempts: 0,
+						nextReconcileAt: null,
+						operatorAlertedAt: null,
+						...data,
+					});
 				rows().push(base);
 				return structuredClone(base);
 			},

@@ -1,14 +1,11 @@
 import { Router } from "express";
-import logger from "jet-logger";
 import { z } from "zod";
-import env from "../common/constants/env";
 import { prisma } from "../lib/prisma";
 import { isAuthenticated } from "../middleware/isAuthenticated";
 import { rateLimit } from "../middleware/rateLimit";
 import { route } from "../reminders/routes";
-import { RefillAgentService } from "./agent";
 import { PharmacyHandoffService } from "./pharmacy-handoff";
-import { PhotonRefillsProvider } from "./providers/photon";
+import { refillAgentService } from "./runtime";
 import { RefillService } from "./service";
 
 const id = z.string().min(1).max(160),
@@ -18,17 +15,7 @@ const timestamp = z.iso
 	.transform((value) => new Date(value));
 export function createRefillRouter(
 	service = new RefillService(prisma),
-	agent = new RefillAgentService(
-		prisma,
-		new PhotonRefillsProvider({
-			enabled: env.FARDA_REFILL_PROVIDER_ENABLED,
-			environment: env.FARDA_REFILL_PROVIDER_ENVIRONMENT,
-			clientId: env.PHOTON_CLIENT_ID,
-			clientSecret: env.PHOTON_CLIENT_SECRET,
-		}),
-		undefined,
-		(event) => logger.info(JSON.stringify({ event: "refill_agent", ...event })),
-	),
+	agent = refillAgentService,
 	handoff = new PharmacyHandoffService(prisma),
 ) {
 	const router = Router();
