@@ -14,6 +14,20 @@ describe('billing price catalog', () => {
     expect(publicCatalog({}).currency).toBe('USD');
   });
 
+  it('keeps checkout disabled for incomplete or mode-incompatible activation', () => {
+    const complete = {
+      STRIPE_BILLING_ENABLED: 'true', STRIPE_MODE: 'test', STRIPE_SECRET_KEY: 'rk_test_synthetic',
+      STRIPE_WEBHOOK_SECRET: 'whsec_synthetic', STRIPE_PRICE_PLUS_MONTHLY: 'price_plusmonthly',
+      STRIPE_PRICE_PLUS_ANNUAL: 'price_plusannual', STRIPE_PRICE_FAMILY_MONTHLY: 'price_familymonthly',
+      STRIPE_PRICE_FAMILY_ANNUAL: 'price_familyannual', FARDA_BILLING_RETURN_ORIGINS: 'https://app.test',
+      FARDA_PUBLIC_BASE_URL: 'https://api.test', FARDA_REFILL_AI_ENABLED: 'true', OPENAI_API_KEY: 'synthetic',
+    };
+    expect(publicCatalog(complete).checkoutEnabled).toBe(true);
+    expect(publicCatalog({ ...complete, STRIPE_SECRET_KEY: 'rk_live_wrongmode' }).checkoutEnabled).toBe(false);
+    expect(publicCatalog({ ...complete, STRIPE_PRICE_FAMILY_ANNUAL: complete.STRIPE_PRICE_PLUS_ANNUAL }).checkoutEnabled).toBe(false);
+    expect(publicCatalog({ ...complete, FARDA_PUBLIC_BASE_URL: 'https://127.0.0.1' }).checkoutEnabled).toBe(false);
+  });
+
   it('refuses to reuse a lookup key with a different amount', () => {
     const definition = { lookup: 'farda_plus_monthly_usd', product: 'plus', amount: 1499, interval: 'month' } as const;
     const existing = {

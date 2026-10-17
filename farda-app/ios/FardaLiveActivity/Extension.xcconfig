@@ -1,2 +1,3 @@
 // Share only generated Flutter version/build metadata, not Runner's Pods.
 #include "../Flutter/Generated.xcconfig"
+#include? "../Flutter/ReleaseSigning.xcconfig"
