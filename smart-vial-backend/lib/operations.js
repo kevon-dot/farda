@@ -27,13 +27,22 @@ async function within(promise, timeoutMs) {
   }
 }
 
+function singleFlight(probe) {
+  let pending;
+  return () => {
+    pending ||= Promise.resolve().then(probe).finally(() => { pending = undefined; });
+    return pending;
+  };
+}
+
 function createOperationsRouter({ readinessProbe = async () => {}, env = process.env, timeoutMs = 3000 } = {}) {
   const router = Router();
   const metadata = buildInfo(env);
+  const readiness = singleFlight(readinessProbe);
   router.get('/health', (_req, res) => res.json({ status: 'ok', service: 'smart-vial-api', contract: 'vial-observations-v1', build: metadata }));
   router.get('/ready', async (_req, res) => {
     try {
-      await within(readinessProbe(), timeoutMs);
+      await within(readiness(), timeoutMs);
       return res.json({ status: 'ready', service: 'smart-vial-api', build: metadata });
     } catch {
       return res.status(503).json({ status: 'unavailable', service: 'smart-vial-api', build: metadata });

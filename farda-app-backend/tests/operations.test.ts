@@ -1,7 +1,7 @@
 import { createServer, type Server } from 'node:http';
 import express from 'express';
 import { afterEach, describe, expect, it } from 'vitest';
-import { buildInfo, createOperationsRouter } from '../src/operations/routes';
+import { buildInfo, createDatabaseProbe, createOperationsRouter } from '../src/operations/routes';
 
 let server: Server | undefined;
 afterEach(() => new Promise<void>(resolve => server ? server.close(() => resolve()) : resolve()));
@@ -33,5 +33,43 @@ describe('operational probes', () => {
 
   it('does not reflect unsafe build metadata', () => {
     expect(buildInfo({ COMMIT_SHA: '<script>' }).commit).toBe('unknown');
+  });
+
+  it('coalesces unresolved readiness work instead of accumulating probes', async () => {
+    let calls = 0;
+    let release!: () => void;
+    const base = await start(() => {
+      calls += 1;
+      return new Promise<void>(resolve => { release = resolve; });
+    });
+    const responses = await Promise.all(Array.from({ length: 8 }, () => fetch(`${base}/ready`)));
+    expect(responses.every(response => response.status === 503)).toBe(true);
+    expect(calls).toBe(1);
+    release();
+  });
+
+  it('bounds connection, client query, and server statement time for the database probe', async () => {
+    let config: ClientConfig | undefined;
+    let ended = 0;
+    const probe = createDatabaseProbe({
+      connectionString: 'postgresql://probe:probe@localhost:5432/probe',
+      timeoutMs: 1234,
+      clientFactory: value => {
+        config = value;
+        return {
+          connect: async () => {},
+          query: async () => undefined,
+          end: async () => { ended += 1; },
+        };
+      },
+    });
+    await probe();
+    expect(config).toMatchObject({
+      application_name: 'farda-readiness',
+      connectionTimeoutMillis: 1234,
+      query_timeout: 1234,
+      statement_timeout: 1234,
+    });
+    expect(ended).toBe(1);
   });
 });

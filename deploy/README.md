@@ -41,6 +41,7 @@ between migration and rollout.
 | --- | --- | --- |
 | Main API | `DATABASE_URL`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL` | The auth secret must be at least 32 characters and the production auth URL must use HTTPS. Set `HOST=0.0.0.0` in a container. |
 | Smart vial API | `MONGODB_URI`, `DATABASE_URL`, `CORS_ORIGINS` | MongoDB must be a replica set or sharded deployment. `DATABASE_URL` must point to the same PostgreSQL identity store used by the main API. |
+| Release jobs | `MIGRATION_DATABASE_URL`, `MONGODB_PREPARE_URI` | These short-lived identities may apply Prisma migrations or create MongoDB indexes. Do not give those schema privileges to runtime identities. |
 
 Store these values in the platform's secret manager. Grant the runtime identity
 only the database access it needs. Do not bake `.env` files into images or place
@@ -63,14 +64,14 @@ Run the main API migration image once for each release:
 
 ```sh
 docker build --target migration -t registry.example/farda-api-migrate:FULL_GIT_COMMIT_SHA farda-app-backend
-docker run --rm --env-file /secure/path/farda-main.env \
+docker run --rm --env-file /secure/path/farda-main-migration.env \
   registry.example/farda-api-migrate:FULL_GIT_COMMIT_SHA
 ```
 
 Then run the vial database preparation command from the vial runtime image:
 
 ```sh
-docker run --rm --env-file /secure/path/farda-vial.env \
+docker run --rm --env-file /secure/path/farda-vial-prepare.env \
   registry.example/smart-vial-api:FULL_GIT_COMMIT_SHA \
   node scripts/prepare-database.js
 ```
@@ -79,9 +80,16 @@ docker run --rm --env-file /secure/path/farda-vial.env \
 the vial service validates both database connections, requires transactional
 MongoDB topology, and creates the declared MongoDB indexes. Both jobs are
 idempotent, but only one release controller should run them at a time. A failed
-job blocks rollout. Database rollback means restoring a verified snapshot to a
-new database and switching services according to the rehearsed recovery plan;
-there is no automatic destructive down-migration.
+job blocks rollout. The vial preparation job must run only after the PostgreSQL
+migration succeeds because it verifies the shared session store. Runtime vial
+instances connect without topology-admin or index-creation calls and can use a
+MongoDB role limited to application reads and writes. Database rollback means
+restoring a verified snapshot to a new database and switching services according
+to the rehearsed recovery plan; there is no automatic destructive down-migration.
+
+The two release-job env files above map their privileged database URL to the
+command's expected `DATABASE_URL` or `MONGODB_URI` name. Keep them separate from
+the runtime env files and inject them from the deployment secret manager.
 
 ## Local or staging Compose template
 
@@ -109,6 +117,11 @@ outage so an orchestrator does not create a restart loop. `GET /ready` verifies
 the dependencies needed to accept traffic: PostgreSQL for the main API, and
 both MongoDB and the shared PostgreSQL session store for the vial API. A failed
 check returns HTTP 503 without returning database errors or credentials.
+The vial process starts its HTTP listener before attempting datastore recovery,
+so liveness remains observable during an initial outage and readiness retries
+MongoDB connection. Main API PostgreSQL probes use one coalesced dedicated
+client with two-second connection, query, and server statement limits; repeated
+health traffic cannot accumulate unresolved work in the application pool.
 
 Configure the platform as follows:
 

@@ -7,6 +7,37 @@ const { requestLimit } = require('./middleware/requestLimit');
 const { checkSessionStore, closePool } = require('./middleware/verifyUserToken');
 const { createOperationsRouter, buildInfo } = require('./lib/operations');
 
+function createRuntimeDependencies({
+  mongoUri = config.mongoUri,
+  connectMongo = connectDB,
+  mongoReady = () => mongoose.connection.readyState === 1,
+  postgresReady = checkSessionStore,
+  close = async () => { await closePool(); await mongoose.disconnect(); },
+} = {}) {
+  let mongoConnect;
+  let dependencyCheck;
+  async function ensureMongo() {
+    if (mongoReady()) return;
+    mongoConnect ||= Promise.resolve()
+      .then(() => connectMongo(mongoUri))
+      .finally(() => { mongoConnect = undefined; });
+    await mongoConnect;
+    if (!mongoReady()) throw new Error('MongoDB is not connected');
+  }
+  return {
+    readiness: () => {
+      dependencyCheck ||= Promise.resolve()
+        .then(async () => {
+          await ensureMongo();
+          await postgresReady();
+        })
+        .finally(() => { dependencyCheck = undefined; });
+      return dependencyCheck;
+    },
+    close,
+  };
+}
+
 function createApp({ readinessProbe } = {}) {
   const app = express();
   app.disable('x-powered-by');
@@ -34,17 +65,32 @@ function createApp({ readinessProbe } = {}) {
   return app;
 }
 
-async function start() {
-  config.validateConfig(config);
-  await connectDB(config.mongoUri);
-  await checkSessionStore();
-  const server = createApp().listen(config.port, () => {
+async function start({
+  runtimeConfig = config,
+  dependencies = createRuntimeDependencies({ mongoUri: runtimeConfig.mongoUri }),
+  installSignalHandlers = true,
+  onDependencyError = () => console.error('Vial API dependencies unavailable; readiness remains closed.'),
+} = {}) {
+  config.validateConfig(runtimeConfig);
+  const server = createApp({ readinessProbe: dependencies.readiness }).listen(runtimeConfig.port, () => {
     const build = buildInfo();
-    console.info(`Vial API ready (version=${build.version} commit=${build.commit})`);
+    console.info(`Vial API listening (version=${build.version} commit=${build.commit})`);
   });
-  const stop = () => server.close(async () => { await closePool(); await mongoose.disconnect(); });
-  process.once('SIGTERM', stop);
-  process.once('SIGINT', stop);
+  // Warm connections without making process liveness depend on datastore
+  // availability. Each readiness request can retry a failed initial connect.
+  void dependencies.readiness().catch(onDependencyError);
+  let stopPromise;
+  const stop = () => {
+    stopPromise ||= new Promise(resolve => server.close(async () => {
+      await dependencies.close();
+      resolve();
+    }));
+    return stopPromise;
+  };
+  if (installSignalHandlers) {
+    process.once('SIGTERM', () => { void stop(); });
+    process.once('SIGINT', () => { void stop(); });
+  }
   return server;
 }
 
@@ -63,4 +109,4 @@ if (require.main === module) {
   void run();
 }
 
-module.exports = { createApp, start, run };
+module.exports = { createApp, createRuntimeDependencies, start, run };

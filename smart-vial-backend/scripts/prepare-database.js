@@ -1,11 +1,11 @@
 const mongoose = require('mongoose');
 const config = require('../config/config');
-const connectDB = require('../config/databaseConfig');
+const { prepareDatabase } = require('../config/databaseConfig');
 const { checkSessionStore, closePool } = require('../middleware/verifyUserToken');
 
 async function prepare() {
   config.validateConfig(config);
-  await connectDB(config.mongoUri);
+  await prepareDatabase(config.mongoUri);
   await checkSessionStore();
   console.info('Vial database checks and indexes completed.');
 }

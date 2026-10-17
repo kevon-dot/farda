@@ -28,7 +28,9 @@ services:
       context: ../farda-app-backend
       target: migration
       args: *build-args
-    environment: *farda-environment
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${MIGRATION_DATABASE_URL:?Set MIGRATION_DATABASE_URL in deploy/.env}
     restart: "no"
 
   vial-prepare:
@@ -37,7 +39,13 @@ services:
       target: runtime
       args: *build-args
     command: ["node", "scripts/prepare-database.js"]
-    environment: *vial-environment
+    environment:
+      NODE_ENV: production
+      MONGODB_URI: ${MONGODB_PREPARE_URI:?Set MONGODB_PREPARE_URI in deploy/.env}
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in deploy/.env}
+    depends_on:
+      farda-migrate:
+        condition: service_completed_successfully
     restart: "no"
 
   farda-api:
