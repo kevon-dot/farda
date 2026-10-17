@@ -137,6 +137,42 @@ describe("persisted Photon order reconciliation", () => {
 		expect((await f.service.tick()).considered).toBe(0);
 	});
 
+	it("treats a null schedule from a rolling deploy as immediately due", async () => {
+		const f = fixture();
+		f.rows("refillAgentRequest")[0].nextReconcileAt = null;
+		expect(await f.service.tick()).toMatchObject({ considered: 1, claimed: 1 });
+		expect(f.provider.findOrder).toHaveBeenCalledOnce();
+		expect(f.rows("refillAgentRequest")[0].nextReconcileAt).toEqual(
+			new Date(start.getTime() + 60_000),
+		);
+	});
+
+	it("uses fresh per-row leases and schedules from lookup completion", async () => {
+		const f = fixture();
+		const first = f.rows("refillAgentRequest")[0];
+		first.nextReconcileAt = new Date(start.getTime() - 1_000);
+		const second = structuredClone(first);
+		Object.assign(second, {
+			id: "request-second",
+			reviewId: "review-second",
+			requestKey: "key-second",
+			nextReconcileAt: start,
+		});
+		f.rows("refillAgentRequest").push(second);
+		let calls = 0;
+		f.provider.findOrder.mockImplementation(async () => {
+			if (calls++ === 0) f.advance(120_000);
+			return null;
+		});
+
+		expect(await f.service.tick()).toMatchObject({ considered: 2, claimed: 2 });
+		expect(f.rows("refillAgentRequest")[1]).toMatchObject({
+			lastCheckedAt: new Date(start.getTime() + 120_000),
+			refreshClaimedAt: null,
+			nextReconcileAt: new Date(start.getTime() + 180_000),
+		});
+	});
+
 	it("advances verified provider state without submitting or changing inventory", async () => {
 		const f = fixture({ status: "sent", providerOrderId: "order-secret" });
 		f.provider.getOrder.mockResolvedValueOnce(f.order("PENDING", "READY"));

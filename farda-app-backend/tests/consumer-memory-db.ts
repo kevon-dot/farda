@@ -6,6 +6,7 @@ type Row = Record<string, any>;
 function match(row: Row, where: Row = {}): boolean {
 	return Object.entries(where).every(([key, value]) => {
 		if (key === "OR") return value.some((w: Row) => match(row, w));
+		if (key === "AND") return value.every((w: Row) => match(row, w));
 		if (key === "NOT") return !match(row, value);
 		if (key.includes("_") && !(key in row)) return match(row, value);
 		const current = row[key];
@@ -72,9 +73,14 @@ export function memoryDb(seed: Record<string, Row[]> = {}) {
 				let found = rows().filter((row) => match(row, args.where));
 				if (args.orderBy) {
 					const [key, dir] = Object.entries(args.orderBy)[0];
-					found = [...found].sort(
-						(a, b) => (a[key] < b[key] ? -1 : 1) * (dir === "asc" ? 1 : -1),
-					);
+					const direction = typeof dir === "object" ? dir.sort : dir;
+					const nulls = typeof dir === "object" ? dir.nulls : "last";
+					found = [...found].sort((a, b) => {
+						if (a[key] === null)
+							return b[key] === null ? 0 : nulls === "first" ? -1 : 1;
+						if (b[key] === null) return nulls === "first" ? 1 : -1;
+						return (a[key] < b[key] ? -1 : 1) * (direction === "asc" ? 1 : -1);
+					});
 				}
 				return structuredClone(found.slice(0, args.take || Infinity));
 			},

@@ -51,6 +51,8 @@ worker only calls Photon order lookup APIs; it never calls the order mutation.
 Each record has a database lease, attempt count, and next-check timestamp so
 multiple processes and restarts do not multiply work. Unchanged, missing, and
 failed lookups use exponential backoff from one minute to a six-hour maximum.
+Active records with no next-check timestamp are treated as due so orders created
+during a rolling deploy cannot be stranded by an older application process.
 Terminal states clear the schedule. A stale `submitting` record becomes
 `unknown` and remains blocked from resubmission until Photon confirms an order
 or an operator resolves it outside this automated path.

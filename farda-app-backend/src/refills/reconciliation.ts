@@ -120,27 +120,36 @@ export class RefillReconciliationService {
 			});
 			return result;
 		}
-		const now = this.now();
+		const scanAt = this.now();
 		const due = await this.db.refillAgentRequest.findMany({
 			where: {
 				environment: this.provider.environment,
 				status: { in: [...RECONCILABLE_REFILL_STATUSES] },
-				nextReconcileAt: { lte: now },
-				OR: [
-					{ refreshClaimedAt: null },
+				AND: [
 					{
-						refreshClaimedAt: {
-							lt: new Date(now.getTime() - LEASE_MS),
-						},
+						OR: [
+							{ nextReconcileAt: null },
+							{ nextReconcileAt: { lte: scanAt } },
+						],
+					},
+					{
+						OR: [
+							{ refreshClaimedAt: null },
+							{
+								refreshClaimedAt: {
+									lt: new Date(scanAt.getTime() - LEASE_MS),
+								},
+							},
+						],
 					},
 				],
 			},
-			orderBy: { nextReconcileAt: "asc" },
+			orderBy: { nextReconcileAt: { sort: "asc", nulls: "first" } },
 			take: Math.max(1, Math.min(100, Math.trunc(limit))),
 		});
 		result.considered = due.length;
 		for (const request of due) {
-			const outcome = await this.reconcile(request, now);
+			const outcome = await this.reconcile(request, this.now());
 			if (!outcome) continue;
 			result.claimed++;
 			if (outcome.terminal) result.terminal++;
@@ -150,25 +159,51 @@ export class RefillReconciliationService {
 		return result;
 	}
 
-	private async reconcile(request: RefillAgentRequest, now: Date) {
+	private async reconcile(request: RefillAgentRequest, claimAt: Date) {
 		const claimed = await this.db.refillAgentRequest.updateMany({
 			where: {
 				id: request.id,
 				environment: this.provider.environment,
-				status: { in: [...RECONCILABLE_REFILL_STATUSES] },
-				nextReconcileAt: { lte: now },
-				OR: [
-					{ refreshClaimedAt: null },
+				status: request.status,
+				nextReconcileAt: request.nextReconcileAt,
+				AND: [
 					{
-						refreshClaimedAt: {
-							lt: new Date(now.getTime() - LEASE_MS),
-						},
+						OR: [
+							{ nextReconcileAt: null },
+							{ nextReconcileAt: { lte: claimAt } },
+						],
+					},
+					{
+						OR: [
+							{ refreshClaimedAt: null },
+							{
+								refreshClaimedAt: {
+									lt: new Date(claimAt.getTime() - LEASE_MS),
+								},
+							},
+						],
 					},
 				],
 			},
-			data: { refreshClaimedAt: now },
+			data: { refreshClaimedAt: claimAt },
 		});
 		if (!claimed.count) return null;
+		const claimedRequest = await this.db.refillAgentRequest.findFirst({
+			where: {
+				id: request.id,
+				environment: this.provider.environment,
+				refreshClaimedAt: claimAt,
+				status: { in: [...RECONCILABLE_REFILL_STATUSES] },
+			},
+		});
+		if (!claimedRequest) {
+			await this.db.refillAgentRequest.updateMany({
+				where: { id: request.id, refreshClaimedAt: claimAt },
+				data: { refreshClaimedAt: null },
+			});
+			return null;
+		}
+		request = claimedRequest;
 		const status = isRequestStatus(request.status) ? request.status : "unknown";
 		this.event({
 			operation: "reconcile",
@@ -180,10 +215,10 @@ export class RefillReconciliationService {
 
 		if (
 			request.status === "submitting" &&
-			now.getTime() - request.createdAt.getTime() < SUBMISSION_GRACE_MS
+			claimAt.getTime() - request.createdAt.getTime() < SUBMISSION_GRACE_MS
 		) {
 			await this.db.refillAgentRequest.updateMany({
-				where: { id: request.id, refreshClaimedAt: now },
+				where: { id: request.id, refreshClaimedAt: claimAt },
 				data: {
 					refreshClaimedAt: null,
 					nextReconcileAt: new Date(
@@ -205,7 +240,7 @@ export class RefillReconciliationService {
 			if (!order)
 				return this.scheduleRetry(
 					request,
-					now,
+					claimAt,
 					request.status === "submitting" ? "unknown" : status,
 					"provider_status_pending",
 					Date.now() - started,
@@ -220,23 +255,34 @@ export class RefillReconciliationService {
 			);
 			const advanced = next !== status;
 			const attempts = advanced ? 0 : request.reconcileAttempts + 1;
+			const completedAt = this.now();
+			const shouldAlert =
+				!terminal &&
+				!advanced &&
+				attempts >= ALERT_AFTER_ATTEMPTS &&
+				request.operatorAlertedAt === null;
 			const nextAt = terminal
 				? null
 				: new Date(
-						now.getTime() + refillReconciliationBackoffMs(attempts || 1),
+						completedAt.getTime() +
+							refillReconciliationBackoffMs(attempts || 1),
 					);
 			const updated = await this.db.refillAgentRequest.updateMany({
-				where: { id: request.id, refreshClaimedAt: now },
+				where: { id: request.id, refreshClaimedAt: claimAt },
 				data: {
 					providerOrderId: order.id,
 					status: next,
 					providerConfirmed: true,
-					lastCheckedAt: now,
+					lastCheckedAt: completedAt,
 					failureCode: null,
 					refreshClaimedAt: null,
 					reconcileAttempts: attempts,
 					nextReconcileAt: nextAt,
-					...(advanced ? { operatorAlertedAt: null } : {}),
+					...(advanced
+						? { operatorAlertedAt: null }
+						: shouldAlert
+							? { operatorAlertedAt: completedAt }
+							: {}),
 				},
 			});
 			if (!updated.count)
@@ -249,13 +295,23 @@ export class RefillReconciliationService {
 				attemptBucket: terminal ? undefined : attemptBucket(attempts || 1),
 				durationMs: Math.max(0, Math.min(30_000, Date.now() - started)),
 			});
-			if (!terminal && !advanced && attempts >= ALERT_AFTER_ATTEMPTS)
-				return this.markAttention(request, now, next, attempts, true);
-			return { terminal, retried: !terminal && !advanced, alerted: false };
+			if (shouldAlert)
+				this.event({
+					operation: "reconcile",
+					outcome: "attention",
+					reasonCode: "reconciliation_attention_required",
+					status: next,
+					attemptBucket: attemptBucket(attempts),
+				});
+			return {
+				terminal,
+				retried: !terminal && !advanced,
+				alerted: shouldAlert,
+			};
 		} catch {
 			return this.scheduleRetry(
 				request,
-				now,
+				claimAt,
 				request.status === "submitting" ? "unknown" : status,
 				"status_check_unavailable",
 				Date.now() - started,
@@ -265,23 +321,27 @@ export class RefillReconciliationService {
 
 	private async scheduleRetry(
 		request: RefillAgentRequest,
-		now: Date,
+		claimAt: Date,
 		status: RefillRequestStatus,
 		reasonCode: "provider_status_pending" | "status_check_unavailable",
 		durationMs: number,
 	) {
 		const attempts = request.reconcileAttempts + 1;
+		const completedAt = this.now();
+		const shouldAlert =
+			attempts >= ALERT_AFTER_ATTEMPTS && request.operatorAlertedAt === null;
 		const updated = await this.db.refillAgentRequest.updateMany({
-			where: { id: request.id, refreshClaimedAt: now },
+			where: { id: request.id, refreshClaimedAt: claimAt },
 			data: {
 				status,
-				lastCheckedAt: now,
+				lastCheckedAt: completedAt,
 				failureCode: reasonCode,
 				refreshClaimedAt: null,
 				reconcileAttempts: attempts,
 				nextReconcileAt: new Date(
-					now.getTime() + refillReconciliationBackoffMs(attempts),
+					completedAt.getTime() + refillReconciliationBackoffMs(attempts),
 				),
+				...(shouldAlert ? { operatorAlertedAt: completedAt } : {}),
 			},
 		});
 		if (!updated.count)
@@ -294,23 +354,7 @@ export class RefillReconciliationService {
 			attemptBucket: attemptBucket(attempts),
 			durationMs: Math.max(0, Math.min(30_000, durationMs)),
 		});
-		if (attempts >= ALERT_AFTER_ATTEMPTS)
-			return this.markAttention(request, now, status, attempts, true);
-		return { terminal: false, retried: true, alerted: false };
-	}
-
-	private async markAttention(
-		request: RefillAgentRequest,
-		now: Date,
-		status: RefillRequestStatus,
-		attempts: number,
-		retried: boolean,
-	) {
-		const marked = await this.db.refillAgentRequest.updateMany({
-			where: { id: request.id, operatorAlertedAt: null },
-			data: { operatorAlertedAt: now },
-		});
-		if (marked.count)
+		if (shouldAlert)
 			this.event({
 				operation: "reconcile",
 				outcome: "attention",
@@ -318,7 +362,7 @@ export class RefillReconciliationService {
 				status,
 				attemptBucket: attemptBucket(attempts),
 			});
-		return { terminal: false, retried, alerted: marked.count > 0 };
+		return { terminal: false, retried: true, alerted: shouldAlert };
 	}
 }
 
