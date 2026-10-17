@@ -10,7 +10,30 @@ function match(row: Row, where: Row = {}): boolean {
 		if (key === "NOT") return !match(row, value);
 		if (key.includes("_") && !(key in row)) return match(row, value);
 		const current = row[key];
-		if (value && typeof value === "object" && !(value instanceof Date))
+		if (value && typeof value === "object" && !(value instanceof Date)) {
+			if (Array.isArray(current)) {
+				if ("none" in value)
+					return !current.some((item) => match(item, value.none));
+				if ("some" in value)
+					return current.some((item) => match(item, value.some));
+				if ("every" in value)
+					return current.every((item) => match(item, value.every));
+			}
+			const operators = new Set([
+				"in",
+				"notIn",
+				"not",
+				"gte",
+				"lte",
+				"gt",
+				"lt",
+			]);
+			if (
+				current &&
+				typeof current === "object" &&
+				!Object.keys(value).some((key) => operators.has(key))
+			)
+				return match(current, value);
 			return Object.entries(value).every(([op, v]: [string, any]) =>
 				op === "in"
 					? v.includes(current)
@@ -28,6 +51,7 @@ function match(row: Row, where: Row = {}): boolean {
 											? current < v
 											: false,
 			);
+		}
 		return current instanceof Date && value instanceof Date
 			? current.getTime() === value.getTime()
 			: current === value;
@@ -70,24 +94,53 @@ export function memoryDb(seed: Record<string, Row[]> = {}) {
 		};
 		db[name] = {
 			async findMany(args: Row = {}) {
-				let found = rows().filter((row) => match(row, args.where));
+				const candidates =
+					name === "dose"
+						? rows().map((row) => ({
+								...row,
+								prescription: tables.prescription.find(
+									(prescription) => prescription.id === row.prescriptionId,
+								),
+								reminderIntents: tables.reminderIntent.filter(
+									(intent) => intent.doseId === row.id,
+								),
+							}))
+						: rows();
+				let found = candidates.filter((row) => match(row, args.where));
 				if (args.orderBy) {
-					const [key, dir] = Object.entries(args.orderBy)[0];
-					const direction = typeof dir === "object" ? dir.sort : dir;
-					const nulls = typeof dir === "object" ? dir.nulls : "last";
+					const clauses = Array.isArray(args.orderBy)
+						? args.orderBy
+						: [args.orderBy];
 					found = [...found].sort((a, b) => {
-						if (a[key] === null)
-							return b[key] === null ? 0 : nulls === "first" ? -1 : 1;
-						if (b[key] === null) return nulls === "first" ? 1 : -1;
-						return (a[key] < b[key] ? -1 : 1) * (direction === "asc" ? 1 : -1);
+						for (const clause of clauses) {
+							const [key, dir] = Object.entries(clause)[0];
+							if (a[key] === b[key]) continue;
+							const direction = typeof dir === "object" ? dir.sort : dir;
+							const nulls = typeof dir === "object" ? dir.nulls : "last";
+							if (a[key] === null) return nulls === "first" ? -1 : 1;
+							if (b[key] === null) return nulls === "first" ? 1 : -1;
+							return (
+								(a[key] < b[key] ? -1 : 1) * (direction === "asc" ? 1 : -1)
+							);
+						}
+						return 0;
 					});
 				}
-				return structuredClone(found.slice(0, args.take || Infinity));
+				const result = found.slice(0, args.take || Infinity);
+				if (name === "reminderIntent" && args.select?.attempt)
+					return structuredClone(
+						result.map((row) => ({
+							...row,
+							attempt:
+								tables.deliveryAttempt.find(
+									(attempt) => attempt.intentId === row.id,
+								) || null,
+						})),
+					);
+				return structuredClone(result);
 			},
 			async findFirst(args: Row = {}) {
-				return structuredClone(
-					rows().find((row) => match(row, args.where)) || null,
-				);
+				return (await this.findMany({ ...args, take: 1 }))[0] || null;
 			},
 			async findUnique(args: Row) {
 				return this.findFirst(args);
@@ -138,6 +191,24 @@ export function memoryDb(seed: Record<string, Row[]> = {}) {
 					});
 				rows().push(base);
 				return structuredClone(base);
+			},
+			async createMany({ data, skipDuplicates }: Row) {
+				let count = 0;
+				for (const candidate of data) {
+					const duplicate =
+						name === "reminderIntent" &&
+						rows().some(
+							(row) =>
+								row.doseId === candidate.doseId &&
+								row.channel === candidate.channel &&
+								row.stage === candidate.stage,
+						);
+					if (duplicate && skipDuplicates) continue;
+					if (duplicate) throw new Error("unique constraint");
+					await this.create({ data: candidate });
+					count++;
+				}
+				return { count };
 			},
 			async update({ where, data }: Row) {
 				const row = rows().find((row) => match(row, where));

@@ -5,8 +5,40 @@ const config = require('./config/config');
 const connectDB = require('./config/databaseConfig');
 const { requestLimit } = require('./middleware/requestLimit');
 const { checkSessionStore, closePool } = require('./middleware/verifyUserToken');
+const { createOperationsRouter, buildInfo } = require('./lib/operations');
 
-function createApp() {
+function createRuntimeDependencies({
+  mongoUri = config.mongoUri,
+  connectMongo = connectDB,
+  mongoReady = () => mongoose.connection.readyState === 1,
+  postgresReady = checkSessionStore,
+  close = async () => { await closePool(); await mongoose.disconnect(); },
+} = {}) {
+  let mongoConnect;
+  let dependencyCheck;
+  async function ensureMongo() {
+    if (mongoReady()) return;
+    mongoConnect ||= Promise.resolve()
+      .then(() => connectMongo(mongoUri))
+      .finally(() => { mongoConnect = undefined; });
+    await mongoConnect;
+    if (!mongoReady()) throw new Error('MongoDB is not connected');
+  }
+  return {
+    readiness: () => {
+      dependencyCheck ||= Promise.resolve()
+        .then(async () => {
+          await ensureMongo();
+          await postgresReady();
+        })
+        .finally(() => { dependencyCheck = undefined; });
+      return dependencyCheck;
+    },
+    close,
+  };
+}
+
+function createApp({ readinessProbe } = {}) {
   const app = express();
   app.disable('x-powered-by');
   // Proxy trust must be deliberately configured at the gateway, never accepted
@@ -15,7 +47,12 @@ function createApp() {
   app.use(cors({ origin: config.corsOrigins, credentials: false }));
   app.use(requestLimit({ max: 180, windowMs: 60000 }));
   app.use(express.json({ limit: '16kb', strict: true }));
-  app.get('/health', (_req, res) => res.json({ status: 'ok', contract: 'vial-observations-v1' }));
+  app.use(createOperationsRouter({
+    readinessProbe: readinessProbe || (async () => {
+      if (mongoose.connection.readyState !== 1) throw new Error('MongoDB is not connected');
+      await checkSessionStore();
+    }),
+  }));
   app.use('/api/ingest', require('./routes/ingestionAPI'));
   app.use('/api/caregiver', require('./routes/caregiverAPI'));
   app.use('/api/user', require('./routes/userAPI'));
@@ -28,24 +65,48 @@ function createApp() {
   return app;
 }
 
-async function start() {
-  config.validateConfig(config);
-  await connectDB(config.mongoUri);
-  await checkSessionStore();
-  const server = createApp().listen(config.port, () => console.info('Vial API ready'));
-  const stop = () => server.close(async () => { await closePool(); await mongoose.disconnect(); });
-  process.once('SIGTERM', stop);
-  process.once('SIGINT', stop);
+async function start({
+  runtimeConfig = config,
+  dependencies = createRuntimeDependencies({ mongoUri: runtimeConfig.mongoUri }),
+  installSignalHandlers = true,
+  onDependencyError = () => console.error('Vial API dependencies unavailable; readiness remains closed.'),
+} = {}) {
+  config.validateConfig(runtimeConfig);
+  const server = createApp({ readinessProbe: dependencies.readiness }).listen(runtimeConfig.port, () => {
+    const build = buildInfo();
+    console.info(`Vial API listening (version=${build.version} commit=${build.commit})`);
+  });
+  // Warm connections without making process liveness depend on datastore
+  // availability. Each readiness request can retry a failed initial connect.
+  void dependencies.readiness().catch(onDependencyError);
+  let stopPromise;
+  const stop = () => {
+    stopPromise ||= new Promise(resolve => server.close(async () => {
+      await dependencies.close();
+      resolve();
+    }));
+    return stopPromise;
+  };
+  if (installSignalHandlers) {
+    process.once('SIGTERM', () => { void stop(); });
+    process.once('SIGINT', () => { void stop(); });
+  }
   return server;
 }
 
-if (require.main === module) {
-  start().catch(async () => {
+async function run() {
+  try {
+    await start();
+  } catch {
     console.error('Vial API startup failed: verify database configuration, schema, indexes and replica-set support.');
     await closePool().catch(() => {});
     await mongoose.disconnect().catch(() => {});
     process.exitCode = 1;
-  });
+  }
 }
 
-module.exports = { createApp, start };
+if (require.main === module) {
+  void run();
+}
+
+module.exports = { createApp, createRuntimeDependencies, start, run };

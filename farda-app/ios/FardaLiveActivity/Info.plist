@@ -10,6 +10,7 @@
   <key>CFBundlePackageType</key><string>XPC!</string>
   <key>CFBundleShortVersionString</key><string>$(FLUTTER_BUILD_NAME)</string>
   <key>CFBundleVersion</key><string>$(FLUTTER_BUILD_NUMBER)</string>
+  <key>FardaReleaseCommit</key><string>$(FARDA_RELEASE_COMMIT)</string>
   <key>NSExtension</key>
   <dict><key>NSExtensionPointIdentifier</key><string>com.apple.widgetkit-extension</string></dict>
   <key>UIAppFonts</key>

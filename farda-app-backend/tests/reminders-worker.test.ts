@@ -48,7 +48,9 @@ describe("reminder worker lifecycle", () => {
 		await vi.advanceTimersByTimeAsync(30_000);
 		await stop();
 		expect(tick).toHaveBeenCalledTimes(2);
-		expect(log).toHaveBeenCalledWith("reminder_worker_failed");
+		expect(JSON.parse(log.mock.calls[0][0])).toEqual({
+			event: "reminder_worker_failed",
+		});
 		expect(JSON.stringify(log.mock.calls)).not.toContain("sensitive");
 	});
 });

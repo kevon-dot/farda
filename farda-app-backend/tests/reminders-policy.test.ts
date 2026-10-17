@@ -1,13 +1,15 @@
-import { describe, expect, it } from "vitest";
 import twilio from "twilio";
+import { describe, expect, it } from "vitest";
+import { inventoryPresentation, receiptDelta } from "../src/refills/service";
 import {
+	acceptProviderEvent,
 	CADENCE,
 	DEFAULT_PREFERENCE,
-	acceptProviderEvent,
 	inQuietHours,
 	localDay,
 	occurrenceBlock,
 	reminderPlan,
+	reminderWindowState,
 	validTimeZone,
 } from "../src/reminders/policy";
 import {
@@ -17,7 +19,6 @@ import {
 	validWebhook,
 	voiceConfig,
 } from "../src/reminders/voice";
-import { inventoryPresentation, receiptDelta } from "../src/refills/service";
 
 const dose = {
 	id: "d1",
@@ -40,6 +41,29 @@ describe("reminder timing and gates", () => {
 		]);
 	});
 	it.each([
+		["2026-10-14T15:49:59.999Z", "scheduled"],
+		["2026-10-14T15:50:00.000Z", "reminder_window"],
+		["2026-10-14T16:00:00.000Z", "due_window"],
+		["2026-10-14T16:10:00.000Z", "call_window"],
+		["2026-10-14T17:00:00.000Z", "closed"],
+	])("reports the explicit reminder state at %s", (at, state) => {
+		expect(reminderWindowState(dose, new Date(at))).toBe(state);
+	});
+	it("reports snoozed and resolved states without inferring confirmation", () => {
+		expect(
+			reminderWindowState(
+				{ ...dose, snoozedUntil: new Date("2026-10-14T16:20Z") },
+				new Date("2026-10-14T16:10Z"),
+			),
+		).toBe("snoozed");
+		expect(
+			reminderWindowState(
+				{ ...dose, status: "taken", takenAt: new Date("2026-10-14T16:05Z") },
+				new Date("2026-10-14T16:10Z"),
+			),
+		).toBe("resolved");
+	});
+	it.each([
 		"taken",
 		"skipped",
 		"cancelled",
@@ -54,6 +78,13 @@ describe("reminder timing and gates", () => {
 				new Date("2026-10-14T16:10Z"),
 			),
 		).toBe("occurrence_resolved"));
+	it("does not treat a vial movement observation as a taken record", () => {
+		const observed = { ...dose, source: "vial_movement" };
+		expect(occurrenceBlock(observed, new Date("2026-10-14T16:10Z"))).toBe(null);
+		expect(reminderWindowState(observed, new Date("2026-10-14T16:10Z"))).toBe(
+			"call_window",
+		);
+	});
 	it("never sends a late call after an explicit snooze", () =>
 		expect(
 			occurrenceBlock(

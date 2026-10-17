@@ -31,6 +31,17 @@ describe('Photon documented refill provider contract', () => {
     expect(fetcher).not.toHaveBeenCalled();
   });
 
+  it.each([undefined, 'staging'])('requires an explicit recognized environment before networking: %s', async environment => {
+    const fetcher = fake();
+    const provider = new PhotonRefillsProvider({
+      enabled: true, environment: environment as 'sandbox' | undefined,
+      clientId: 'test-client', clientSecret: 'test-secret',
+    }, fetcher);
+    expect(provider.configured).toBe(false);
+    await expect(provider.submitOrder(input)).rejects.toMatchObject({ code: 'provider_unavailable', outcome: 'not_submitted' });
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
   it.each(['sandbox', 'production'] as const)('uses only fixed %s auth/API endpoints and the documented createOrder shape', async environment => {
     const fetcher = fake().mockResolvedValueOnce(json({ data: { createOrder: rawOrder } }));
     const provider = new PhotonRefillsProvider({ ...config, environment }, fetcher);

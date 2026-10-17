@@ -21,6 +21,7 @@ class NativeRepo extends BillingFake implements NativeBillingRepository {
         products: const {'plus-year': 'plus'},
         termsUrl: Uri.parse('https://example.com/terms'),
         privacyUrl: Uri.parse('https://example.com/privacy'),
+        supportUrl: Uri.parse('https://support.example.com/help'),
       );
   @override
   Future<NativeBillingConfig> prepareNativeBilling(
@@ -90,6 +91,10 @@ void main() {
     await show(t, repo, store);
     expect(find.text('€129,99 / year'), findsOneWidget);
     expect(find.textContaining('149.99'), findsNothing);
+    await t.scrollUntilVisible(find.text('Support'), 250);
+    expect(find.text('Terms of service'), findsOneWidget);
+    expect(find.text('Privacy policy'), findsOneWidget);
+    expect(find.text('Support'), findsOneWidget);
     await t.scrollUntilVisible(find.text('Continue with Plus'), 250);
     await t.tap(find.text('Continue with Plus'));
     await t.pumpAndSettle();

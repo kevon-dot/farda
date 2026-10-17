@@ -98,19 +98,89 @@ for config_id in objects[widget["buildConfigurationList"]]["buildConfigurations"
     assert settings["IPHONEOS_DEPLOYMENT_TARGET"] == "16.2"
     assert settings["APPLICATION_EXTENSION_API_ONLY"] == "YES"
     assert settings["SKIP_INSTALL"] == "YES"
-    assert settings["PRODUCT_BUNDLE_IDENTIFIER"].startswith("com.example.farda.")
+    if config["name"] != "Release":
+        assert settings["PRODUCT_BUNDLE_IDENTIFIER"].startswith("com.example.farda.")
+    else:
+        assert settings["PRODUCT_BUNDLE_IDENTIFIER"] == "$(FARDA_IOS_EXTENSION_BUNDLE_ID)"
+        assert settings["DEVELOPMENT_TEAM"] == "$(FARDA_IOS_TEAM_ID)"
+        assert settings["PROVISIONING_PROFILE_SPECIFIER"] == "$(FARDA_IOS_EXTENSION_PROFILE)"
+        assert settings["CODE_SIGN_STYLE"] == "Manual"
+        assert settings["CODE_SIGN_IDENTITY[sdk=iphoneos*]"] == "Apple Distribution"
     assert (ROOT / settings["INFOPLIST_FILE"]).is_file()
+
+for config_id in objects[runner["buildConfigurationList"]]["buildConfigurations"]:
+    config = objects[config_id]
+    settings = config["buildSettings"]
+    if config["name"] != "Release":
+        assert settings["PRODUCT_BUNDLE_IDENTIFIER"] == "com.example.farda"
+    else:
+        assert settings["PRODUCT_BUNDLE_IDENTIFIER"] == "$(FARDA_IOS_APP_BUNDLE_ID)"
+        assert settings["DEVELOPMENT_TEAM"] == "$(FARDA_IOS_TEAM_ID)"
+        assert settings["PROVISIONING_PROFILE_SPECIFIER"] == "$(FARDA_IOS_APP_PROFILE)"
+        assert settings["CODE_SIGN_ENTITLEMENTS"] == "Runner/Release.entitlements"
+        assert settings["CODE_SIGN_STYLE"] == "Manual"
+        assert settings["CODE_SIGN_IDENTITY[sdk=iphoneos*]"] == "Apple Distribution"
+
+release_gate = [
+    objects[key]
+    for key in runner["buildPhases"]
+    if objects[key].get("name") == "Validate Release Configuration"
+]
+assert len(release_gate) == 1
+assert "configure_release.py" in release_gate[0]["shellScript"]
 runner_info = plistlib.loads((ROOT / "Runner/Info.plist").read_bytes())
 widget_info = plistlib.loads((ROOT / "FardaLiveActivity/Info.plist").read_bytes())
+release_entitlements = plistlib.loads((ROOT / "Runner/Release.entitlements").read_bytes())
 assert runner_info["NSSupportsLiveActivities"] is True
 assert "farda" in runner_info["CFBundleURLTypes"][0]["CFBundleURLSchemes"]
+assert runner_info["FardaReleaseCommit"] == "$(FARDA_RELEASE_COMMIT)"
 assert widget_info["NSExtension"]["NSExtensionPointIdentifier"] == "com.apple.widgetkit-extension"
+assert widget_info["FardaReleaseCommit"] == "$(FARDA_RELEASE_COMMIT)"
 assert set(widget_info["UIAppFonts"]) == {"Outfit-Regular.ttf", "Outfit-SemiBold.ttf"}
+assert release_entitlements == {"aps-environment": "production"}
+assert '#include? "ReleaseSigning.xcconfig"' in (ROOT / "Flutter/Release.xcconfig").read_text()
+assert '#include? "../Flutter/ReleaseSigning.xcconfig"' in (ROOT / "FardaLiveActivity/Extension.xcconfig").read_text()
 for catalog in (ROOT / "FardaLiveActivity/Assets.xcassets").rglob("Contents.json"):
     content = json.loads(catalog.read_text())
     for image in content.get("images", []):
         asset = catalog.parent / image["filename"]
         assert asset.is_file() and asset.stat().st_size > 0
         assert asset.read_text().startswith("<svg"), f"Invalid vector asset: {asset}"
-print("PASS: Xcode project syntax/references, target embedding, source memberships, build configs, plists, fonts and vectors")
+
+repository_root = ROOT.parents[1]
+workflow_paths = sorted((repository_root / ".github/workflows").glob("*.yml"))
+assert workflow_paths
+approved_actions = {
+    "actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+    "actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3",
+    "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020",
+    "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
+    "pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320",
+    "subosito/flutter-action@1508160852fb97248640997f7cfb38da241df0ba",
+}
+for workflow_path in workflow_paths:
+    workflow = workflow_path.read_text()
+    uses = re.findall(r"^\s*- uses: ([^\s#]+)", workflow, re.MULTILINE)
+    assert uses, f"No actions found in {workflow_path}"
+    assert all(re.fullmatch(r"[^@\s]+@[0-9a-f]{40}", action) for action in uses), (
+        f"Unpinned action in {workflow_path}: {uses}"
+    )
+    assert set(uses) <= approved_actions, f"Unreviewed action SHA in {workflow_path}: {uses}"
+
+release_workflow = (repository_root / ".github/workflows/native-release.yml").read_text()
+for line in release_workflow.splitlines():
+    if "${{ secrets." in line:
+        assert len(line) - len(line.lstrip()) >= 10, f"Job-level secret exposure: {line.strip()}"
+for required_gate in (
+    "android_version_code:",
+    "ios_build_number:",
+    "--validate-versions",
+    "P12 leaf certificate does not match FARDA_IOS_CERT_SHA256",
+    "App signing leaf does not match FARDA_IOS_CERT_SHA256",
+    "Extension signing leaf does not match FARDA_IOS_CERT_SHA256",
+    '\"appCertificateSha256\": os.environ[\"APP_CERT_SHA256\"]',
+    '\"extensionCertificateSha256\": os.environ[\"EXTENSION_CERT_SHA256\"]',
+):
+    assert required_gate in release_workflow, f"Missing native release gate: {required_gate}"
+print("PASS: Xcode project syntax/references, target embedding, release gates, build configs, plists, fonts and vectors")
 print("Not verified: Swift compilation, code signing, ActivityKit runtime or device rendering")

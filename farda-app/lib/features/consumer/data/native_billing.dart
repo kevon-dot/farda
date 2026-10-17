@@ -22,9 +22,10 @@ class NativeBillingConfig {
     this.products = const {},
     this.termsUrl,
     this.privacyUrl,
+    this.supportUrl,
   });
   final bool enabled;
-  final Uri? termsUrl, privacyUrl;
+  final Uri? termsUrl, privacyUrl, supportUrl;
   bool get policiesAvailable => [termsUrl, privacyUrl].every(
     (u) =>
         u != null &&
@@ -32,6 +33,11 @@ class NativeBillingConfig {
         u.host.isNotEmpty &&
         u.userInfo.isEmpty,
   );
+  bool get supportAvailable =>
+      supportUrl != null &&
+      supportUrl!.scheme == 'https' &&
+      supportUrl!.host.isNotEmpty &&
+      supportUrl!.userInfo.isEmpty;
   final String appUserId, apiKey;
   final Map<String, String> products;
   factory NativeBillingConfig.fromJson(Map<String, dynamic> json) =>
@@ -39,6 +45,7 @@ class NativeBillingConfig {
         enabled: json['enabled'] == true,
         termsUrl: Uri.tryParse(json['termsUrl'] as String? ?? ''),
         privacyUrl: Uri.tryParse(json['privacyUrl'] as String? ?? ''),
+        supportUrl: Uri.tryParse(json['supportUrl'] as String? ?? ''),
         appUserId: json['appUserId'] as String? ?? '',
         apiKey: json['apiKey'] as String? ?? '',
         products: {
