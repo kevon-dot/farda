@@ -1,5 +1,6 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import type { PrismaClient } from '../../generated/prisma/client';
+import { csv as configuredCsv, publicHttpsUrl, revenueCatActivationReady, revenueCatProductConfiguration } from '../common/activation';
 import { BillingError } from './service';
 
 type NativeDb = Pick<PrismaClient, 'user' | 'billingSubscription' | 'billingCheckout' | 'nativeBillingSubscription' | 'nativeBillingWebhookEvent' | '$transaction'>;
@@ -22,21 +23,9 @@ type RevenueCatSubscriber = {
   };
 };
 
-const csv = (name: string) => (process.env[name] ?? '').split(',').map(value => value.trim()).filter(Boolean);
+const csv = (name: string) => configuredCsv(process.env, name);
 const enabled = () => process.env.REVENUECAT_NATIVE_BILLING_ENABLED === 'true';
-const validMode = () => process.env.REVENUECAT_MODE === 'sandbox' || process.env.REVENUECAT_MODE === 'live';
-const publicHttpsUrl = (name: string) => {
-  try { const url = new URL(process.env[name] ?? ''); return url.protocol === 'https:' && !url.username && !url.password ? url.toString() : undefined; }
-  catch { return undefined; }
-};
-const configurationReady = () => Boolean(
-  enabled() && validMode() && process.env.REVENUECAT_SECRET_API_KEY && process.env.REVENUECAT_WEBHOOK_AUTH_TOKEN &&
-  process.env.REVENUECAT_IOS_PUBLIC_API_KEY && process.env.REVENUECAT_ANDROID_PUBLIC_API_KEY &&
-  process.env.REVENUECAT_PLUS_ENTITLEMENT_ID && process.env.REVENUECAT_FAMILY_ENTITLEMENT_ID &&
-  (csv('REVENUECAT_IOS_PLUS_PRODUCT_IDS').length + csv('REVENUECAT_ANDROID_PLUS_PRODUCT_IDS').length) > 0 &&
-  (csv('REVENUECAT_IOS_FAMILY_PRODUCT_IDS').length + csv('REVENUECAT_ANDROID_FAMILY_PRODUCT_IDS').length) > 0 &&
-  publicHttpsUrl('FARDA_TERMS_URL') && publicHttpsUrl('FARDA_PRIVACY_URL'),
-);
+const configurationReady = () => enabled() && revenueCatActivationReady(process.env);
 const tierAvailable = (tier: Tier) => process.env.FARDA_REFILL_AI_ENABLED === 'true' && Boolean(process.env.OPENAI_API_KEY) && (tier !== 'family' || process.env.FARDA_REMINDER_WORKER_ENABLED === 'true');
 const maxStaleMs = () => {
   const seconds = Number(process.env.REVENUECAT_MAX_STALE_SECONDS ?? 86400);
@@ -45,10 +34,7 @@ const maxStaleMs = () => {
 
 function productMap() {
   const map = new Map<string, { tier: Tier; platform: Platform }>();
-  for (const [platform, tier, name] of [
-    ['ios', 'plus', 'REVENUECAT_IOS_PLUS_PRODUCT_IDS'], ['ios', 'family', 'REVENUECAT_IOS_FAMILY_PRODUCT_IDS'],
-    ['android', 'plus', 'REVENUECAT_ANDROID_PLUS_PRODUCT_IDS'], ['android', 'family', 'REVENUECAT_ANDROID_FAMILY_PRODUCT_IDS'],
-  ] as const) for (const id of csv(name)) {
+  for (const { platform, tier, id } of revenueCatProductConfiguration(process.env).entries) {
     if (map.has(id)) throw new BillingError(503, 'native_billing_misconfigured', 'Native billing product configuration is ambiguous.');
     map.set(id, { tier, platform });
   }
@@ -73,7 +59,9 @@ export class NativeBillingService {
       apiKey: platform === 'ios' ? process.env.REVENUECAT_IOS_PUBLIC_API_KEY! : process.env.REVENUECAT_ANDROID_PUBLIC_API_KEY!,
       entitlements: { plus: process.env.REVENUECAT_PLUS_ENTITLEMENT_ID!, family: process.env.REVENUECAT_FAMILY_ENTITLEMENT_ID! },
       products: [...products].filter(([, value]) => value.platform === platform && tierAvailable(value.tier)).map(([id, value]) => ({ id, tier: value.tier })),
-      termsUrl: publicHttpsUrl('FARDA_TERMS_URL')!, privacyUrl: publicHttpsUrl('FARDA_PRIVACY_URL')!,
+      termsUrl: publicHttpsUrl(process.env.FARDA_TERMS_URL)!.toString(),
+      privacyUrl: publicHttpsUrl(process.env.FARDA_PRIVACY_URL)!.toString(),
+      supportUrl: publicHttpsUrl(process.env.FARDA_SUPPORT_URL)!.toString(),
     };
   }
 

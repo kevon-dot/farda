@@ -108,9 +108,15 @@ function fixture() {
 const originalEnv = { ...process.env };
 beforeEach(() => {
   process.env.STRIPE_BILLING_ENABLED = "true";
+  process.env.STRIPE_SECRET_KEY = "sk_test_synthetic";
   process.env.STRIPE_WEBHOOK_SECRET = "whsec_test";
   process.env.STRIPE_MODE = "test";
+  process.env.STRIPE_PRICE_PLUS_MONTHLY = "price_plus";
+  process.env.STRIPE_PRICE_PLUS_ANNUAL = "price_plusannual";
   process.env.STRIPE_PRICE_FAMILY_MONTHLY = "price_family";
+  process.env.STRIPE_PRICE_FAMILY_ANNUAL = "price_familyannual";
+  process.env.FARDA_BILLING_RETURN_ORIGINS = "https://app.test";
+  process.env.FARDA_PUBLIC_BASE_URL = "https://api.test";
 });
 afterEach(() => {
   process.env = { ...originalEnv };
@@ -368,6 +374,7 @@ describe("billing webhook security boundaries", () => {
   it("rejects a signed event from the wrong Stripe mode before provider or database mutation", async () => {
     const f = fixture();
     process.env.STRIPE_MODE = "live";
+    process.env.STRIPE_SECRET_KEY = "sk_live_synthetic";
     f.stripe.event = {
       id: "evt_test_into_live",
       created: 203,

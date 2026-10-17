@@ -1,6 +1,6 @@
 import Stripe from 'stripe';
 import type { PrismaClient } from '../../generated/prisma/client';
-import { configuredPrices, priceCatalog, publicCatalog, type PaidTier, type PriceKey } from './catalog';
+import { configuredPrices, priceCatalog, publicCatalog, stripeActivationReady, type PaidTier, type PriceKey } from './catalog';
 import { nativeEntitled, refreshNativeIfNeeded } from './native';
 
 export class BillingError extends Error { constructor(public status: number, public code: string, message: string) { super(message); } }
@@ -25,7 +25,7 @@ export class BillingService {
   private readonly prices = configuredPrices();
   constructor(private readonly db: Db, private readonly stripe?: Stripe) {}
   catalog() { return publicCatalog(); }
-  private provider() { if (process.env.STRIPE_BILLING_ENABLED !== 'true' || !this.stripe || !process.env.STRIPE_WEBHOOK_SECRET) throw new BillingError(503, 'billing_unavailable', 'Billing is not configured.'); return this.stripe; }
+  private provider() { if (process.env.STRIPE_BILLING_ENABLED !== 'true' || !this.stripe || !stripeActivationReady()) throw new BillingError(503, 'billing_unavailable', 'Billing is not configured.'); return this.stripe; }
   async status(userId: string) {
     const row = await this.db.billingSubscription.findFirst({ where: { userId }, orderBy: { updatedAt: 'desc' } });
     const entitled = await this.db.billingSubscription.findFirst({ where: { userId, tier: { in: ['plus', 'family'] }, status: { in: ['active', 'trialing'] }, currentPeriodEnd: { gt: new Date() } }, orderBy: { updatedAt: 'desc' } });
@@ -98,8 +98,9 @@ export class BillingService {
   }
   async webhook(raw: Buffer, signature: string | undefined) {
     if (!signature) throw new BillingError(400, 'invalid_signature', 'Missing webhook signature.');
+    const stripe = this.provider();
     let event: Stripe.Event;
-    try { event = this.provider().webhooks.constructEvent(raw, signature, process.env.STRIPE_WEBHOOK_SECRET!); }
+    try { event = stripe.webhooks.constructEvent(raw, signature, process.env.STRIPE_WEBHOOK_SECRET!); }
     catch { throw new BillingError(400, 'invalid_signature', 'Invalid webhook signature.'); }
     if (await this.db.billingWebhookEvent.findUnique({ where: { stripeEventId: event.id } })) return { duplicate: true };
     const expectedLive = process.env.STRIPE_MODE === 'live';

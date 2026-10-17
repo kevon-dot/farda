@@ -3,8 +3,10 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { PrismaClient } from "../generated/prisma/client";
 import { BillingService } from "../src/billing/service";
+import { completeProviderTestEnv } from "./helpers/provider-env";
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
+const savedEnv = { ...process.env };
 
 function subscription(overrides: Record<string, unknown> = {}) {
   const customer = typeof overrides.customer === "string" ? overrides.customer : "cus-placeholder";
@@ -23,7 +25,7 @@ function subscription(overrides: Record<string, unknown> = {}) {
     items: {
       data: [
         {
-          price: { id: "price_family_db" },
+          price: { id: completeProviderTestEnv.STRIPE_PRICE_FAMILY_MONTHLY },
           current_period_end: Math.floor(Date.now() / 1000) + 86_400,
         },
       ],
@@ -55,10 +57,7 @@ describe.skipIf(!databaseUrl)("Billing PostgreSQL webhook serialization", () => 
   let retrieve: ReturnType<typeof vi.fn>;
 
   beforeAll(async () => {
-    process.env.STRIPE_BILLING_ENABLED = "true";
-    process.env.STRIPE_WEBHOOK_SECRET = "whsec_billing_db_test";
-    process.env.STRIPE_MODE = "test";
-    process.env.STRIPE_PRICE_FAMILY_MONTHLY = "price_family_db";
+    Object.assign(process.env, completeProviderTestEnv);
     db = new PrismaClient({
       adapter: new PrismaPg({
         connectionString: databaseUrl!,
@@ -111,6 +110,7 @@ describe.skipIf(!databaseUrl)("Billing PostgreSQL webhook serialization", () => 
       await db.user.deleteMany({ where: { id: { in: [ownerId, otherId] } } });
       await db.$disconnect();
     }
+    process.env = { ...savedEnv };
   });
 
   async function deliver(value: ReturnType<typeof event>) {
@@ -147,7 +147,7 @@ describe.skipIf(!databaseUrl)("Billing PostgreSQL webhook serialization", () => 
       items: {
         data: [
           {
-            price: { id: "price_family_db" },
+            price: { id: completeProviderTestEnv.STRIPE_PRICE_FAMILY_MONTHLY },
             current_period_end: Math.floor(Date.now() / 1000) - 60,
           },
         ],
